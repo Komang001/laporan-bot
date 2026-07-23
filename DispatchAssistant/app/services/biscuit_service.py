@@ -186,7 +186,7 @@ class BiscuitService:
         try:
 
             return self.page.locator(
-                "text=BISCUIT BOT"
+                "div.bg-\\[\\#182533\\]"
             ).count()
 
         except:

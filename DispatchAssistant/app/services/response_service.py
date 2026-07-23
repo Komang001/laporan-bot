@@ -18,16 +18,16 @@ class ResponseService:
 
         try:
 
-            bot_names = self.page.locator(
-                "text=BISCUIT BOT"
+            bot_messages = self.page.locator(
+                "div.bg-\\[\\#182533\\]"
             )
 
-            timeout = 15
+            timeout = 20
             start = time.time()
 
             while True:
 
-                count = bot_names.count()
+                count = bot_messages.count()
 
                 if count > self.old_count:
                     break
@@ -39,31 +39,26 @@ class ResponseService:
                         message="Timeout menunggu response BISCUIT BOT."
                     )
 
-                time.sleep(0.2)
+                time.sleep(0.5)
 
-            message = bot_names.nth(
-                count - 1
-            ).locator(
-                "xpath=following::div[contains(@class,'whitespace-pre-wrap')][1]"
-            ).inner_text().strip()
+            latest_msg = bot_messages.last
 
-            upper = message.upper()
+            green_icon = latest_msg.locator("svg.text-green-400")
+            green_text = latest_msg.locator("div.text-green-300")
+            content = latest_msg.inner_text()
 
-            if "GAGAL" in upper:
-
-                status = "FAILED"
-
-            elif "BERHASIL" in upper:
-
+            if green_icon.count() > 0 or green_text.count() > 0:
                 status = "SUCCESS"
-
+            elif "berhasil" in content.lower() or "successfully" in content.lower():
+                status = "SUCCESS"
+            elif "gagal" in content.lower() or "failed" in content.lower():
+                status = "FAILED"
             else:
-
                 status = "UNKNOWN"
 
             return Response(
                 status=status,
-                message=message
+                message=content[:200]
             )
 
         except Exception as e:
