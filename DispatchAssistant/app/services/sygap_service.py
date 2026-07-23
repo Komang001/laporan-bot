@@ -142,6 +142,11 @@ class SygapService:
                 continue
             try:
                 if not p.is_closed():
+                    url = p.url.lower()
+                    if "biscuit-dashboard" in url:
+                        continue
+                    if "biscuit" in url and "tools" in url:
+                        continue
                     p.close()
             except Exception:
                 pass
