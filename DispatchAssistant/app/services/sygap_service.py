@@ -1,0 +1,396 @@
+import time
+
+from app.browser import browser_manager
+from app.parser import extract_owner_group
+from config.settings import USER_ID, USER_NAME, INSERA_GROUP_ID
+
+
+class SygapService:
+
+    def __init__(self):
+        self.processed_ids = set()
+
+    def get_dashboard_page(self):
+        page = browser_manager.get_dashboard_page()
+        if page is None:
+            raise Exception("Dashboard SYGAP tidak ditemukan. Buka /req_fulfillment dulu.")
+        return page
+
+    def navigate_to_dashboard(self):
+        page = self.get_dashboard_page()
+        browser_manager.activate_page(page)
+        current = page.url.lower()
+        if "/req_fulfillment" in current and "/form/" not in current:
+            return page
+        page.goto("https://sygap.telkom.co.id/req_fulfillment")
+        page.wait_for_load_state("domcontentloaded", timeout=15000)
+        page.wait_for_timeout(3000)
+        return page
+
+    def filter_assigned(self, page, group_label="MO-INSERA", group_id=None):
+        try:
+            sel = page.locator("#searchSelect")
+            sel.select_option(label="ASSIGNED")
+            page.wait_for_timeout(500)
+
+            adv_link = page.locator('a[href="#multiCollapseExample1"]')
+            if adv_link.count() > 0:
+                adv_link.click()
+            page.wait_for_selector("#multiCollapseExample1.show", timeout=5000)
+            page.wait_for_timeout(500)
+
+            if group_id:
+                js_set = f"""
+                (function() {{
+                    var el = document.getElementById('solverGroupSearch');
+                    if (el && window.jQuery) {{
+                        var $el = jQuery(el);
+                        $el.empty();
+                        $el.append(new Option('{group_label}', '{group_id}', true, true));
+                        $el.val('{group_id}').trigger('change');
+                    }}
+                }})();
+                """
+                page.evaluate(js_set)
+                page.wait_for_timeout(1500)
+            else:
+                sg_container = page.locator("#select2-solverGroupSearch-container")
+                sg_container.click()
+                page.wait_for_timeout(500)
+
+                sg_search = page.locator(".select2-search__field:visible")
+                sg_search.fill(group_label)
+                page.wait_for_timeout(3000)
+
+                result_opt = page.locator(".select2-results__option:visible").first
+                result_opt.click()
+                page.wait_for_timeout(1500)
+
+            selected = page.locator("#select2-solverGroupSearch-container").inner_text()
+            print(f"SolverGroup: '{selected}'")
+            if group_label not in selected:
+                print(f"SolverGroup not set, retry...")
+                sg_container = page.locator("#select2-solverGroupSearch-container")
+                sg_container.click()
+                page.wait_for_timeout(500)
+                sg_search = page.locator(".select2-search__field:visible")
+                sg_search.fill(group_label)
+                page.wait_for_timeout(3000)
+                result_opt = page.locator(".select2-results__option:visible").first
+                result_opt.click()
+                page.wait_for_timeout(1500)
+
+                selected2 = page.locator("#select2-solverGroupSearch-container").inner_text()
+                print(f"SolverGroup retry: '{selected2}'")
+                if group_label not in selected2:
+                    print(f"FAILED to set SolverGroup, skipping")
+                    return
+
+            page.locator("#btn_apply").click()
+            page.wait_for_timeout(4000)
+
+            rows = page.locator("#requestFulfillmentTable tbody tr")
+            count = rows.count()
+            print(f"Filter applied ({group_label}): {count} row(s) found")
+        except Exception as e:
+            print(f"Filter error: {e}")
+
+    def get_ticket_rows(self, page):
+        rows = page.locator("#requestFulfillmentTable tbody tr")
+        count = rows.count()
+        result = []
+        for i in range(count):
+            row = rows.nth(i)
+            try:
+                link = row.locator("td a").first
+                if link.count() == 0:
+                    continue
+                request_code = link.inner_text().strip()
+                href = link.get_attribute("href") or ""
+                status_cell = row.locator("td").nth(6)
+                raw_status = status_cell.inner_text().strip()
+                status = raw_status.split()[-1] if raw_status.split() else raw_status
+                result.append({
+                    "row": row,
+                    "link": link,
+                    "request_code": request_code,
+                    "href": href,
+                    "status": status,
+                })
+            except Exception:
+                continue
+        return result
+
+    def click_ticket(self, page, row_info):
+        self._close_extra_tabs(page)
+        link = row_info["link"]
+        old_count = len(page.context.pages)
+        link.click()
+        page.wait_for_timeout(3000)
+        new_count = len(page.context.pages)
+        if new_count > old_count:
+            return page.context.pages[-1]
+        for p in page.context.pages:
+            if p != page and "/form/" in p.url:
+                return p
+        return None
+
+    def _close_extra_tabs(self, dashboard_page):
+        for p in dashboard_page.context.pages:
+            if p == dashboard_page:
+                continue
+            try:
+                if not p.is_closed():
+                    p.close()
+            except Exception:
+                pass
+
+    def read_ticket_note(self, ticket_page):
+        try:
+            ticket_page.wait_for_load_state("domcontentloaded", timeout=15000)
+            ticket_page.wait_for_timeout(3000)
+        except Exception:
+            pass
+        note = ""
+        selectors = ["textarea#note", "#note", ".note-editor textarea"]
+        for sel in selectors:
+            try:
+                loc = ticket_page.locator(sel)
+                if loc.count() > 0:
+                    note = loc.first.input_value().strip()
+                    if note:
+                        return note
+            except Exception:
+                continue
+        try:
+            editors = ticket_page.locator(".ck-editor__editable")
+            for i in range(editors.count()):
+                text = editors.nth(i).inner_text().strip()
+                if text:
+                    note = text
+                    break
+        except Exception:
+            note = ""
+        return note
+
+    def read_ticket_id(self, ticket_page):
+        selectors = [
+            "input[name$='_ticket_id']",
+            "input[name*='ticket_id']",
+        ]
+        for sel in selectors:
+            try:
+                loc = ticket_page.locator(sel)
+                if loc.count() > 0:
+                    return loc.first.input_value().strip()
+            except Exception:
+                continue
+        return None
+
+    def is_dispatch_ticket(self, note):
+        if not note:
+            return False
+        lower = note.lower()
+        keywords = ["dispatch", "pindah og", "pindah loket", "pindah loker",
+                     "salah dispatch", "owner group"]
+        for kw in keywords:
+            if kw in lower:
+                return True
+        return False
+
+    def take_ownership(self, ticket_page):
+        try:
+            ticket_page.wait_for_load_state("domcontentloaded", timeout=15000)
+            ticket_page.wait_for_timeout(2000)
+        except Exception:
+            pass
+
+        try:
+            ticket_page.wait_for_selector("#id_coordinator", timeout=10000)
+            ticket_page.wait_for_selector("#btn_next_stage, #btn_submit_request", timeout=10000)
+            ticket_page.wait_for_timeout(1500)
+        except Exception:
+            pass
+
+        js_code = f"""
+        (async function() {{
+            function sleep(ms) {{ return new Promise(r => setTimeout(r, ms)); }}
+
+            for (var w = 0; w < 10; w++) {{
+                if (window.jQuery && jQuery.fn.select2) break;
+                await sleep(500);
+            }}
+            if (!window.jQuery) return 'NO_JQUERY';
+
+            // Only set Request Coordinator (solver) to user
+            var ic = document.getElementById('id_coordinator');
+            if (!ic) return 'NO_IC';
+            var $ic = jQuery(ic);
+            if ($ic.find('option[value="{USER_ID}"]').length === 0) {{
+                $ic.append(new Option('{USER_NAME}', '{USER_ID}', false, false));
+            }}
+            $ic.val('{USER_ID}').trigger('change');
+            await sleep(1500);
+
+            var icVal = $ic.val();
+            if (icVal !== '{USER_ID}') {{
+                return 'VERIFY_FAIL:ic=' + icVal;
+            }}
+
+            var nextBtn = document.getElementById('btn_next_stage');
+            if (nextBtn && nextBtn.offsetParent !== null) {{
+                nextBtn.click(); return 'NEXT_STAGE';
+            }}
+            var saveBtn = document.getElementById('btn_submit_request');
+            if (saveBtn && saveBtn.offsetParent !== null) {{
+                saveBtn.click(); return 'SAVE';
+            }}
+            return 'NO_BUTTON';
+        }})();
+        """
+
+        try:
+            result = ticket_page.evaluate(js_code)
+            ticket_page.wait_for_timeout(2000)
+            return result
+        except Exception as e:
+            print(f"take_ownership JS error: {e}")
+            return None
+
+    def wait_for_in_progress(self, ticket_page, timeout=45):
+        start = time.time()
+        while time.time() - start < timeout:
+            try:
+                status_el = ticket_page.locator("#status")
+                if status_el.count() > 0:
+                    raw = status_el.input_value().strip()
+                    if raw == "IN_PROGRESS":
+                        return True
+                try:
+                    ticket_page.wait_for_load_state("domcontentloaded", timeout=8000)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            ticket_page.wait_for_timeout(2000)
+        return False
+
+    def complete_ticket(self, ticket_page):
+        try:
+            btn = ticket_page.locator("button:has-text('Complete')")
+            if btn.count() == 0:
+                btn = ticket_page.locator("a:has-text('Complete')")
+            if btn.count() == 0:
+                btn = ticket_page.locator("button:has-text('COMPLETED')")
+            if btn.count() == 0:
+                btn = ticket_page.locator("button:has-text('completed')")
+            if btn.count() > 0:
+                btn.first.click()
+                ticket_page.wait_for_timeout(2000)
+                try:
+                    confirm = ticket_page.locator("button:has-text('Yes'), button:has-text('OK'), button:has-text('Confirm')")
+                    if confirm.count() > 0:
+                        confirm.first.click()
+                        ticket_page.wait_for_timeout(2000)
+                except Exception:
+                    pass
+                return True
+        except Exception:
+            pass
+        return False
+
+    def find_and_process_tickets(self, log_callback=None, group_label="MO-INSERA", group_id=None):
+        log = log_callback or (lambda msg: None)
+        results = []
+
+        page = self.navigate_to_dashboard()
+        log(f"Dashboard loaded: {page.url[:60]}")
+
+        self.filter_assigned(page, group_label, group_id)
+        log(f"Filtered: ASSIGNED + {group_label}")
+
+        page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
+        page.wait_for_timeout(2000)
+
+        page_num = 1
+        total_scanned = 0
+
+        while True:
+            info_text = page.locator("#requestFulfillmentTable_info").inner_text()
+            log(f"--- Page {page_num}: {info_text} ---")
+
+            rows = self.get_ticket_rows(page)
+            log(f"Found {len(rows)} row(s) on this page")
+
+            for i, row_info in enumerate(rows):
+                code = row_info["request_code"]
+                status = row_info["status"]
+
+                if status != "ASSIGNED":
+                    log(f"  [{i+1}] {code} - SKIP (status: {status})")
+                    continue
+
+                if code in self.processed_ids:
+                    log(f"  [{i+1}] {code} - SKIP (already processed)")
+                    continue
+
+                total_scanned += 1
+                log(f"  [{i+1}/{len(rows)}] Opening {code} (ASSIGNED)...")
+
+                ticket_page = self.click_ticket(page, row_info)
+                if ticket_page is None:
+                    log(f"    Failed to open ticket {code}")
+                    continue
+
+                try:
+                    note = self.read_ticket_note(ticket_page)
+                    ticket_id = self.read_ticket_id(ticket_page)
+                    note_short = note[:80] + "..." if len(note) > 80 else note
+                    log(f"    Note: {note_short}")
+
+                    log(f"    Taking ownership...")
+                    btn_action = self.take_ownership(ticket_page)
+                    log(f"    Button clicked: {btn_action}")
+
+                    log(f"    Waiting for status IN_PROGRESS...")
+                    confirmed = self.wait_for_in_progress(ticket_page)
+                    if confirmed:
+                        log(f"    TO CONFIRMED: {code} -> {group_label} / IN_PROGRESS")
+                        results.append({
+                            "request_code": code,
+                            "ticket_id": ticket_id,
+                            "note": note,
+                            "owner_group": extract_owner_group(note),
+                        })
+                    else:
+                        log(f"    TO FAILED: {code} -> status not changed")
+
+                except Exception as e:
+                    log(f"    Error: {e}")
+                finally:
+                    try:
+                        if not ticket_page.is_closed():
+                            ticket_page.close()
+                    except Exception:
+                        pass
+                    self.processed_ids.add(code)
+                    self._close_extra_tabs(page)
+                    page.wait_for_timeout(1500)
+
+            next_btn = page.locator("#requestFulfillmentTable_next")
+            is_disabled = next_btn.get_attribute("class") or ""
+            if "disabled" in is_disabled:
+                log(f"No more pages. Total ASSIGNED scanned: {total_scanned}")
+                break
+
+            log(f"Going to next page...")
+            next_btn.click()
+            page.wait_for_timeout(3000)
+            page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
+            page.wait_for_timeout(1000)
+            page_num += 1
+
+        return results
+
+
+sygap_service = SygapService()

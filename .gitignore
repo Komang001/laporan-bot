@@ -1,0 +1,25 @@
+# Chrome Profile
+ChromeProfile/
+
+# Virtual Environment
+.venv/
+__pycache__/
+*.pyc
+
+# Logs
+DispatchAssistant/logs/
+
+# HTML Dump
+DispatchAssistant/sygap.html
+DispatchAssistant/debug_ticket.html
+DispatchAssistant/ticket_detail.html
+
+# VS Code
+.vscode/
+
+# Playwright
+playwright-report/
+
+# Temporary
+*.tmp
+*.log

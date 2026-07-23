@@ -1,0 +1,21 @@
+# Virtual Environment
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+
+# Logs
+logs/
+
+# HTML Dump
+sygap.html
+
+# VS Code
+.vscode/
+
+# Playwright
+playwright-report/
+
+# Temporary
+*.tmp
