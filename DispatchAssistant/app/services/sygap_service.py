@@ -324,10 +324,15 @@ class SygapService:
                         note_box.first.fill(note)
                         ticket_page.wait_for_timeout(500)
 
-                confirm = ticket_page.locator("button:has-text('Yes'), button:has-text('OK'), button:has-text('Confirm')")
-                if confirm.count() > 0:
-                    confirm.first.click()
+                submit_btn = ticket_page.locator("#btn_submit_complete")
+                if submit_btn.count() > 0:
+                    submit_btn.click()
                     ticket_page.wait_for_timeout(2000)
+                else:
+                    confirm = ticket_page.locator("button:has-text('Yes'), button:has-text('OK'), button:has-text('Confirm')")
+                    if confirm.count() > 0:
+                        confirm.first.click()
+                        ticket_page.wait_for_timeout(2000)
                 return True
         except Exception:
             pass
