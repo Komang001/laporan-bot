@@ -309,31 +309,45 @@ class SygapService:
             if btn.count() == 0:
                 btn = ticket_page.locator("button:has-text('completed')")
             if btn.count() > 0:
+                print(f"    [COMPLETE] Clicking Complete button...")
                 btn.first.click()
-                ticket_page.wait_for_timeout(2000)
+                ticket_page.wait_for_timeout(3000)
 
                 if note:
+                    print(f"    [COMPLETE] Looking for CKEditor in dialog...")
                     note_box = ticket_page.locator(".ck-editor__editable:visible")
                     if note_box.count() == 0:
                         note_box = ticket_page.locator("[contenteditable='true']:visible")
+                    print(f"    [COMPLETE] CKEditor found: {note_box.count()}")
                     if note_box.count() > 0:
                         note_box.first.click()
-                        ticket_page.wait_for_timeout(300)
+                        ticket_page.wait_for_timeout(500)
                         ticket_page.keyboard.press("Control+a")
                         ticket_page.keyboard.press("Backspace")
-                        ticket_page.wait_for_timeout(200)
+                        ticket_page.wait_for_timeout(300)
                         ticket_page.keyboard.type(note, delay=30)
                         ticket_page.wait_for_timeout(500)
+                        print(f"    [COMPLETE] Typed: {note}")
 
                 submit_btn = ticket_page.locator("#btn_submit_complete")
-                if submit_btn.count() > 0:
+                print(f"    [COMPLETE] Submit button found: {submit_btn.count()}")
+                if submit_btn.count() > 0 and submit_btn.is_visible():
                     submit_btn.click()
-                    ticket_page.wait_for_timeout(2000)
+                    print(f"    [COMPLETE] Submit clicked")
+                    ticket_page.wait_for_timeout(3000)
+                    return True
                 else:
-                    confirm = ticket_page.locator("button:has-text('Yes'), button:has-text('OK'), button:has-text('Confirm')")
+                    print(f"    [COMPLETE] Submit not found/visible, trying fallback...")
+                    confirm = ticket_page.locator("button:has-text('Yes'), button:has-text('OK'), button:has-text('Confirm'), button:has-text('Submit')")
+                    print(f"    [COMPLETE] Fallback buttons found: {confirm.count()}")
                     if confirm.count() > 0:
                         confirm.first.click()
-                        ticket_page.wait_for_timeout(2000)
+                        ticket_page.wait_for_timeout(3000)
+                        return True
+            else:
+                print(f"    [COMPLETE] Complete button NOT found!")
+        except Exception as e:
+            print(f"    [COMPLETE] Error: {e}")
                 return True
         except Exception:
             pass
