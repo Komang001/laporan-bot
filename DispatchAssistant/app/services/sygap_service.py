@@ -313,15 +313,16 @@ class SygapService:
                 ticket_page.wait_for_timeout(2000)
 
                 if note:
-                    note_box = ticket_page.locator("textarea:visible")
+                    note_box = ticket_page.locator(".ck-editor__editable:visible")
                     if note_box.count() == 0:
-                        note_box = ticket_page.locator(".ck-editor__editable:visible")
-                    if note_box.count() == 0:
-                        note_box = ticket_page.locator("[role='textbox']:visible")
+                        note_box = ticket_page.locator("[contenteditable='true']:visible")
                     if note_box.count() > 0:
                         note_box.first.click()
                         ticket_page.wait_for_timeout(300)
-                        note_box.first.fill(note)
+                        ticket_page.keyboard.press("Control+a")
+                        ticket_page.keyboard.press("Backspace")
+                        ticket_page.wait_for_timeout(200)
+                        ticket_page.keyboard.type(note, delay=30)
                         ticket_page.wait_for_timeout(500)
 
                 submit_btn = ticket_page.locator("#btn_submit_complete")
