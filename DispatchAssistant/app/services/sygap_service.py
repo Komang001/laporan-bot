@@ -281,19 +281,38 @@ class SygapService:
             ticket_page.wait_for_timeout(2000)
         return False
 
+    def wait_for_completed(self, ticket_page, timeout=30):
+        start = time.time()
+        while time.time() - start < timeout:
+            try:
+                status_el = ticket_page.locator("#status")
+                if status_el.count() > 0:
+                    raw = status_el.input_value().strip()
+                    if raw == "COMPLETED":
+                        return True
+                try:
+                    ticket_page.wait_for_load_state("domcontentloaded", timeout=5000)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            ticket_page.wait_for_timeout(2000)
+        return False
+
     def complete_ticket(self, ticket_page, note=""):
         try:
             if note:
-                note_selectors = ["textarea#note", "#note", ".note-editor textarea"]
-                for sel in note_selectors:
-                    try:
-                        loc = ticket_page.locator(sel)
-                        if loc.count() > 0:
-                            loc.first.fill(note)
-                            ticket_page.wait_for_timeout(500)
-                            break
-                    except Exception:
-                        continue
+                editor = ticket_page.locator(".ck-editor__editable")
+                if editor.count() == 0:
+                    editor = ticket_page.locator("[role='textbox'][aria-label*='Rich Text']")
+                if editor.count() > 0:
+                    editor.first.click()
+                    ticket_page.wait_for_timeout(300)
+                    ticket_page.keyboard.press("Control+a")
+                    ticket_page.keyboard.press("Backspace")
+                    ticket_page.wait_for_timeout(200)
+                    ticket_page.keyboard.type(note, delay=30)
+                    ticket_page.wait_for_timeout(500)
 
             btn = ticket_page.locator("button:has-text('Complete')")
             if btn.count() == 0:
@@ -558,7 +577,12 @@ class SygapService:
                             ticket_page.wait_for_timeout(1000)
                             completed = self.complete_ticket(ticket_page, note="Cek Kembali")
                             if completed:
-                                log(f"    Ticket {code} COMPLETED dengan note 'Cek Kembali'")
+                                log(f"    Waiting COMPLETED status...")
+                                is_completed = self.wait_for_completed(ticket_page)
+                                if is_completed:
+                                    log(f"    Ticket {code} -> COMPLETED")
+                                else:
+                                    log(f"    Ticket {code} status belum COMPLETED, tapi sudah di-complete")
                             else:
                                 log(f"    Gagal complete ticket {code}")
                     else:
