@@ -55,7 +55,7 @@ class BiscuitService:
             self.response_count_before = self.get_bot_message_count()
 
             command_box = self.page.locator(
-                "input[placeholder='Command for INSERA...']"
+                "input[placeholder*='Command for']"
             )
 
             command_box.click()
@@ -89,7 +89,7 @@ class BiscuitService:
         try:
 
             command_box = self.page.locator(
-                "input[placeholder='Command for INSERA...']"
+                "input[placeholder*='Command for']"
             )
 
             command_box.wait_for(

@@ -281,8 +281,20 @@ class SygapService:
             ticket_page.wait_for_timeout(2000)
         return False
 
-    def complete_ticket(self, ticket_page):
+    def complete_ticket(self, ticket_page, note=""):
         try:
+            if note:
+                note_selectors = ["textarea#note", "#note", ".note-editor textarea"]
+                for sel in note_selectors:
+                    try:
+                        loc = ticket_page.locator(sel)
+                        if loc.count() > 0:
+                            loc.first.fill(note)
+                            ticket_page.wait_for_timeout(500)
+                            break
+                    except Exception:
+                        continue
+
             btn = ticket_page.locator("button:has-text('Complete')")
             if btn.count() == 0:
                 btn = ticket_page.locator("a:has-text('Complete')")
@@ -530,11 +542,34 @@ class SygapService:
                     biscuit.send(command)
                     log(f"    Command sent to BISCUIT")
 
+                    from app.services.response_service import ResponseService
+                    response = ResponseService(
+                        biscuit.get_page(),
+                        biscuit.get_response_count_before()
+                    ).read()
+                    log(f"    BISCUIT response: {response.status} - {response.message}")
+
+                    if response.status == "SUCCESS":
+                        log(f"    BISCUIT SUKSES! Kembali ke tiket...")
+                        page.bring_to_front()
+                        page.wait_for_timeout(1000)
+                        if not ticket_page.is_closed():
+                            browser_manager.activate_page(ticket_page)
+                            ticket_page.wait_for_timeout(1000)
+                            completed = self.complete_ticket(ticket_page, note="Cek Kembali")
+                            if completed:
+                                log(f"    Ticket {code} COMPLETED dengan note 'Cek Kembali'")
+                            else:
+                                log(f"    Gagal complete ticket {code}")
+                    else:
+                        log(f"    BISCUIT response bukan SUKSES, skip complete")
+
                     total_processed += 1
                     results.append({
                         "request_code": code,
                         "wo_number": wo_number,
                         "note": note,
+                        "biscuit_status": response.status,
                     })
 
                 except Exception as e:
