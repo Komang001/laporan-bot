@@ -124,6 +124,20 @@ class DispatchAssistantGUI(ctk.CTk):
             padx=10,
         )
 
+        self.canclwork_button = ctk.CTkButton(
+            frame,
+            text="CANCLWORK WO",
+            width=180,
+            fg_color="#F97316",
+            hover_color="#EA580C",
+            command=self.start_canclwork,
+        )
+
+        self.canclwork_button.pack(
+            side="left",
+            padx=10,
+        )
+
         self.stop_button = ctk.CTkButton(
             frame,
             text="STOP",
@@ -251,6 +265,7 @@ class DispatchAssistantGUI(ctk.CTk):
         self.running = True
         self.to_insera_button.configure(state="disabled")
         self.to_bima_button.configure(state="disabled")
+        self.canclwork_button.configure(state="disabled")
         self.controller.start_auto(group_label="MO-INSERA", group_id=INSERA_GROUP_ID)
 
     def start_to_bima(self):
@@ -262,7 +277,20 @@ class DispatchAssistantGUI(ctk.CTk):
         self.running = True
         self.to_insera_button.configure(state="disabled")
         self.to_bima_button.configure(state="disabled")
+        self.canclwork_button.configure(state="disabled")
         self.controller.start_auto(group_label="MO-BIMA", group_id=None)
+
+    def start_canclwork(self):
+
+        if self.running:
+            self.write_log("Assistant already running.")
+            return
+
+        self.running = True
+        self.to_insera_button.configure(state="disabled")
+        self.to_bima_button.configure(state="disabled")
+        self.canclwork_button.configure(state="disabled")
+        self.controller.start_canclwork()
 
     def stop(self):
 
@@ -270,6 +298,7 @@ class DispatchAssistantGUI(ctk.CTk):
 
         self.to_insera_button.configure(state="normal")
         self.to_bima_button.configure(state="normal")
+        self.canclwork_button.configure(state="normal")
 
         self.controller.stop()
 
@@ -278,8 +307,8 @@ class DispatchAssistantGUI(ctk.CTk):
         self.running = False
 
         self.after(0, lambda: self.to_insera_button.configure(state="normal"))
-
         self.after(0, lambda: self.to_bima_button.configure(state="normal"))
+        self.after(0, lambda: self.canclwork_button.configure(state="normal"))
 
 
 # =====================================================

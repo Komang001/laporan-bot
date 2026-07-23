@@ -1,3 +1,4 @@
+import re
 import time
 
 from app.browser import browser_manager
@@ -381,6 +382,172 @@ class SygapService:
             is_disabled = next_btn.get_attribute("class") or ""
             if "disabled" in is_disabled:
                 log(f"No more pages. Total ASSIGNED scanned: {total_scanned}")
+                break
+
+            log(f"Going to next page...")
+            next_btn.click()
+            page.wait_for_timeout(3000)
+            page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
+            page.wait_for_timeout(1000)
+            page_num += 1
+
+        return results
+
+    def extract_wo_number(self, note):
+        match = re.search(r'WO\d+', note)
+        if match:
+            return match.group(0)
+        return None
+
+    def filter_canclwork(self, page):
+        try:
+            page.locator("#searchSelect").select_option(label="ASSIGNED")
+            page.wait_for_timeout(500)
+
+            adv_link = page.locator('a[href="#multiCollapseExample1"]')
+            if adv_link.count() > 0:
+                adv_link.click()
+            page.wait_for_selector("#multiCollapseExample1.show", timeout=5000)
+            page.wait_for_timeout(500)
+
+            notes_input = page.locator("#notes")
+            if notes_input.count() == 0:
+                notes_input = page.locator("input[name='notes']")
+            if notes_input.count() > 0:
+                notes_input.fill("")
+                page.wait_for_timeout(300)
+                notes_input.fill("CANCLWORK")
+                page.wait_for_timeout(500)
+            else:
+                print("WARNING: Notes input field not found!")
+                return
+
+            verify_val = notes_input.input_value().strip()
+            print(f"Notes filter value: '{verify_val}'")
+            if "CANCLWORK" not in verify_val:
+                print("FAILED to set Notes filter!")
+                return
+
+            page.locator("#btn_apply").click()
+            page.wait_for_timeout(4000)
+
+            notes_val_after = notes_input.input_value().strip()
+            print(f"Notes after Apply: '{notes_val_after}'")
+
+            rows = page.locator("#requestFulfillmentTable tbody tr")
+            count = rows.count()
+            print(f"Filter CANCLWORK: {count} row(s) found")
+        except Exception as e:
+            print(f"Filter CANCLWORK error: {e}")
+
+    def process_canclwork_tickets(self, log_callback=None):
+        from app.services.biscuit_service import BiscuitService
+        log = log_callback or (lambda msg: None)
+        results = []
+
+        page = self.navigate_to_dashboard()
+        log(f"Dashboard loaded: {page.url[:60]}")
+
+        self.filter_canclwork(page)
+        log("Filtered: ASSIGNED + CANCLWORK")
+
+        page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
+        page.wait_for_timeout(2000)
+
+        page_num = 1
+        total_processed = 0
+
+        while True:
+            info_text = page.locator("#requestFulfillmentTable_info").inner_text()
+            log(f"--- Page {page_num}: {info_text} ---")
+
+            rows = self.get_ticket_rows(page)
+            log(f"Found {len(rows)} row(s) on this page")
+
+            for i, row_info in enumerate(rows):
+                code = row_info["request_code"]
+                status = row_info["status"]
+
+                if status != "ASSIGNED":
+                    log(f"  [{i+1}] {code} - SKIP (status: {status})")
+                    continue
+
+                if code in self.processed_ids:
+                    log(f"  [{i+1}] {code} - SKIP (already processed)")
+                    continue
+
+                total_processed += 1
+                log(f"  [{i+1}/{len(rows)}] Opening {code}...")
+
+                ticket_page = self.click_ticket(page, row_info)
+                if ticket_page is None:
+                    log(f"    Failed to open {code}")
+                    continue
+
+                try:
+                    note = self.read_ticket_note(ticket_page)
+                    note_short = note[:100] + "..." if len(note) > 100 else note
+                    log(f"    Note: {note_short}")
+
+                    if "CANCLWORK" not in note.upper():
+                        log(f"    SAFETY: No CANCLWORK in note, SKIP")
+                        continue
+
+                    wo_number = self.extract_wo_number(note)
+                    if not wo_number:
+                        log(f"    WO number not found in note, SKIP")
+                        continue
+
+                    log(f"    WO found: {wo_number}")
+
+                    log(f"    Taking ownership...")
+                    btn_action = self.take_ownership(ticket_page)
+                    log(f"    Button clicked: {btn_action}")
+
+                    confirmed = self.wait_for_in_progress(ticket_page)
+                    if not confirmed:
+                        log(f"    TO FAILED: {code}")
+                        continue
+
+                    log(f"    TO CONFIRMED: {code}")
+
+                    biscuit = BiscuitService()
+                    if not biscuit.open():
+                        log(f"    BISCUIT tab not found!")
+                        continue
+
+                    if not biscuit.focus_command():
+                        log(f"    BISCUIT command box not found!")
+                        continue
+
+                    command = f"/pushmasscanclwork {wo_number}"
+                    log(f"    Sending: {command}")
+                    biscuit.send(command)
+                    log(f"    Command sent to BISCUIT")
+
+                    total_processed += 1
+                    results.append({
+                        "request_code": code,
+                        "wo_number": wo_number,
+                        "note": note,
+                    })
+
+                except Exception as e:
+                    log(f"    Error: {e}")
+                finally:
+                    try:
+                        if not ticket_page.is_closed():
+                            ticket_page.close()
+                    except Exception:
+                        pass
+                    self.processed_ids.add(code)
+                    self._close_extra_tabs(page)
+                    page.wait_for_timeout(1500)
+
+            next_btn = page.locator("#requestFulfillmentTable_next")
+            is_disabled = next_btn.get_attribute("class") or ""
+            if "disabled" in is_disabled:
+                log(f"No more pages. Total processed: {total_processed}")
                 break
 
             log(f"Going to next page...")

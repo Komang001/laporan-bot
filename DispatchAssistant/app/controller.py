@@ -262,6 +262,135 @@ class DispatchController:
                 self.on_complete()
 
     # ==========================================
+    # Start CANCLWORK WO
+    # ==========================================
+
+    def start_canclwork(self):
+
+        if self.running:
+
+            self.gui.write_log("Assistant already running.")
+
+            return
+
+        self.running = True
+
+        self.gui.update_status("STARTING")
+
+        self.gui.write_log("=" * 40)
+
+        self.gui.write_log("Starting CANCLWORK WO...")
+
+        self.gui.write_log("=" * 40)
+
+        thread = threading.Thread(
+            target=self._run_canclwork,
+            daemon=True,
+        )
+
+        thread.start()
+
+    # ==========================================
+    # Run CANCLWORK WO - Background Thread
+    # ==========================================
+
+    def _run_canclwork(self):
+
+        connected_in_thread = False
+
+        try:
+
+            self.gui.write_log("Step 1: Connecting browser...")
+
+            self.gui.update_status("CONNECTING")
+
+            if not browser_manager.is_chrome_running():
+
+                self.gui.write_log("ERROR: Chrome CDP belum jalan.")
+
+                self.gui.write_log("Jalankan: start_browser.bat")
+
+                self.gui.update_status("ERROR")
+
+                return
+
+            try:
+
+                browser_manager.connect()
+
+                connected_in_thread = True
+
+            except Exception as e:
+
+                self.gui.write_log(f"ERROR: Browser gagal: {e}")
+
+                self.gui.update_status("ERROR")
+
+                return
+
+            self.gui.write_log("Browser connected.")
+
+            self.gui.write_log("Step 2: Scanning CANCLWORK tickets...")
+
+            self.gui.update_status("SCANNING")
+
+            tickets = sygap_service.process_canclwork_tickets(
+                log_callback=self.gui.write_log,
+            )
+
+            if not tickets:
+
+                self.gui.write_log("No CANCLWORK tickets found.")
+
+                self.gui.update_status("READY")
+
+                return
+
+            self.gui.write_log(f"Found {len(tickets)} CANCLWORK ticket(s)!")
+
+            for idx, t in enumerate(tickets):
+
+                code = t["request_code"]
+
+                wo = t["wo_number"]
+
+                self.gui.write_log(f"  [{idx+1}] {code} -> {wo} -> BISCUIT")
+
+            self.gui.write_log("")
+
+            self.gui.write_log("=" * 40)
+
+            self.gui.write_log("CANCLWORK WO SELESAI")
+
+            self.gui.write_log("=" * 40)
+
+            self.gui.update_status("READY")
+
+        except Exception as e:
+
+            self.gui.write_log(f"ERROR: {e}")
+
+            self.gui.update_status("ERROR")
+
+        finally:
+
+            self.running = False
+
+            if connected_in_thread:
+
+                try:
+
+                    browser_manager.disconnect()
+
+                except Exception:
+
+                    pass
+
+            if self.on_complete:
+
+                self.on_complete()
+
+    # ==========================================
     # Run Dispatch (Background Thread)
     # ==========================================
 
