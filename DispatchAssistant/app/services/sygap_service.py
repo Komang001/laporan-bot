@@ -761,10 +761,29 @@ class SygapService:
 
                     note_upper = note.upper()
                     if "C4" in note_upper:
-                        log(f"    C4 found in note -> Complete with message")
+                        log(f"    C4 found in note -> TO dulu...")
+                        btn_action = self.take_ownership(ticket_page)
+                        log(f"    Button clicked: {btn_action}")
+
+                        confirmed = self.wait_for_in_progress(ticket_page)
+                        if not confirmed:
+                            log(f"    TO FAILED: {code}")
+                            continue
+                        log(f"    TO CONFIRMED: {code}")
+
+                        page.bring_to_front()
+                        page.wait_for_timeout(1000)
+                        browser_manager.activate_page(ticket_page)
+                        ticket_page.wait_for_timeout(1000)
+
                         completed = self.complete_ticket(ticket_page, note="untuk permintaan dispatch ke C4_CONSUMER silahkan koordinasikan ke OG terkait")
                         if completed:
-                            log(f"    Ticket {code} COMPLETED (C4)")
+                            log(f"    Waiting COMPLETED status...")
+                            is_completed = self.wait_for_completed(ticket_page)
+                            if is_completed:
+                                log(f"    Ticket {code} -> COMPLETED (C4)")
+                            else:
+                                log(f"    Ticket {code} status belum COMPLETED")
                             results.append({
                                 "request_code": code,
                                 "type": "C4_COMPLETE",
