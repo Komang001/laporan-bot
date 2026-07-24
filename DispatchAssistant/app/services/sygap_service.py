@@ -738,6 +738,10 @@ class SygapService:
                 code = row_info["request_code"]
                 status = row_info["status"]
 
+                if status == "COMPLETED":
+                    log(f"  [{i+1}] {code} - SKIP (already COMPLETED)")
+                    continue
+
                 if code in self.processed_ids:
                     log(f"  [{i+1}] {code} - SKIP (already processed)")
                     continue
