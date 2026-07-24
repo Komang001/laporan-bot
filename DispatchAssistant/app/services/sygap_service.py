@@ -314,13 +314,36 @@ class SygapService:
                 ticket_page.wait_for_timeout(3000)
 
                 if note:
-                    print(f"    [COMPLETE] Looking for CKEditor in dialog...")
-                    note_box = ticket_page.locator(".ck-editor__editable:visible")
-                    if note_box.count() == 0:
-                        note_box = ticket_page.locator("[contenteditable='true']:visible")
-                    print(f"    [COMPLETE] CKEditor found: {note_box.count()}")
-                    if note_box.count() > 0:
-                        note_box.first.click()
+                    print(f"    [COMPLETE] Looking for textbox in dialog...")
+                    note_box = None
+
+                    selectors = [
+                        ".modal .ck-editor__editable:visible",
+                        ".modal [contenteditable='true']:visible",
+                        ".modal textarea:visible",
+                        ".dialog .ck-editor__editable:visible",
+                        ".dialog [contenteditable='true']:visible",
+                        ".dialog textarea:visible",
+                        "[role='dialog'] .ck-editor__editable:visible",
+                        "[role='dialog'] [contenteditable='true']:visible",
+                        "[role='dialog'] textarea:visible",
+                        ".ck-editor__editable:visible",
+                        "[contenteditable='true']:visible",
+                        "textarea:visible",
+                    ]
+
+                    for sel in selectors:
+                        try:
+                            loc = ticket_page.locator(sel)
+                            if loc.count() > 0:
+                                note_box = loc.last
+                                print(f"    [COMPLETE] Found with: {sel}")
+                                break
+                        except Exception:
+                            continue
+
+                    if note_box:
+                        note_box.click()
                         ticket_page.wait_for_timeout(500)
                         ticket_page.keyboard.press("Control+a")
                         ticket_page.keyboard.press("Backspace")
@@ -328,6 +351,8 @@ class SygapService:
                         ticket_page.keyboard.type(note, delay=30)
                         ticket_page.wait_for_timeout(500)
                         print(f"    [COMPLETE] Typed: {note}")
+                    else:
+                        print(f"    [COMPLETE] Textbox NOT found!")
 
                 submit_btn = ticket_page.locator("#btn_submit_complete")
                 print(f"    [COMPLETE] Submit button found: {submit_btn.count()}")

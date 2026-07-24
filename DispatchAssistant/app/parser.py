@@ -24,7 +24,8 @@ def parse_owner_group(note: str):
     if not note:
         return None
 
-    text = re.sub(r"\s+", " ", note).strip()
+    text = re.sub(r"<[^>]+>", " ", note)
+    text = re.sub(r"\s+", " ", text).strip()
     result = text.lower()
 
     # Ambil owner group setelah "LE LOKER" / "KE LOKER" / "KE"
@@ -48,7 +49,6 @@ def parse_owner_group(note: str):
         flags=re.IGNORECASE
     ).strip()
 
-    # Bersihkan karakter
     result = result.rstrip(".,;:")
 
     if not result:
