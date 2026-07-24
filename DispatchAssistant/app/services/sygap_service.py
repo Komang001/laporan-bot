@@ -476,7 +476,7 @@ class SygapService:
 
     def filter_canclwork(self, page):
         try:
-            page.locator("#searchSelect").select_option(label="ASSIGNED")
+            page.locator("#searchSelect").select_option(label="OPEN")
             page.wait_for_timeout(500)
 
             adv_link = page.locator('a[href="#multiCollapseExample1"]')
