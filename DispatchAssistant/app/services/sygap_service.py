@@ -769,14 +769,9 @@ class SygapService:
 
                     note_upper = note.upper()
 
-                    # Validasi: OG harus UPPERCASE
-                    has_uppercase_og = bool(re.search(r'\b[A-Z]{2,}\b', note))
-                    if not has_uppercase_og:
-                        log(f"    SAFETY: No UPPERCASE OG in note, SKIP")
-                        continue
-
                     owner_group = extract_owner_group(note)
                     inc_number = extract_inc_number(note)
+                    print(f"    [DEBUG] OG={owner_group} | INC={inc_number} | C4={'C4' in note_upper}")
 
                     if owner_group and inc_number:
                         log(f"    OG: {owner_group} | INC: {inc_number}")
