@@ -640,5 +640,197 @@ class SygapService:
 
         return results
 
+    def filter_dispatch(self, page):
+        try:
+            page.locator("#searchSelect").select_option(label="ASSIGNED")
+            page.wait_for_timeout(500)
+
+            adv_link = page.locator('a[href="#multiCollapseExample1"]')
+            if adv_link.count() > 0:
+                adv_link.click()
+            page.wait_for_selector("#multiCollapseExample1.show", timeout=5000)
+            page.wait_for_timeout(500)
+
+            notes_input = page.locator("#notes")
+            if notes_input.count() == 0:
+                notes_input = page.locator("input[name='notes']")
+            if notes_input.count() > 0:
+                notes_input.fill("")
+                page.wait_for_timeout(300)
+                notes_input.fill("dispatch")
+                page.wait_for_timeout(500)
+            else:
+                print("WARNING: Notes input field not found!")
+                return
+
+            verify_val = notes_input.input_value().strip()
+            print(f"Notes filter value: '{verify_val}'")
+            if "dispatch" not in verify_val.lower():
+                print("FAILED to set Notes filter!")
+                return
+
+            search_btn = page.locator("#btn_apply")
+            if search_btn.count() == 0:
+                search_btn = page.locator("button.btn-primary .fa-search")
+                if search_btn.count() > 0:
+                    search_btn = search_btn.locator("xpath=ancestor::button")
+            if search_btn.count() > 0:
+                search_btn.first.click()
+            page.wait_for_timeout(4000)
+
+            rows = page.locator("#requestFulfillmentTable tbody tr")
+            count = rows.count()
+            print(f"Filter DISPATCH: {count} row(s) found")
+        except Exception as e:
+            print(f"Filter DISPATCH error: {e}")
+
+    def process_dispatch_tickets(self, log_callback=None):
+        from app.services.biscuit_service import BiscuitService
+        log = log_callback or (lambda msg: None)
+        results = []
+
+        page = self.navigate_to_dashboard()
+        log(f"Dashboard loaded: {page.url[:60]}")
+
+        self.filter_dispatch(page)
+        log("Filtered: ASSIGNED + dispatch")
+
+        try:
+            page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
+        except Exception:
+            log("No tickets found after filter")
+            return results
+        page.wait_for_timeout(2000)
+
+        page_num = 1
+        total_processed = 0
+
+        while True:
+            info_text = page.locator("#requestFulfillmentTable_info").inner_text()
+            log(f"--- Page {page_num}: {info_text} ---")
+
+            rows = self.get_ticket_rows(page)
+            log(f"Found {len(rows)} row(s) on this page")
+
+            for i, row_info in enumerate(rows):
+                code = row_info["request_code"]
+                status = row_info["status"]
+
+                if status != "ASSIGNED":
+                    log(f"  [{i+1}] {code} - SKIP (status: {status})")
+                    continue
+
+                if code in self.processed_ids:
+                    log(f"  [{i+1}] {code} - SKIP (already processed)")
+                    continue
+
+                total_processed += 1
+                log(f"  [{i+1}/{len(rows)}] Opening {code}...")
+
+                ticket_page = self.click_ticket(page, row_info)
+                if ticket_page is None:
+                    log(f"    Failed to open {code}")
+                    continue
+
+                try:
+                    note = self.read_ticket_note(ticket_page)
+                    note_short = note[:100] + "..." if len(note) > 100 else note
+                    log(f"    Note: {note_short}")
+
+                    if "dispatch" not in note.lower():
+                        log(f"    SAFETY: No 'dispatch' in note, SKIP")
+                        continue
+
+                    owner_group = extract_owner_group(note)
+                    if not owner_group:
+                        log(f"    Owner group not found in note, SKIP")
+                        continue
+                    log(f"    Owner Group: {owner_group}")
+
+                    log(f"    Taking ownership...")
+                    btn_action = self.take_ownership(ticket_page)
+                    log(f"    Button clicked: {btn_action}")
+
+                    confirmed = self.wait_for_in_progress(ticket_page)
+                    if not confirmed:
+                        log(f"    TO FAILED: {code}")
+                        continue
+                    log(f"    TO CONFIRMED: {code}")
+
+                    biscuit = BiscuitService()
+                    if not biscuit.open():
+                        log(f"    BISCUIT tab not found!")
+                        continue
+                    if not biscuit.focus_command():
+                        log(f"    BISCUIT command box not found!")
+                        continue
+
+                    command = f"/dispatchticket {code} {owner_group}"
+                    log(f"    Sending: {command}")
+                    biscuit.send(command)
+                    log(f"    Command sent to BISCUIT")
+
+                    from app.services.response_service import ResponseService
+                    response = ResponseService(
+                        biscuit.get_page(),
+                        biscuit.get_response_count_before()
+                    ).read()
+                    log(f"    BISCUIT response: {response.status} - {response.message}")
+
+                    if response.status == "SUCCESS":
+                        log(f"    BISCUIT SUKSES! Complete ticket...")
+                        page.bring_to_front()
+                        page.wait_for_timeout(1000)
+                        if not ticket_page.is_closed():
+                            browser_manager.activate_page(ticket_page)
+                            ticket_page.wait_for_timeout(1000)
+                            completed = self.complete_ticket(ticket_page, note="Cek Kembali")
+                            if completed:
+                                log(f"    Waiting COMPLETED status...")
+                                is_completed = self.wait_for_completed(ticket_page)
+                                if is_completed:
+                                    log(f"    Ticket {code} -> COMPLETED")
+                                else:
+                                    log(f"    Ticket {code} status belum COMPLETED")
+                            else:
+                                log(f"    Gagal complete ticket {code}")
+                    else:
+                        log(f"    BISCUIT response bukan SUKSES, skip complete")
+
+                    total_processed += 1
+                    results.append({
+                        "request_code": code,
+                        "owner_group": owner_group,
+                        "note": note,
+                        "biscuit_status": response.status,
+                    })
+
+                except Exception as e:
+                    log(f"    Error: {e}")
+                finally:
+                    try:
+                        if not ticket_page.is_closed():
+                            ticket_page.close()
+                    except Exception:
+                        pass
+                    self.processed_ids.add(code)
+                    self._close_extra_tabs(page)
+                    page.wait_for_timeout(1500)
+
+            next_btn = page.locator("#requestFulfillmentTable_next")
+            is_disabled = next_btn.get_attribute("class") or ""
+            if "disabled" in is_disabled:
+                log(f"No more pages. Total processed: {total_processed}")
+                break
+
+            log(f"Going to next page...")
+            next_btn.click()
+            page.wait_for_timeout(3000)
+            page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
+            page.wait_for_timeout(1000)
+            page_num += 1
+
+        return results
+
 
 sygap_service = SygapService()

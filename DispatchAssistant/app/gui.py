@@ -138,6 +138,20 @@ class DispatchAssistantGUI(ctk.CTk):
             padx=10,
         )
 
+        self.dispatch_button = ctk.CTkButton(
+            frame,
+            text="DISPATCH",
+            width=180,
+            fg_color="#10B981",
+            hover_color="#059669",
+            command=self.start_dispatch,
+        )
+
+        self.dispatch_button.pack(
+            side="left",
+            padx=10,
+        )
+
         self.stop_button = ctk.CTkButton(
             frame,
             text="STOP",
@@ -266,6 +280,7 @@ class DispatchAssistantGUI(ctk.CTk):
         self.to_insera_button.configure(state="disabled")
         self.to_bima_button.configure(state="disabled")
         self.canclwork_button.configure(state="disabled")
+        self.dispatch_button.configure(state="disabled")
         self.controller.start_auto(group_label="MO-INSERA", group_id=INSERA_GROUP_ID)
 
     def start_to_bima(self):
@@ -278,6 +293,7 @@ class DispatchAssistantGUI(ctk.CTk):
         self.to_insera_button.configure(state="disabled")
         self.to_bima_button.configure(state="disabled")
         self.canclwork_button.configure(state="disabled")
+        self.dispatch_button.configure(state="disabled")
         self.controller.start_auto(group_label="MO-BIMA", group_id=None)
 
     def start_canclwork(self):
@@ -290,7 +306,21 @@ class DispatchAssistantGUI(ctk.CTk):
         self.to_insera_button.configure(state="disabled")
         self.to_bima_button.configure(state="disabled")
         self.canclwork_button.configure(state="disabled")
+        self.dispatch_button.configure(state="disabled")
         self.controller.start_canclwork()
+
+    def start_dispatch(self):
+
+        if self.running:
+            self.write_log("Assistant already running.")
+            return
+
+        self.running = True
+        self.to_insera_button.configure(state="disabled")
+        self.to_bima_button.configure(state="disabled")
+        self.canclwork_button.configure(state="disabled")
+        self.dispatch_button.configure(state="disabled")
+        self.controller.start_dispatch()
 
     def stop(self):
 
@@ -299,6 +329,7 @@ class DispatchAssistantGUI(ctk.CTk):
         self.to_insera_button.configure(state="normal")
         self.to_bima_button.configure(state="normal")
         self.canclwork_button.configure(state="normal")
+        self.dispatch_button.configure(state="normal")
 
         self.controller.stop()
 
@@ -309,6 +340,7 @@ class DispatchAssistantGUI(ctk.CTk):
         self.after(0, lambda: self.to_insera_button.configure(state="normal"))
         self.after(0, lambda: self.to_bima_button.configure(state="normal"))
         self.after(0, lambda: self.canclwork_button.configure(state="normal"))
+        self.after(0, lambda: self.dispatch_button.configure(state="normal"))
 
 
 # =====================================================
