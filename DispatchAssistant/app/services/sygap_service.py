@@ -690,7 +690,7 @@ class SygapService:
         log(f"Dashboard loaded: {page.url[:60]}")
 
         self.filter_dispatch(page)
-        log("Filtered: ASSIGNED + dispatch")
+        log("Filtered: dispatch")
 
         try:
             page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
@@ -712,10 +712,6 @@ class SygapService:
             for i, row_info in enumerate(rows):
                 code = row_info["request_code"]
                 status = row_info["status"]
-
-                if status != "ASSIGNED":
-                    log(f"  [{i+1}] {code} - SKIP (status: {status})")
-                    continue
 
                 if code in self.processed_ids:
                     log(f"  [{i+1}] {code} - SKIP (already processed)")
@@ -739,9 +735,22 @@ class SygapService:
                         continue
 
                     note_upper = note.upper()
-                    if "C4_CONSUMER" in note_upper or "C4 CONSUMER" in note_upper:
-                        log(f"    SAFETY: C4 CONSUMER found in note, SKIP")
+                    if "C4" in note_upper:
+                        log(f"    C4 found in note -> Complete with message")
+                        completed = self.complete_ticket(ticket_page, note="untuk permintaan dispatch ke C4_CONSUMER silahkan koordinasikan ke OG terkait")
+                        if completed:
+                            log(f"    Ticket {code} COMPLETED (C4)")
+                            results.append({
+                                "request_code": code,
+                                "type": "C4_COMPLETE",
+                                "note": note,
+                            })
+                        else:
+                            log(f"    Gagal complete ticket {code} (C4)")
                         continue
+
+                    if status != "ASSIGNED":
+                        log(f"    Status: {status} -> TO ke saya dulu...")
 
                     owner_group = extract_owner_group(note)
                     if not owner_group:
