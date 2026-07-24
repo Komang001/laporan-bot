@@ -763,6 +763,10 @@ class SygapService:
                         log(f"    SAFETY: No 'dispatch' in note, SKIP")
                         continue
 
+                    if "workzone" in note.lower():
+                        log(f"    SAFETY: 'workzone' found in note, SKIP")
+                        continue
+
                     note_upper = note.upper()
                     if "C4" in note_upper:
                         log(f"    C4 found in note -> TO dulu...")
