@@ -741,6 +741,11 @@ class SygapService:
                         log(f"    SAFETY: No 'dispatch' in note, SKIP")
                         continue
 
+                    note_upper = note.upper()
+                    if "C4_CONSUMER" in note_upper or "C4 CONSUMER" in note_upper:
+                        log(f"    SAFETY: C4 CONSUMER found in note, SKIP")
+                        continue
+
                     owner_group = extract_owner_group(note)
                     if not owner_group:
                         log(f"    Owner group not found in note, SKIP")
