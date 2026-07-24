@@ -524,7 +524,7 @@ class SygapService:
         log(f"Dashboard loaded: {page.url[:60]}")
 
         self.filter_canclwork(page)
-        log("Filtered: ASSIGNED + CANCLWORK")
+        log("Filtered: OPEN + CANCLWORK")
 
         page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
         page.wait_for_timeout(2000)
@@ -543,8 +543,8 @@ class SygapService:
                 code = row_info["request_code"]
                 status = row_info["status"]
 
-                if status != "ASSIGNED":
-                    log(f"  [{i+1}] {code} - SKIP (status: {status})")
+                if status == "COMPLETED":
+                    log(f"  [{i+1}] {code} - SKIP (already COMPLETED)")
                     continue
 
                 if code in self.processed_ids:
@@ -572,19 +572,27 @@ class SygapService:
                     if not wo_number:
                         log(f"    WO number not found in note, SKIP")
                         continue
-
                     log(f"    WO found: {wo_number}")
 
-                    log(f"    Taking ownership...")
-                    btn_action = self.take_ownership(ticket_page)
-                    log(f"    Button clicked: {btn_action}")
+                    # Cek solver saat ini
+                    current_solver = ticket_page.locator("#id_coordinator")
+                    solver_val = ""
+                    if current_solver.count() > 0:
+                        solver_val = current_solver.input_value().strip()
+                    log(f"    Solver: {solver_val} | My ID: {USER_ID}")
 
-                    confirmed = self.wait_for_in_progress(ticket_page)
-                    if not confirmed:
-                        log(f"    TO FAILED: {code}")
-                        continue
+                    if solver_val != USER_ID:
+                        log(f"    Solver bukan saya -> TO dulu...")
+                        btn_action = self.take_ownership(ticket_page)
+                        log(f"    Button clicked: {btn_action}")
 
-                    log(f"    TO CONFIRMED: {code}")
+                        confirmed = self.wait_for_in_progress(ticket_page)
+                        if not confirmed:
+                            log(f"    TO FAILED: {code}")
+                            continue
+                        log(f"    TO CONFIRMED: {code}")
+                    else:
+                        log(f"    Solver sudah saya, skip TO")
 
                     biscuit = BiscuitService()
                     if not biscuit.open():
@@ -608,7 +616,7 @@ class SygapService:
                     log(f"    BISCUIT response: {response.status} - {response.message}")
 
                     if response.status == "SUCCESS":
-                        log(f"    BISCUIT SUKSES! Kembali ke tiket...")
+                        log(f"    BISCUIT SUKSES! Complete ticket...")
                         page.bring_to_front()
                         page.wait_for_timeout(1000)
                         if not ticket_page.is_closed():
@@ -621,7 +629,7 @@ class SygapService:
                                 if is_completed:
                                     log(f"    Ticket {code} -> COMPLETED")
                                 else:
-                                    log(f"    Ticket {code} status belum COMPLETED, tapi sudah di-complete")
+                                    log(f"    Ticket {code} status belum COMPLETED")
                             else:
                                 log(f"    Gagal complete ticket {code}")
                     else:
