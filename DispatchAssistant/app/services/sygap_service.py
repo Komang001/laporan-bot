@@ -768,8 +768,76 @@ class SygapService:
                         continue
 
                     note_upper = note.upper()
-                    if "C4" in note_upper:
-                        log(f"    C4 found in note -> TO dulu...")
+
+                    owner_group = extract_owner_group(note)
+                    inc_number = extract_inc_number(note)
+
+                    if owner_group and inc_number:
+                        log(f"    OG: {owner_group} | INC: {inc_number}")
+
+                        if status != "ASSIGNED":
+                            log(f"    Status: {status} -> TO ke saya dulu...")
+
+                        log(f"    Taking ownership...")
+                        btn_action = self.take_ownership(ticket_page)
+                        log(f"    Button clicked: {btn_action}")
+
+                        confirmed = self.wait_for_in_progress(ticket_page)
+                        if not confirmed:
+                            log(f"    TO FAILED: {code}")
+                            continue
+                        log(f"    TO CONFIRMED: {code}")
+
+                        biscuit = BiscuitService()
+                        if not biscuit.open():
+                            log(f"    BISCUIT tab not found!")
+                            continue
+                        if not biscuit.focus_command():
+                            log(f"    BISCUIT command box not found!")
+                            continue
+
+                        command = f"/dispatchticket {inc_number} {owner_group}"
+                        log(f"    Sending: {command}")
+                        biscuit.send(command)
+                        log(f"    Command sent to BISCUIT")
+
+                        from app.services.response_service import ResponseService
+                        response = ResponseService(
+                            biscuit.get_page(),
+                            biscuit.get_response_count_before()
+                        ).read()
+                        log(f"    BISCUIT response: {response.status} - {response.message}")
+
+                        if response.status == "SUCCESS":
+                            log(f"    BISCUIT SUKSES! Complete ticket...")
+                            page.bring_to_front()
+                            page.wait_for_timeout(1000)
+                            if not ticket_page.is_closed():
+                                browser_manager.activate_page(ticket_page)
+                                ticket_page.wait_for_timeout(1000)
+                                completed = self.complete_ticket(ticket_page, note="Cek Kembali")
+                                if completed:
+                                    log(f"    Waiting COMPLETED status...")
+                                    is_completed = self.wait_for_completed(ticket_page)
+                                    if is_completed:
+                                        log(f"    Ticket {code} -> COMPLETED")
+                                    else:
+                                        log(f"    Ticket {code} status belum COMPLETED")
+                                else:
+                                    log(f"    Gagal complete ticket {code}")
+                        else:
+                            log(f"    BISCUIT response bukan SUKSES, skip complete")
+
+                        total_processed += 1
+                        results.append({
+                            "request_code": code,
+                            "owner_group": owner_group,
+                            "note": note,
+                            "biscuit_status": response.status,
+                        })
+
+                    elif "C4" in note_upper:
+                        log(f"    No OG but C4 found -> TO dulu...")
                         btn_action = self.take_ownership(ticket_page)
                         log(f"    Button clicked: {btn_action}")
 
@@ -799,80 +867,10 @@ class SygapService:
                             })
                         else:
                             log(f"    Gagal complete ticket {code} (C4)")
-                        continue
 
-                    inc_number = extract_inc_number(note)
-                    if not inc_number:
-                        log(f"    INC number not found in note, SKIP")
-                        continue
-                    log(f"    INC: {inc_number}")
-
-                    owner_group = extract_owner_group(note)
-                    if not owner_group:
-                        log(f"    Owner group not found in note, SKIP")
-                        continue
-                    log(f"    Owner Group: {owner_group}")
-
-                    if status != "ASSIGNED":
-                        log(f"    Status: {status} -> TO ke saya dulu...")
-
-                    log(f"    Taking ownership...")
-                    btn_action = self.take_ownership(ticket_page)
-                    log(f"    Button clicked: {btn_action}")
-
-                    confirmed = self.wait_for_in_progress(ticket_page)
-                    if not confirmed:
-                        log(f"    TO FAILED: {code}")
-                        continue
-                    log(f"    TO CONFIRMED: {code}")
-
-                    biscuit = BiscuitService()
-                    if not biscuit.open():
-                        log(f"    BISCUIT tab not found!")
-                        continue
-                    if not biscuit.focus_command():
-                        log(f"    BISCUIT command box not found!")
-                        continue
-
-                    command = f"/dispatchticket {inc_number} {owner_group}"
-                    log(f"    Sending: {command}")
-                    biscuit.send(command)
-                    log(f"    Command sent to BISCUIT")
-
-                    from app.services.response_service import ResponseService
-                    response = ResponseService(
-                        biscuit.get_page(),
-                        biscuit.get_response_count_before()
-                    ).read()
-                    log(f"    BISCUIT response: {response.status} - {response.message}")
-
-                    if response.status == "SUCCESS":
-                        log(f"    BISCUIT SUKSES! Complete ticket...")
-                        page.bring_to_front()
-                        page.wait_for_timeout(1000)
-                        if not ticket_page.is_closed():
-                            browser_manager.activate_page(ticket_page)
-                            ticket_page.wait_for_timeout(1000)
-                            completed = self.complete_ticket(ticket_page, note="Cek Kembali")
-                            if completed:
-                                log(f"    Waiting COMPLETED status...")
-                                is_completed = self.wait_for_completed(ticket_page)
-                                if is_completed:
-                                    log(f"    Ticket {code} -> COMPLETED")
-                                else:
-                                    log(f"    Ticket {code} status belum COMPLETED")
-                            else:
-                                log(f"    Gagal complete ticket {code}")
                     else:
-                        log(f"    BISCUIT response bukan SUKSES, skip complete")
-
-                    total_processed += 1
-                    results.append({
-                        "request_code": code,
-                        "owner_group": owner_group,
-                        "note": note,
-                        "biscuit_status": response.status,
-                    })
+                        log(f"    No OG and no C4, SKIP")
+                        continue
 
                 except Exception as e:
                     log(f"    Error: {e}")
