@@ -2,7 +2,7 @@ import re
 import time
 
 from app.browser import browser_manager
-from app.parser import extract_owner_group
+from app.parser import extract_owner_group, extract_inc_number
 from config.settings import USER_ID, USER_NAME, INSERA_GROUP_ID
 
 
@@ -749,14 +749,20 @@ class SygapService:
                             log(f"    Gagal complete ticket {code} (C4)")
                         continue
 
-                    if status != "ASSIGNED":
-                        log(f"    Status: {status} -> TO ke saya dulu...")
+                    inc_number = extract_inc_number(note)
+                    if not inc_number:
+                        log(f"    INC number not found in note, SKIP")
+                        continue
+                    log(f"    INC: {inc_number}")
 
                     owner_group = extract_owner_group(note)
                     if not owner_group:
                         log(f"    Owner group not found in note, SKIP")
                         continue
                     log(f"    Owner Group: {owner_group}")
+
+                    if status != "ASSIGNED":
+                        log(f"    Status: {status} -> TO ke saya dulu...")
 
                     log(f"    Taking ownership...")
                     btn_action = self.take_ownership(ticket_page)
@@ -776,7 +782,7 @@ class SygapService:
                         log(f"    BISCUIT command box not found!")
                         continue
 
-                    command = f"/dispatchticket {code} {owner_group}"
+                    command = f"/dispatchticket {inc_number} {owner_group}"
                     log(f"    Sending: {command}")
                     biscuit.send(command)
                     log(f"    Command sent to BISCUIT")
