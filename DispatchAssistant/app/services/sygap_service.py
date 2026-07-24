@@ -348,9 +348,6 @@ class SygapService:
                 print(f"    [COMPLETE] Complete button NOT found!")
         except Exception as e:
             print(f"    [COMPLETE] Error: {e}")
-                return True
-        except Exception:
-            pass
         return False
 
     def find_and_process_tickets(self, log_callback=None, group_label="MO-INSERA", group_id=None):
