@@ -26,28 +26,42 @@ def parse_owner_group(note: str):
 
     text = re.sub(r"<[^>]+>", " ", note)
     text = re.sub(r"\s+", " ", text).strip()
-    result = text.lower()
 
-    # Ambil owner group setelah "LE LOKER" / "KE LOKER" / "KE"
-    match = re.search(r"(?:le|ke)\s+loker\s+(.+)", result, re.IGNORECASE)
+    # Cari setelah "KE OWNER GROUP" / "KE OG" / "KE LOKER" / "LE LOKER" / "KE"
+    match = re.search(
+        r"(?:ke\s+(?:owner\s+group|og|loker)|le\s+loker)\s+(.+)",
+        text,
+        re.IGNORECASE
+    )
     if match:
         result = match.group(1).strip()
     else:
-        match = re.search(r"ke\s+(.+)", result, re.IGNORECASE)
+        match = re.search(r"ke\s+(.+)", text, re.IGNORECASE)
         if match:
             result = match.group(1).strip()
+        else:
+            return None
+
+    # Ambil hanya kata UPPERCASE (OG selalu UPPERCASE)
+    words = result.split()
+    og_words = []
+    for w in words:
+        # Berhenti jika bukan UPPERCASE atau angka INC
+        if w.startswith("INC") or w.startswith("Req") or w.startswith("REQ"):
+            break
+        if w.isupper() and w.isalpha():
+            og_words.append(w)
+        elif w.upper() == w and len(w) > 1 and w.isalpha():
+            og_words.append(w)
+        else:
+            break
+
+    result = " ".join(og_words).strip()
 
     # Hapus suffix
     for suffix in REMOVE_SUFFIX:
-        if suffix in result:
+        if suffix in result.lower():
             result = result.split(suffix)[0].strip()
-
-    result = re.sub(
-        r'\s*(terimakasih|terima\s*kasih|trimakasih|trima\s*kasih|thanks|thank\s*you)\s*$',
-        '',
-        result,
-        flags=re.IGNORECASE
-    ).strip()
 
     result = result.rstrip(".,;:")
 
