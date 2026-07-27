@@ -4,6 +4,8 @@ import time
 from app.parser import extract_owner_group, extract_inc_number
 from config.settings import USER_ID, USER_NAME, INSERA_GROUP_ID
 
+LOOP_INTERVAL = 600
+
 
 class SygapService:
 
@@ -527,15 +529,18 @@ class SygapService:
         page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
         page.wait_for_timeout(2000)
 
-        page_num = 1
         total_scanned = 0
 
         while True:
             info_text = page.locator("#requestFulfillmentTable_info").inner_text()
-            log(f"--- Page {page_num}: {info_text} ---")
+            log(f"--- {info_text} ---")
 
             rows = self.get_ticket_rows(page)
-            log(f"Found {len(rows)} row(s) on this page")
+            log(f"Found {len(rows)} row(s)")
+
+            if len(rows) == 0:
+                log(f"No tickets found. Waiting {LOOP_INTERVAL // 60} minutes...")
+                return results
 
             for i, row_info in enumerate(rows):
                 code = row_info["request_code"]
@@ -592,18 +597,10 @@ class SygapService:
                     self._close_extra_tabs(page)
                     page.wait_for_timeout(1500)
 
-            next_btn = page.locator("#requestFulfillmentTable_next")
-            is_disabled = next_btn.get_attribute("class") or ""
-            if "disabled" in is_disabled:
-                log(f"No more pages. Total ASSIGNED scanned: {total_scanned}")
-                break
-
-            log(f"Going to next page...")
-            next_btn.click()
-            page.wait_for_timeout(3000)
+            log(f"Page done. Re-applying filter...")
+            self.filter_assigned(page, group_label, group_id)
             page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
-            page.wait_for_timeout(1000)
-            page_num += 1
+            page.wait_for_timeout(2000)
 
         return results
 
@@ -668,15 +665,18 @@ class SygapService:
         page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
         page.wait_for_timeout(2000)
 
-        page_num = 1
         total_processed = 0
 
         while True:
             info_text = page.locator("#requestFulfillmentTable_info").inner_text()
-            log(f"--- Page {page_num}: {info_text} ---")
+            log(f"--- {info_text} ---")
 
             rows = self.get_ticket_rows(page)
-            log(f"Found {len(rows)} row(s) on this page")
+            log(f"Found {len(rows)} row(s)")
+
+            if len(rows) == 0:
+                log(f"No tickets found. Waiting {LOOP_INTERVAL // 60} minutes...")
+                return results
 
             for i, row_info in enumerate(rows):
                 code = row_info["request_code"]
@@ -813,18 +813,10 @@ class SygapService:
                     self._close_extra_tabs(page)
                     page.wait_for_timeout(1500)
 
-            next_btn = page.locator("#requestFulfillmentTable_next")
-            is_disabled = next_btn.get_attribute("class") or ""
-            if "disabled" in is_disabled:
-                log(f"No more pages. Total processed: {total_processed}")
-                break
-
-            log(f"Going to next page...")
-            next_btn.click()
-            page.wait_for_timeout(3000)
+            log(f"Page done. Re-applying filter...")
+            self.filter_canclwork(page)
             page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
-            page.wait_for_timeout(1000)
-            page_num += 1
+            page.wait_for_timeout(2000)
 
         return results
 
@@ -909,15 +901,18 @@ class SygapService:
             return results
         page.wait_for_timeout(2000)
 
-        page_num = 1
         total_processed = 0
 
         while True:
             info_text = page.locator("#requestFulfillmentTable_info").inner_text()
-            log(f"--- Page {page_num}: {info_text} ---")
+            log(f"--- {info_text} ---")
 
             rows = self.get_ticket_rows(page)
-            log(f"Found {len(rows)} row(s) on this page")
+            log(f"Found {len(rows)} row(s)")
+
+            if len(rows) == 0:
+                log(f"No tickets found. Waiting {LOOP_INTERVAL // 60} minutes...")
+                return results
 
             for i, row_info in enumerate(rows):
                 code = row_info["request_code"]
@@ -1090,17 +1085,9 @@ class SygapService:
                     self._close_extra_tabs(page)
                     page.wait_for_timeout(1500)
 
-            next_btn = page.locator("#requestFulfillmentTable_next")
-            is_disabled = next_btn.get_attribute("class") or ""
-            if "disabled" in is_disabled:
-                log(f"No more pages. Total processed: {total_processed}")
-                break
-
-            log(f"Going to next page...")
-            next_btn.click()
-            page.wait_for_timeout(3000)
+            log(f"Page done. Re-applying filter...")
+            self.filter_dispatch(page)
             page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
-            page.wait_for_timeout(1000)
-            page_num += 1
+            page.wait_for_timeout(2000)
 
         return results
