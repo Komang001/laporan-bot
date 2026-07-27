@@ -228,6 +228,100 @@ class SygapService:
 
         return None
 
+    def read_wo_from_field(self, ticket_page):
+        """Read WO number from form field below note (e.g. 'BIMA - WO Number')"""
+        import re
+
+        selectors = [
+            "input[name$='_wo_number']",
+            "input[name*='wo_number']",
+            "input[name$='_work_order']",
+            "input[name*='work_order']",
+        ]
+        for sel in selectors:
+            try:
+                loc = ticket_page.locator(sel)
+                if loc.count() > 0:
+                    val = loc.first.input_value().strip()
+                    if val:
+                        m = re.search(r'WO\d+', val, re.IGNORECASE)
+                        if m:
+                            return m.group(0).upper()
+            except Exception:
+                continue
+
+        try:
+            wo_labels = ticket_page.locator("label:has-text('WO Number'), label:has-text('WO')")
+            for idx in range(wo_labels.count()):
+                label = wo_labels.nth(idx)
+                container = label.locator("xpath=ancestor::div[contains(@class,'form') or contains(@class,'field') or contains(@class,'group')][1]")
+                inp = container.locator("input[type='text'], input:not([type])")
+                if inp.count() > 0:
+                    val = inp.first.input_value().strip()
+                    if val:
+                        m = re.search(r'WO\d+', val, re.IGNORECASE)
+                        if m:
+                            return m.group(0).upper()
+        except Exception:
+            pass
+
+        try:
+            body_text = ticket_page.locator("body").inner_text(timeout=5000)
+            m = re.search(r'WO\d+', body_text)
+            if m:
+                return m.group(0).upper()
+        except Exception:
+            pass
+
+        return None
+
+    def read_ticket_id_from_field(self, ticket_page):
+        """Read Ticket ID/INC from form field below note (e.g. 'INSERA - Ticket ID')"""
+        import re
+
+        selectors = [
+            "input[name$='_ticket_id']",
+            "input[name*='ticket_id']",
+            "input[name$='_ticket_no']",
+            "input[name*='ticket_no']",
+        ]
+        for sel in selectors:
+            try:
+                loc = ticket_page.locator(sel)
+                if loc.count() > 0:
+                    val = loc.first.input_value().strip()
+                    if val:
+                        m = re.search(r'INC\d+', val, re.IGNORECASE)
+                        if m:
+                            return m.group(0).upper()
+            except Exception:
+                continue
+
+        try:
+            id_labels = ticket_page.locator("label:has-text('Ticket ID'), label:has-text('Ticket No'), label:has-text('Request No')")
+            for idx in range(id_labels.count()):
+                label = id_labels.nth(idx)
+                container = label.locator("xpath=ancestor::div[contains(@class,'form') or contains(@class,'field') or contains(@class,'group')][1]")
+                inp = container.locator("input[type='text'], input:not([type])")
+                if inp.count() > 0:
+                    val = inp.first.input_value().strip()
+                    if val:
+                        m = re.search(r'INC\d+', val, re.IGNORECASE)
+                        if m:
+                            return m.group(0).upper()
+        except Exception:
+            pass
+
+        try:
+            body_text = ticket_page.locator("body").inner_text(timeout=5000)
+            m = re.search(r'INC\d+', body_text)
+            if m:
+                return m.group(0).upper()
+        except Exception:
+            pass
+
+        return None
+
     def is_dispatch_ticket(self, note):
         if not note:
             return False
@@ -623,7 +717,11 @@ class SygapService:
 
                     wo_number = self.extract_wo_number(note)
                     if not wo_number:
-                        log(f"    WO number not found in note, SKIP")
+                        wo_number = self.read_wo_from_field(ticket_page)
+                        if wo_number:
+                            log(f"    WO from field: {wo_number}")
+                    if not wo_number:
+                        log(f"    WO number not found anywhere, SKIP")
                         continue
                     log(f"    WO found: {wo_number}")
 
@@ -879,6 +977,10 @@ class SygapService:
                         if not inc_number:
                             log(f"    INC not in note, reading from ticket page...")
                             inc_number = self.read_ticket_inc(ticket_page)
+                            if not inc_number:
+                                inc_number = self.read_ticket_id_from_field(ticket_page)
+                                if inc_number:
+                                    log(f"    INC from field: {inc_number}")
                             log(f"    INC from page: {inc_number or 'NOT FOUND'}")
 
                         if not inc_number:
