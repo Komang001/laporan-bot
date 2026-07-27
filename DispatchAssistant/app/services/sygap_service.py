@@ -702,6 +702,25 @@ class SygapService:
                 print("FAILED to set Notes filter!")
                 return
 
+            # Set Solver Group ke MO-INSERA
+            from config.settings import INSERA_GROUP_ID
+            js_set_og = f"""
+            (function() {{
+                var el = document.getElementById('solverGroupSearch');
+                if (el && window.jQuery) {{
+                    var $el = jQuery(el);
+                    $el.empty();
+                    $el.append(new Option('MO-INSERA', '{INSERA_GROUP_ID}', true, true));
+                    $el.val('{INSERA_GROUP_ID}').trigger('change');
+                }}
+            }})();
+            """
+            page.evaluate(js_set_og)
+            page.wait_for_timeout(1000)
+
+            og_selected = page.locator("#select2-solverGroupSearch-container").inner_text()
+            print(f"SolverGroup: '{og_selected}'")
+
             search_btn = page.locator("#btn_apply")
             if search_btn.count() == 0:
                 search_btn = page.locator("button.btn-primary .fa-search")
