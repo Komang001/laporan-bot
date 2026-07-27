@@ -55,7 +55,7 @@ class DispatchController:
 
             self.gui.write_log("Chrome CDP OK.")
 
-            self.gui.write_log("Playwright connect akan dilakukan di background thread.")
+            self.gui.write_log("Opening SYGAP + BISCUIT tabs...")
 
             self.gui.update_status("CONNECTED")
 
@@ -209,6 +209,12 @@ class DispatchController:
 
                 self.gui.write_log("Browser connected.")
 
+                self.gui.write_log("Opening SYGAP + BISCUIT tabs...")
+
+                self.browser_manager.open_required_tabs(
+                    log_callback=self.gui.write_log
+                )
+
                 self.gui.write_log(f"Step 3: Scanning {group_label} tickets...")
 
                 self.gui.update_status("SCANNING")
@@ -357,6 +363,12 @@ class DispatchController:
                     return
 
                 self.gui.write_log("Browser connected.")
+
+                self.gui.write_log("Opening SYGAP + BISCUIT tabs...")
+
+                self.browser_manager.open_required_tabs(
+                    log_callback=self.gui.write_log
+                )
 
                 self.gui.write_log("Step 3: Scanning CANCLWORK tickets...")
 
@@ -507,6 +519,12 @@ class DispatchController:
 
                 self.gui.write_log("Browser connected.")
 
+                self.gui.write_log("Opening SYGAP + BISCUIT tabs...")
+
+                self.browser_manager.open_required_tabs(
+                    log_callback=self.gui.write_log
+                )
+
                 self.gui.write_log("Step 3: Scanning DISPATCH tickets...")
 
                 self.gui.update_status("SCANNING")
@@ -626,8 +644,14 @@ class DispatchController:
                 self.gui.update_status("ERROR")
 
                 return
-
             self.gui.write_log("Browser connected.")
+
+            self.gui.write_log("Opening SYGAP + BISCUIT tabs...")
+
+            self.browser_manager.open_required_tabs(
+                log_callback=self.gui.write_log
+            )
+
 
             pages = self.browser_manager.get_pages()
 

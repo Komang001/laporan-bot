@@ -393,6 +393,55 @@ class BrowserManager:
             return None
 
     # ==================================================
+    # Open SYGAP + BISCUIT tabs (auto after launch)
+    # ==================================================
+
+    def open_required_tabs(self, log_callback=None):
+
+        log = log_callback or (lambda msg: None)
+
+        from config.settings import DASHBOARD_URL, BISCUIT_URL
+
+        existing = self.get_pages()
+        has_sygap = False
+        has_biscuit = False
+
+        for p in existing:
+            try:
+                url = p.url.lower()
+                if "sygap.telkom.co.id" in url:
+                    has_sygap = True
+                if "biscuit-dashboard" in url:
+                    has_biscuit = True
+            except Exception:
+                continue
+
+        if not has_sygap:
+            log(f"Opening SYGAP: {DASHBOARD_URL[:50]}...")
+            page = self.open_url(DASHBOARD_URL)
+            if page:
+                log("SYGAP tab opened.")
+            else:
+                log("WARNING: Gagal buka SYGAP")
+
+        if not has_biscuit:
+            log(f"Opening BISCUIT: {BISCUIT_URL[:50]}...")
+            page = self.open_url(BISCUIT_URL)
+            if page:
+                log("BISCUIT tab opened.")
+            else:
+                log("WARNING: Gagal buka BISCUIT")
+
+        self.refresh_cache()
+
+        if has_sygap and has_biscuit:
+            log("SYGAP & BISCUIT tabs already open.")
+        elif has_sygap:
+            log("BISCUIT tab opened. SYGAP already open.")
+        elif has_biscuit:
+            log("SYGAP tab opened. BISCUIT already open.")
+
+    # ==================================================
     # Save HTML
     # ==================================================
 
