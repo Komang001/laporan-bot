@@ -613,6 +613,14 @@ class SygapService:
                         log(f"    SAFETY: No CANCLWORK in note, SKIP")
                         continue
 
+                    note_upper = note.upper()
+                    has_osm = any(kw in note_upper for kw in ["OSM", "SOM", "TOM"])
+                    if not has_osm:
+                        log(f"    SAFETY: No OSM/SOM/TOM in note")
+                        log(f"    Untuk permintaan CANCLWORK, pastikan status OSM sudah CANCEL COMPLETE atau ABORTED")
+                        log(f"    SKIP")
+                        continue
+
                     wo_number = self.extract_wo_number(note)
                     if not wo_number:
                         log(f"    WO number not found in note, SKIP")
