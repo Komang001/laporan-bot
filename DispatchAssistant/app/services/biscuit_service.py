@@ -2,18 +2,17 @@ from playwright.sync_api import TimeoutError
 
 from config.settings import AUTO_ENTER
 
-from app.browser import browser_manager
-
 from app.command_builder import build_dispatch_command
 from app.services.response_service import ResponseService
 
 
 class BiscuitService:
 
-    def __init__(self):
+    def __init__(self, browser_manager=None):
 
         self.page = None
         self.response_count_before = 0
+        self.browser_manager = browser_manager
 
     # ==================================================
     # Open BISCUIT
@@ -21,7 +20,7 @@ class BiscuitService:
 
     def open(self):
 
-        self.page = browser_manager.get_biscuit_page()
+        self.page = self.browser_manager.get_biscuit_page()
 
         if self.page is None:
 
@@ -29,7 +28,7 @@ class BiscuitService:
             print("BISCUIT tidak ditemukan.")
             return False
 
-        browser_manager.activate_page(self.page)
+        self.browser_manager.activate_page(self.page)
 
         print()
         print("=" * 50)

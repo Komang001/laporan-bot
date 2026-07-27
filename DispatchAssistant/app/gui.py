@@ -8,7 +8,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.controller import DispatchController
-from config.settings import INSERA_GROUP_ID
+from config.settings import INSERA_GROUP_ID, CHROME_PORTS
 
 
 # =====================================================
@@ -29,22 +29,18 @@ class DispatchAssistantGUI(ctk.CTk):
 
         super().__init__()
 
-        self.controller = DispatchController(self)
-
-        self.controller.on_complete = self._on_dispatch_complete
+        self.controllers = {}
 
         self.title(
             "Industrial Programmer - DispatchAssistant"
         )
 
-        self.geometry("960x650")
+        self.geometry("960x700")
 
         self.resizable(False, False)
 
-        self.running = False
-
         self.create_header()
-        self.create_control_section()
+        self.create_feature_sections()
         self.create_log_section()
 
     # =================================================
@@ -67,114 +63,153 @@ class DispatchAssistantGUI(ctk.CTk):
 
         subtitle = ctk.CTkLabel(
             frame,
-            text="Industrial Programmer Automation System",
+            text="Industrial Programmer Automation System - Multi Chrome",
         )
 
         subtitle.pack()
 
     # =================================================
-    # Control Section
+    # Feature Sections (per-fitur: status + tombol)
     # =================================================
 
-    def create_control_section(self):
+    def create_feature_sections(self):
+
+        features = [
+            {
+                "key": "to_insera",
+                "label": "TO MO-INSERA",
+                "color": "#7C3AED",
+                "hover": "#6D28D9",
+                "port_key": "TO",
+            },
+            {
+                "key": "to_bima",
+                "label": "TO MO-BIMA",
+                "color": "#0EA5E9",
+                "hover": "#0284C7",
+                "port_key": "TO",
+            },
+            {
+                "key": "canclwork",
+                "label": "CANCLWORK WO",
+                "color": "#F97316",
+                "hover": "#EA580C",
+                "port_key": "CANCLWORK",
+            },
+            {
+                "key": "dispatch",
+                "label": "DISPATCH",
+                "color": "#10B981",
+                "hover": "#059669",
+                "port_key": "DISPATCH",
+            },
+        ]
+
+        for feat in features:
+            self._create_feature_row(feat)
+
+    def _create_feature_row(self, feat):
 
         frame = ctk.CTkFrame(self)
+        frame.pack(fill="x", padx=20, pady=5)
 
-        frame.pack(fill="x", padx=20, pady=10)
+        key = feat["key"]
+        port = CHROME_PORTS.get(feat["port_key"], 9222)
 
-        self.connect_button = ctk.CTkButton(
+        label = ctk.CTkLabel(
             frame,
-            text="CONNECT BROWSER",
-            width=180,
-            fg_color="#2563EB",
-            command=self.connect_browser,
+            text=f"{feat['label']}",
+            width=200,
+            font=("Arial", 14, "bold"),
         )
+        label.pack(side="left", padx=10)
 
-        self.connect_button.pack(
-            side="left",
-            padx=10,
-            pady=15,
-        )
-
-        self.to_insera_button = ctk.CTkButton(
+        start_btn = ctk.CTkButton(
             frame,
-            text="TO MO-INSERA",
-            width=180,
-            fg_color="#7C3AED",
-            hover_color="#6D28D9",
-            command=self.start_to_insera,
+            text=f"START",
+            width=100,
+            fg_color=feat["color"],
+            hover_color=feat["hover"],
+            command=lambda k=key, f=feat: self._start_feature(k, f),
         )
+        start_btn.pack(side="left", padx=5)
 
-        self.to_insera_button.pack(
-            side="left",
-            padx=10,
-        )
-
-        self.to_bima_button = ctk.CTkButton(
-            frame,
-            text="TO MO-BIMA",
-            width=180,
-            fg_color="#0EA5E9",
-            hover_color="#0284C7",
-            command=self.start_to_bima,
-        )
-
-        self.to_bima_button.pack(
-            side="left",
-            padx=10,
-        )
-
-        self.canclwork_button = ctk.CTkButton(
-            frame,
-            text="CANCLWORK WO",
-            width=180,
-            fg_color="#F97316",
-            hover_color="#EA580C",
-            command=self.start_canclwork,
-        )
-
-        self.canclwork_button.pack(
-            side="left",
-            padx=10,
-        )
-
-        self.dispatch_button = ctk.CTkButton(
-            frame,
-            text="DISPATCH",
-            width=180,
-            fg_color="#10B981",
-            hover_color="#059669",
-            command=self.start_dispatch,
-        )
-
-        self.dispatch_button.pack(
-            side="left",
-            padx=10,
-        )
-
-        self.stop_button = ctk.CTkButton(
+        stop_btn = ctk.CTkButton(
             frame,
             text="STOP",
-            width=180,
+            width=80,
             fg_color="red",
-            command=self.stop,
+            command=lambda k=key: self._stop_feature(k),
         )
+        stop_btn.pack(side="left", padx=5)
 
-        self.stop_button.pack(
-            side="left",
-            padx=10,
-        )
-
-        self.status_label = ctk.CTkLabel(
+        status_label = ctk.CTkLabel(
             frame,
-            text="Status : READY",
+            text=f"READY (port {port})",
             text_color="#22C55E",
+            width=200,
         )
+        status_label.pack(side="left", padx=10)
 
-        self.status_label.pack(
-            side="right",
-            padx=20,
-        )
+        setattr(self, f"{key}_btn", start_btn)
+        setattr(self, f"{key}_status", status_label)
+
+    # =================================================
+    # Start / Stop Feature
+    # =================================================
+
+    def _start_feature(self, key, feat):
+
+        if key in self.controllers and self.controllers[key].running:
+            self.write_log(f"[{key}] Already running!")
+            return
+
+        port = CHROME_PORTS.get(feat["port_key"], 9222)
+
+        ctrl = DispatchController(gui=self, cdp_port=port)
+        ctrl.on_complete = lambda k=key: self._on_feature_complete(k)
+        self.controllers[key] = ctrl
+
+        self._update_feature_status(key, "STARTING", "#EAB308")
+        getattr(self, f"{key}_btn").configure(state="disabled")
+
+        if key == "to_insera":
+            ctrl.start_auto(group_label="MO-INSERA", group_id=INSERA_GROUP_ID)
+        elif key == "to_bima":
+            ctrl.start_auto(group_label="MO-BIMA", group_id=None)
+        elif key == "canclwork":
+            ctrl.start_canclwork()
+        elif key == "dispatch":
+            ctrl.start_dispatch()
+
+    def _stop_feature(self, key):
+
+        if key in self.controllers:
+            self.controllers[key].stop()
+            self._update_feature_status(key, "STOPPING", "#EF4444")
+        else:
+            self.write_log(f"[{key}] Not running.")
+
+    def _on_feature_complete(self, key):
+
+        self.after(0, lambda: self._finish_feature(key))
+
+    def _finish_feature(self, key):
+
+        self._update_feature_status(key, "READY", "#22C55E")
+        getattr(self, f"{key}_btn").configure(state="normal")
+
+        if key in self.controllers:
+            del self.controllers[key]
+
+    def _update_feature_status(self, key, status, color):
+
+        lbl = getattr(self, f"{key}_status", None)
+        if lbl:
+            self.after(0, lambda: lbl.configure(
+                text=f"{status}",
+                text_color=color,
+            ))
 
     # =================================================
     # Log Section
@@ -215,12 +250,13 @@ class DispatchAssistantGUI(ctk.CTk):
 
         self.write_log("Application initialized...")
         self.write_log("")
-        self.write_log("=== CARA PAKAI ===")
-        self.write_log("1. Jalankan: start_browser.bat")
-        self.write_log("2. Login SYGAP di Chrome")
-        self.write_log("3. Klik CONNECT BROWSER")
-        self.write_log("4. Klik TO MO-INSERA atau TO MO-BIMA")
-        self.write_log("=================")
+        self.write_log("=== MULTI-CHROME MODE ===")
+        self.write_log("Setiap fitur jalan di Chrome berbeda!")
+        self.write_log("Pastikan semua Chrome CDP sudah jalan:")
+        self.write_log(f"  TO        -> port {CHROME_PORTS['TO']}")
+        self.write_log(f"  CANCLWORK -> port {CHROME_PORTS['CANCLWORK']}")
+        self.write_log(f"  DISPATCH  -> port {CHROME_PORTS['DISPATCH']}")
+        self.write_log("==========================")
 
     # =================================================
     # Functions
@@ -239,108 +275,7 @@ class DispatchAssistantGUI(ctk.CTk):
 
     def update_status(self, status):
 
-        colors = {
-            "READY": "#22C55E",
-            "STARTING": "#EAB308",
-            "CONNECTING": "#EAB308",
-            "SCANNING": "#3B82F6",
-            "READING": "#EAB308",
-            "TO": "#EAB308",
-            "WAITING IN_PROGRESS": "#EAB308",
-            "CONNECTED": "#22C55E",
-            "STOPPED": "#EF4444",
-            "ERROR": "#EF4444",
-            "DISCONNECTED": "#6B7280",
-        }
-
-        color = colors.get(status, "#6B7280")
-
-        self.status_label.configure(
-            text=f"Status : {status}",
-            text_color=color,
-        )
-
-    def connect_browser(self):
-
-        self.connect_button.configure(state="disabled")
-
-        self.update_status("CHECKING")
-
-        self.controller.connect_browser()
-
-        self.connect_button.configure(state="normal")
-
-    def start_to_insera(self):
-
-        if self.running:
-            self.write_log("Assistant already running.")
-            return
-
-        self.running = True
-        self.to_insera_button.configure(state="disabled")
-        self.to_bima_button.configure(state="disabled")
-        self.canclwork_button.configure(state="disabled")
-        self.dispatch_button.configure(state="disabled")
-        self.controller.start_auto(group_label="MO-INSERA", group_id=INSERA_GROUP_ID)
-
-    def start_to_bima(self):
-
-        if self.running:
-            self.write_log("Assistant already running.")
-            return
-
-        self.running = True
-        self.to_insera_button.configure(state="disabled")
-        self.to_bima_button.configure(state="disabled")
-        self.canclwork_button.configure(state="disabled")
-        self.dispatch_button.configure(state="disabled")
-        self.controller.start_auto(group_label="MO-BIMA", group_id=None)
-
-    def start_canclwork(self):
-
-        if self.running:
-            self.write_log("Assistant already running.")
-            return
-
-        self.running = True
-        self.to_insera_button.configure(state="disabled")
-        self.to_bima_button.configure(state="disabled")
-        self.canclwork_button.configure(state="disabled")
-        self.dispatch_button.configure(state="disabled")
-        self.controller.start_canclwork()
-
-    def start_dispatch(self):
-
-        if self.running:
-            self.write_log("Assistant already running.")
-            return
-
-        self.running = True
-        self.to_insera_button.configure(state="disabled")
-        self.to_bima_button.configure(state="disabled")
-        self.canclwork_button.configure(state="disabled")
-        self.dispatch_button.configure(state="disabled")
-        self.controller.start_dispatch()
-
-    def stop(self):
-
-        self.running = False
-
-        self.to_insera_button.configure(state="normal")
-        self.to_bima_button.configure(state="normal")
-        self.canclwork_button.configure(state="normal")
-        self.dispatch_button.configure(state="normal")
-
-        self.controller.stop()
-
-    def _on_dispatch_complete(self):
-
-        self.running = False
-
-        self.after(0, lambda: self.to_insera_button.configure(state="normal"))
-        self.after(0, lambda: self.to_bima_button.configure(state="normal"))
-        self.after(0, lambda: self.canclwork_button.configure(state="normal"))
-        self.after(0, lambda: self.dispatch_button.configure(state="normal"))
+        pass
 
 
 # =====================================================

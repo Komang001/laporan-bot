@@ -1,10 +1,9 @@
-from app.browser import browser_manager
 from app.models.ticket import Ticket
 from app.parser import extract_owner_group
 
 
 
-def read_ticket():
+def read_ticket(browser_manager=None):
 
     page = browser_manager.get_active_ticket_page()
 

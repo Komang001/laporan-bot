@@ -1,25 +1,25 @@
 import re
 import time
 
-from app.browser import browser_manager
 from app.parser import extract_owner_group, extract_inc_number
 from config.settings import USER_ID, USER_NAME, INSERA_GROUP_ID
 
 
 class SygapService:
 
-    def __init__(self):
+    def __init__(self, self.browser_manager=None):
         self.processed_ids = set()
+        self.self.browser_manager = self.browser_manager
 
     def get_dashboard_page(self):
-        page = browser_manager.get_dashboard_page()
+        page = self.self.browser_manager.get_dashboard_page()
         if page is None:
             raise Exception("Dashboard SYGAP tidak ditemukan. Buka /req_fulfillment dulu.")
         return page
 
     def navigate_to_dashboard(self):
         page = self.get_dashboard_page()
-        browser_manager.activate_page(page)
+        self.browser_manager.activate_page(page)
         current = page.url.lower()
         if "/req_fulfillment" in current and "/form/" not in current:
             return page
@@ -629,7 +629,7 @@ class SygapService:
                     else:
                         log(f"    Solver sudah saya, skip TO")
 
-                    biscuit = BiscuitService()
+                    biscuit = BiscuitService(browser_manager=self.browser_manager)
                     if not biscuit.open():
                         log(f"    BISCUIT tab not found!")
                         continue
@@ -660,7 +660,7 @@ class SygapService:
                     page.bring_to_front()
                     page.wait_for_timeout(1000)
                     if not ticket_page.is_closed():
-                        browser_manager.activate_page(ticket_page)
+                        self.browser_manager.activate_page(ticket_page)
                         try:
                             ticket_page.reload(wait_until="domcontentloaded", timeout=15000)
                         except Exception:
@@ -867,7 +867,7 @@ class SygapService:
                             log(f"    INC number not found anywhere, SKIP")
                             continue
 
-                        biscuit = BiscuitService()
+                        biscuit = BiscuitService(browser_manager=self.browser_manager)
                         if not biscuit.open():
                             log(f"    BISCUIT tab not found!")
                             continue
@@ -897,7 +897,7 @@ class SygapService:
                         page.bring_to_front()
                         page.wait_for_timeout(1000)
                         if not ticket_page.is_closed():
-                            browser_manager.activate_page(ticket_page)
+                            self.browser_manager.activate_page(ticket_page)
                             try:
                                 ticket_page.reload(wait_until="domcontentloaded", timeout=15000)
                             except Exception:
@@ -935,7 +935,7 @@ class SygapService:
 
                         page.bring_to_front()
                         page.wait_for_timeout(1000)
-                        browser_manager.activate_page(ticket_page)
+                        self.browser_manager.activate_page(ticket_page)
                         ticket_page.wait_for_timeout(1000)
 
                         completed = self.complete_ticket(ticket_page, note="untuk permintaan dispatch ke C4_CONSUMER silahkan koordinasikan ke OG terkait")
@@ -984,6 +984,3 @@ class SygapService:
             page_num += 1
 
         return results
-
-
-sygap_service = SygapService()

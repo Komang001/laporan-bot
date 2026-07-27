@@ -7,8 +7,9 @@ import time
 
 class BrowserManager:
 
-    def __init__(self):
+    def __init__(self, cdp_port=9222):
 
+        self.cdp_port = cdp_port
         self.playwright = None
         self.browser = None
         self.connected = False
@@ -29,7 +30,7 @@ class BrowserManager:
 
         try:
 
-            s.connect(("127.0.0.1", 9222))
+            s.connect(("127.0.0.1", self.cdp_port))
             s.close()
             return True
 
@@ -58,15 +59,15 @@ class BrowserManager:
         if not self.is_chrome_running():
 
             raise Exception(
-                "Chrome CDP belum berjalan.\n"
-                "Jalankan: start_browser.bat\n"
-                "atau buka Chrome dengan --remote-debugging-port=9222"
+                f"Chrome CDP belum berjalan di port {self.cdp_port}.\n"
+                f"Jalankan: start_browser.bat\n"
+                f"atau buka Chrome dengan --remote-debugging-port={self.cdp_port}"
             )
 
         self.playwright = sync_playwright().start()
 
         self.browser = self.playwright.chromium.connect_over_cdp(
-            "http://127.0.0.1:9222"
+            f"http://127.0.0.1:{self.cdp_port}"
         )
 
         self.connected = True
@@ -312,10 +313,3 @@ class BrowserManager:
 
         except Exception:
             return False
-
-
-# ======================================================
-# Singleton
-# ======================================================
-
-browser_manager = BrowserManager()

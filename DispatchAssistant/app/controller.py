@@ -1,13 +1,13 @@
 import time
 import threading
 
-from app.browser import browser_manager
+from app.browser import BrowserManager
 from app.reader import read_ticket
 from app.command_builder import build_dispatch_command
 from app.parser import extract_owner_group
 from app.services.biscuit_service import BiscuitService
 from app.services.response_service import ResponseService
-from app.services.sygap_service import sygap_service
+from app.services.sygap_service import SygapService
 from app.models.ticket import Ticket
 from app.logger import DispatchLogger
 
@@ -16,12 +16,14 @@ LOOP_INTERVAL = 600
 
 class DispatchController:
 
-    def __init__(self, gui):
+    def __init__(self, gui, cdp_port=9222):
 
         self.gui = gui
+        self.cdp_port = cdp_port
         self.running = False
         self.logger = DispatchLogger()
         self.on_complete = None
+        self.browser_manager = BrowserManager(cdp_port=cdp_port)
 
     # ==========================================
     # Connect Browser (hanya cek Chrome, TANPA Playwright)
@@ -35,7 +37,7 @@ class DispatchController:
 
         try:
 
-            if not browser_manager.is_chrome_running():
+            if not self.browser_manager.is_chrome_running():
 
                 self.gui.write_log("Chrome CDP belum jalan.")
 
@@ -69,7 +71,7 @@ class DispatchController:
 
         try:
 
-            browser_manager.disconnect()
+            self.browser_manager.disconnect()
 
             self.gui.write_log("Browser disconnected.")
 
@@ -167,7 +169,7 @@ class DispatchController:
 
                 self.gui.update_status("CONNECTING")
 
-                if not browser_manager.is_chrome_running():
+                if not self.browser_manager.is_chrome_running():
 
                     self.gui.write_log("ERROR: Chrome CDP belum jalan.")
 
@@ -179,7 +181,7 @@ class DispatchController:
 
                 try:
 
-                    browser_manager.connect()
+                    self.browser_manager.connect()
 
                     connected_in_thread = True
 
@@ -197,7 +199,9 @@ class DispatchController:
 
                 self.gui.update_status("SCANNING")
 
-                tickets = sygap_service.find_and_process_tickets(
+                sygap = SygapService(browser_manager=self.browser_manager)
+
+                tickets = sygap.find_and_process_tickets(
                     log_callback=self.gui.write_log,
                     group_label=group_label,
                     group_id=group_id,
@@ -251,7 +255,7 @@ class DispatchController:
 
                 try:
 
-                    browser_manager.disconnect()
+                    self.browser_manager.disconnect()
 
                 except Exception:
 
@@ -306,7 +310,7 @@ class DispatchController:
 
                 self.gui.update_status("CONNECTING")
 
-                if not browser_manager.is_chrome_running():
+                if not self.browser_manager.is_chrome_running():
 
                     self.gui.write_log("ERROR: Chrome CDP belum jalan.")
 
@@ -318,7 +322,7 @@ class DispatchController:
 
                 try:
 
-                    browser_manager.connect()
+                    self.browser_manager.connect()
 
                     connected_in_thread = True
 
@@ -336,7 +340,9 @@ class DispatchController:
 
                 self.gui.update_status("SCANNING")
 
-                tickets = sygap_service.process_canclwork_tickets(
+                sygap = SygapService(browser_manager=self.browser_manager)
+
+                tickets = sygap.process_canclwork_tickets(
                     log_callback=self.gui.write_log,
                 )
 
@@ -390,7 +396,7 @@ class DispatchController:
 
                 try:
 
-                    browser_manager.disconnect()
+                    self.browser_manager.disconnect()
 
                 except Exception:
 
@@ -445,7 +451,7 @@ class DispatchController:
 
                 self.gui.update_status("CONNECTING")
 
-                if not browser_manager.is_chrome_running():
+                if not self.browser_manager.is_chrome_running():
 
                     self.gui.write_log("ERROR: Chrome CDP belum jalan.")
 
@@ -457,7 +463,7 @@ class DispatchController:
 
                 try:
 
-                    browser_manager.connect()
+                    self.browser_manager.connect()
 
                     connected_in_thread = True
 
@@ -475,7 +481,9 @@ class DispatchController:
 
                 self.gui.update_status("SCANNING")
 
-                tickets = sygap_service.process_dispatch_tickets(
+                sygap = SygapService(browser_manager=self.browser_manager)
+
+                tickets = sygap.process_dispatch_tickets(
                     log_callback=self.gui.write_log,
                 )
 
@@ -529,7 +537,7 @@ class DispatchController:
 
                 try:
 
-                    browser_manager.disconnect()
+                    self.browser_manager.disconnect()
 
                 except Exception:
 
@@ -540,7 +548,7 @@ class DispatchController:
                 self.on_complete()
 
     # ==========================================
-    # Run Dispatch (Background Thread)
+    # Run Dispatch (Background Thread) - Manual
     # ==========================================
 
     def _run_dispatch(self, ticket_id_input, owner_group_input):
@@ -557,7 +565,7 @@ class DispatchController:
 
             self.gui.update_status("CONNECTING")
 
-            if not browser_manager.is_chrome_running():
+            if not self.browser_manager.is_chrome_running():
 
                 self.gui.write_log("ERROR: Chrome CDP belum jalan.")
 
@@ -569,7 +577,7 @@ class DispatchController:
 
             try:
 
-                browser_manager.connect()
+                self.browser_manager.connect()
 
                 connected_in_thread = True
 
@@ -583,7 +591,7 @@ class DispatchController:
 
             self.gui.write_log("Browser connected.")
 
-            pages = browser_manager.get_pages()
+            pages = self.browser_manager.get_pages()
 
             self.gui.write_log(f"Found {len(pages)} tab(s).")
 
@@ -633,7 +641,7 @@ class DispatchController:
 
             self.gui.write_log(f"Reading from page: {ticket_page.url[:70]}")
 
-            ticket_data = read_ticket()
+            ticket_data = read_ticket(browser_manager=self.browser_manager)
 
             if ticket_data is None:
 
@@ -707,7 +715,7 @@ class DispatchController:
 
             self.gui.write_log(f"Command: {command}")
 
-            biscuit_service = BiscuitService()
+            biscuit_service = BiscuitService(browser_manager=self.browser_manager)
 
             if not biscuit_service.open():
 
@@ -772,7 +780,7 @@ class DispatchController:
 
                 try:
 
-                    browser_manager.disconnect()
+                    self.browser_manager.disconnect()
 
                 except Exception:
 
@@ -797,15 +805,15 @@ class DispatchController:
             if not self.running:
                 return None
 
-            browser_manager.refresh_cache()
+            self.browser_manager.refresh_cache()
 
-            ticket = browser_manager.get_active_ticket_page()
+            ticket = self.browser_manager.get_active_ticket_page()
 
             if ticket is not None:
 
                 return ticket
 
-            pages = browser_manager.get_pages()
+            pages = self.browser_manager.get_pages()
 
             if len(pages) != last_count:
 
