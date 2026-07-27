@@ -7,12 +7,12 @@ from config.settings import USER_ID, USER_NAME, INSERA_GROUP_ID
 
 class SygapService:
 
-    def __init__(self, self.browser_manager=None):
+    def __init__(self, browser_manager=None):
         self.processed_ids = set()
-        self.self.browser_manager = self.browser_manager
+        self.browser_manager = browser_manager
 
     def get_dashboard_page(self):
-        page = self.self.browser_manager.get_dashboard_page()
+        page = self.browser_manager.get_dashboard_page()
         if page is None:
             raise Exception("Dashboard SYGAP tidak ditemukan. Buka /req_fulfillment dulu.")
         return page
