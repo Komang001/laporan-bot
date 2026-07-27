@@ -11,6 +11,8 @@ from app.services.sygap_service import sygap_service
 from app.models.ticket import Ticket
 from app.logger import DispatchLogger
 
+LOOP_INTERVAL = 600
+
 
 class DispatchController:
 
@@ -159,83 +161,81 @@ class DispatchController:
 
         try:
 
-            # ========================================
-            # Step 1: Connect
-            # ========================================
+            while self.running:
 
-            self.gui.write_log("Step 1: Connecting browser...")
+                self.gui.write_log("Step 1: Connecting browser...")
 
-            self.gui.update_status("CONNECTING")
+                self.gui.update_status("CONNECTING")
 
-            if not browser_manager.is_chrome_running():
+                if not browser_manager.is_chrome_running():
 
-                self.gui.write_log("ERROR: Chrome CDP belum jalan.")
+                    self.gui.write_log("ERROR: Chrome CDP belum jalan.")
 
-                self.gui.write_log("Jalankan: start_browser.bat")
+                    self.gui.write_log("Jalankan: start_browser.bat")
 
-                self.gui.update_status("ERROR")
+                    self.gui.update_status("ERROR")
 
-                return
+                    return
 
-            try:
+                try:
 
-                browser_manager.connect()
+                    browser_manager.connect()
 
-                connected_in_thread = True
+                    connected_in_thread = True
 
-            except Exception as e:
+                except Exception as e:
 
-                self.gui.write_log(f"ERROR: Browser gagal: {e}")
+                    self.gui.write_log(f"ERROR: Browser gagal: {e}")
 
-                self.gui.update_status("ERROR")
+                    self.gui.update_status("ERROR")
 
-                return
+                    return
 
-            self.gui.write_log("Browser connected.")
+                self.gui.write_log("Browser connected.")
 
-            # ========================================
-            # Step 2: Find ASSIGNED tickets
-            # ========================================
+                self.gui.write_log(f"Step 2: Scanning {group_label} tickets...")
 
-            self.gui.write_log(f"Step 2: Scanning {group_label} tickets...")
+                self.gui.update_status("SCANNING")
 
-            self.gui.update_status("SCANNING")
+                tickets = sygap_service.find_and_process_tickets(
+                    log_callback=self.gui.write_log,
+                    group_label=group_label,
+                    group_id=group_id,
+                )
 
-            tickets = sygap_service.find_and_process_tickets(
-                log_callback=self.gui.write_log,
-                group_label=group_label,
-                group_id=group_id,
-            )
+                if not tickets:
 
-            if not tickets:
+                    self.gui.write_log("No ASSIGNED tickets found.")
 
-                self.gui.write_log("No ASSIGNED tickets found.")
+                else:
 
-                self.gui.update_status("READY")
+                    self.gui.write_log(f"Found {len(tickets)} ticket(s)!")
 
-                return
+                    for idx, t in enumerate(tickets):
 
-            self.gui.write_log(f"Found {len(tickets)} ticket(s) taken ownership on {group_label}!")
+                        code = t["request_code"]
 
-            # ========================================
-            # Step 3: Summary
-            # ========================================
+                        self.gui.write_log(f"  [{idx+1}] {code} -> IN_PROGRESS + {group_label}")
 
-            for idx, t in enumerate(tickets):
+                self.gui.write_log("")
 
-                code = t["request_code"]
+                self.gui.write_log("=" * 40)
 
-                self.gui.write_log(f"  [{idx+1}] {code} -> IN_PROGRESS + {group_label}")
+                self.gui.write_log(f"AUTO TO SELESAI ({group_label})")
 
-            self.gui.write_log("")
+                self.gui.write_log("=" * 40)
 
-            self.gui.write_log("=" * 40)
+                self.gui.write_log(f"Menunggu {LOOP_INTERVAL // 60} menit...")
 
-            self.gui.write_log(f"AUTO TO SELESAI ({group_label})")
+                self.gui.update_status("WAITING")
 
-            self.gui.write_log("=" * 40)
+                for _ in range(LOOP_INTERVAL):
 
-            self.gui.update_status("READY")
+                    if not self.running:
+
+                        break
+
+                    time.sleep(1)
 
         except Exception as e:
 
@@ -300,71 +300,81 @@ class DispatchController:
 
         try:
 
-            self.gui.write_log("Step 1: Connecting browser...")
+            while self.running:
 
-            self.gui.update_status("CONNECTING")
+                self.gui.write_log("Step 1: Connecting browser...")
 
-            if not browser_manager.is_chrome_running():
+                self.gui.update_status("CONNECTING")
 
-                self.gui.write_log("ERROR: Chrome CDP belum jalan.")
+                if not browser_manager.is_chrome_running():
 
-                self.gui.write_log("Jalankan: start_browser.bat")
+                    self.gui.write_log("ERROR: Chrome CDP belum jalan.")
 
-                self.gui.update_status("ERROR")
+                    self.gui.write_log("Jalankan: start_browser.bat")
 
-                return
+                    self.gui.update_status("ERROR")
 
-            try:
+                    return
 
-                browser_manager.connect()
+                try:
 
-                connected_in_thread = True
+                    browser_manager.connect()
 
-            except Exception as e:
+                    connected_in_thread = True
 
-                self.gui.write_log(f"ERROR: Browser gagal: {e}")
+                except Exception as e:
 
-                self.gui.update_status("ERROR")
+                    self.gui.write_log(f"ERROR: Browser gagal: {e}")
 
-                return
+                    self.gui.update_status("ERROR")
 
-            self.gui.write_log("Browser connected.")
+                    return
 
-            self.gui.write_log("Step 2: Scanning CANCLWORK tickets...")
+                self.gui.write_log("Browser connected.")
 
-            self.gui.update_status("SCANNING")
+                self.gui.write_log("Step 2: Scanning CANCLWORK tickets...")
 
-            tickets = sygap_service.process_canclwork_tickets(
-                log_callback=self.gui.write_log,
-            )
+                self.gui.update_status("SCANNING")
 
-            if not tickets:
+                tickets = sygap_service.process_canclwork_tickets(
+                    log_callback=self.gui.write_log,
+                )
 
-                self.gui.write_log("No CANCLWORK tickets found.")
+                if not tickets:
 
-                self.gui.update_status("READY")
+                    self.gui.write_log("No CANCLWORK tickets found.")
 
-                return
+                else:
 
-            self.gui.write_log(f"Found {len(tickets)} CANCLWORK ticket(s)!")
+                    self.gui.write_log(f"Found {len(tickets)} CANCLWORK ticket(s)!")
 
-            for idx, t in enumerate(tickets):
+                    for idx, t in enumerate(tickets):
 
-                code = t["request_code"]
+                        code = t["request_code"]
 
-                wo = t["wo_number"]
+                        wo = t["wo_number"]
 
-                self.gui.write_log(f"  [{idx+1}] {code} -> {wo} -> BISCUIT")
+                        self.gui.write_log(f"  [{idx+1}] {code} -> {wo} -> BISCUIT")
 
-            self.gui.write_log("")
+                self.gui.write_log("")
 
-            self.gui.write_log("=" * 40)
+                self.gui.write_log("=" * 40)
 
-            self.gui.write_log("CANCLWORK WO SELESAI")
+                self.gui.write_log("CANCLWORK WO SELESAI")
 
-            self.gui.write_log("=" * 40)
+                self.gui.write_log("=" * 40)
 
-            self.gui.update_status("READY")
+                self.gui.write_log(f"Menunggu {LOOP_INTERVAL // 60} menit...")
+
+                self.gui.update_status("WAITING")
+
+                for _ in range(LOOP_INTERVAL):
+
+                    if not self.running:
+
+                        break
+
+                    time.sleep(1)
 
         except Exception as e:
 
@@ -429,71 +439,81 @@ class DispatchController:
 
         try:
 
-            self.gui.write_log("Step 1: Connecting browser...")
+            while self.running:
 
-            self.gui.update_status("CONNECTING")
+                self.gui.write_log("Step 1: Connecting browser...")
 
-            if not browser_manager.is_chrome_running():
+                self.gui.update_status("CONNECTING")
 
-                self.gui.write_log("ERROR: Chrome CDP belum jalan.")
+                if not browser_manager.is_chrome_running():
 
-                self.gui.write_log("Jalankan: start_browser.bat")
+                    self.gui.write_log("ERROR: Chrome CDP belum jalan.")
 
-                self.gui.update_status("ERROR")
+                    self.gui.write_log("Jalankan: start_browser.bat")
 
-                return
+                    self.gui.update_status("ERROR")
 
-            try:
+                    return
 
-                browser_manager.connect()
+                try:
 
-                connected_in_thread = True
+                    browser_manager.connect()
 
-            except Exception as e:
+                    connected_in_thread = True
 
-                self.gui.write_log(f"ERROR: Browser gagal: {e}")
+                except Exception as e:
 
-                self.gui.update_status("ERROR")
+                    self.gui.write_log(f"ERROR: Browser gagal: {e}")
 
-                return
+                    self.gui.update_status("ERROR")
 
-            self.gui.write_log("Browser connected.")
+                    return
 
-            self.gui.write_log("Step 2: Scanning DISPATCH tickets...")
+                self.gui.write_log("Browser connected.")
 
-            self.gui.update_status("SCANNING")
+                self.gui.write_log("Step 2: Scanning DISPATCH tickets...")
 
-            tickets = sygap_service.process_dispatch_tickets(
-                log_callback=self.gui.write_log,
-            )
+                self.gui.update_status("SCANNING")
 
-            if not tickets:
+                tickets = sygap_service.process_dispatch_tickets(
+                    log_callback=self.gui.write_log,
+                )
 
-                self.gui.write_log("No DISPATCH tickets found.")
+                if not tickets:
 
-                self.gui.update_status("READY")
+                    self.gui.write_log("No DISPATCH tickets found.")
 
-                return
+                else:
 
-            self.gui.write_log(f"Found {len(tickets)} DISPATCH ticket(s)!")
+                    self.gui.write_log(f"Found {len(tickets)} DISPATCH ticket(s)!")
 
-            for idx, t in enumerate(tickets):
+                    for idx, t in enumerate(tickets):
 
-                code = t["request_code"]
+                        code = t["request_code"]
 
-                og = t["owner_group"]
+                        og = t.get("owner_group", t.get("type", ""))
 
-                self.gui.write_log(f"  [{idx+1}] {code} -> {og} -> BISCUIT")
+                        self.gui.write_log(f"  [{idx+1}] {code} -> {og} -> BISCUIT")
 
-            self.gui.write_log("")
+                self.gui.write_log("")
 
-            self.gui.write_log("=" * 40)
+                self.gui.write_log("=" * 40)
 
-            self.gui.write_log("DISPATCH SELESAI")
+                self.gui.write_log("DISPATCH SELESAI")
 
-            self.gui.write_log("=" * 40)
+                self.gui.write_log("=" * 40)
 
-            self.gui.update_status("READY")
+                self.gui.write_log(f"Menunggu {LOOP_INTERVAL // 60} menit...")
+
+                self.gui.update_status("WAITING")
+
+                for _ in range(LOOP_INTERVAL):
+
+                    if not self.running:
+
+                        break
+
+                    time.sleep(1)
 
         except Exception as e:
 
