@@ -336,6 +336,9 @@ class SygapService:
 
     def complete_ticket(self, ticket_page, note=""):
         try:
+            ticket_page.wait_for_load_state("domcontentloaded", timeout=10000)
+            ticket_page.wait_for_timeout(2000)
+
             btn = ticket_page.locator("button:has-text('Complete')")
             if btn.count() == 0:
                 btn = ticket_page.locator("a:has-text('Complete')")
@@ -343,22 +346,26 @@ class SygapService:
                 btn = ticket_page.locator("button:has-text('COMPLETED')")
             if btn.count() == 0:
                 btn = ticket_page.locator("button:has-text('completed')")
+            if btn.count() == 0:
+                btn = ticket_page.locator("button:has-text('Completed')")
             if btn.count() > 0:
                 print(f"    [COMPLETE] Clicking Complete button...")
+                btn.first.scroll_into_view_if_needed()
+                ticket_page.wait_for_timeout(500)
                 btn.first.click()
-                ticket_page.wait_for_timeout(3000)
+                ticket_page.wait_for_timeout(4000)
 
                 if note:
                     print(f"    [COMPLETE] Looking for textbox in dialog...")
                     note_box = None
 
                     selectors = [
+                        ".modal.show .ck-editor__editable",
+                        ".modal.show [contenteditable='true']",
+                        ".modal.show textarea",
                         ".modal .ck-editor__editable:visible",
                         ".modal [contenteditable='true']:visible",
                         ".modal textarea:visible",
-                        ".dialog .ck-editor__editable:visible",
-                        ".dialog [contenteditable='true']:visible",
-                        ".dialog textarea:visible",
                         "[role='dialog'] .ck-editor__editable:visible",
                         "[role='dialog'] [contenteditable='true']:visible",
                         "[role='dialog'] textarea:visible",
@@ -388,22 +395,25 @@ class SygapService:
                         print(f"    [COMPLETE] Typed: {note}")
                     else:
                         print(f"    [COMPLETE] Textbox NOT found!")
+                        return False
 
                 submit_btn = ticket_page.locator("#btn_submit_complete")
                 print(f"    [COMPLETE] Submit button found: {submit_btn.count()}")
-                if submit_btn.count() > 0 and submit_btn.is_visible():
-                    submit_btn.click()
-                    print(f"    [COMPLETE] Submit clicked")
-                    ticket_page.wait_for_timeout(3000)
-                    return True
-                else:
-                    print(f"    [COMPLETE] Submit not found/visible, trying fallback...")
-                    confirm = ticket_page.locator("button:has-text('Yes'), button:has-text('OK'), button:has-text('Confirm'), button:has-text('Submit')")
-                    print(f"    [COMPLETE] Fallback buttons found: {confirm.count()}")
-                    if confirm.count() > 0:
-                        confirm.first.click()
+                if submit_btn.count() > 0:
+                    submit_btn.scroll_into_view_if_needed()
+                    ticket_page.wait_for_timeout(500)
+                    if submit_btn.is_visible():
+                        submit_btn.click()
+                        print(f"    [COMPLETE] Submit clicked")
                         ticket_page.wait_for_timeout(3000)
                         return True
+                print(f"    [COMPLETE] Submit not found/visible, trying fallback...")
+                confirm = ticket_page.locator("button:has-text('Yes'), button:has-text('OK'), button:has-text('Confirm'), button:has-text('Submit')")
+                print(f"    [COMPLETE] Fallback buttons found: {confirm.count()}")
+                if confirm.count() > 0:
+                    confirm.first.click()
+                    ticket_page.wait_for_timeout(3000)
+                    return True
             else:
                 print(f"    [COMPLETE] Complete button NOT found!")
         except Exception as e:
