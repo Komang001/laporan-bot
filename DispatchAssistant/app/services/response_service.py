@@ -46,13 +46,14 @@ class ResponseService:
             green_icon = latest_msg.locator("svg.text-green-400")
             green_text = latest_msg.locator("div.text-green-300")
             content = latest_msg.inner_text()
+            content_lower = content.lower()
 
-            if green_icon.count() > 0 or green_text.count() > 0:
-                status = "SUCCESS"
-            elif "berhasil" in content.lower() or "successfully" in content.lower():
-                status = "SUCCESS"
-            elif "gagal" in content.lower() or "failed" in content.lower():
+            if "gagal" in content_lower or "failed" in content_lower:
                 status = "FAILED"
+            elif "berhasil" in content_lower or "successfully" in content_lower:
+                status = "SUCCESS"
+            elif green_icon.count() > 0 or green_text.count() > 0:
+                status = "SUCCESS"
             else:
                 status = "UNKNOWN"
 

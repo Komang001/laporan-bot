@@ -654,14 +654,18 @@ class SygapService:
                         complete_note = "Cek Kembali"
                         log(f"    BISCUIT SUKSES! Complete ticket...")
                     else:
-                        complete_note = response.message
+                        complete_note = response.message[:200]
                         log(f"    BISCUIT GAGAL! Complete dengan alasan error...")
 
                     page.bring_to_front()
                     page.wait_for_timeout(1000)
                     if not ticket_page.is_closed():
                         browser_manager.activate_page(ticket_page)
-                        ticket_page.wait_for_timeout(1000)
+                        try:
+                            ticket_page.reload(wait_until="domcontentloaded", timeout=15000)
+                        except Exception:
+                            pass
+                        ticket_page.wait_for_timeout(3000)
                         completed = self.complete_ticket(ticket_page, note=complete_note)
                         if completed:
                             log(f"    Waiting COMPLETED status...")
@@ -888,13 +892,17 @@ class SygapService:
                             complete_note = "Cek Kembali"
                         else:
                             log(f"    BISCUIT GAGAL! Complete dengan alasan error...")
-                            complete_note = response.message
+                            complete_note = response.message[:200]
 
                         page.bring_to_front()
                         page.wait_for_timeout(1000)
                         if not ticket_page.is_closed():
                             browser_manager.activate_page(ticket_page)
-                            ticket_page.wait_for_timeout(1000)
+                            try:
+                                ticket_page.reload(wait_until="domcontentloaded", timeout=15000)
+                            except Exception:
+                                pass
+                            ticket_page.wait_for_timeout(3000)
                             completed = self.complete_ticket(ticket_page, note=complete_note)
                             if completed:
                                 log(f"    Waiting COMPLETED status...")
