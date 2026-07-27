@@ -8,12 +8,17 @@ CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
 CHROME_PROFILE = r"C:\ChromeDebug"
 
-# Multi-Chrome: each feature gets its own Chrome instance + CDP port
-# Jalankan start_browser.bat dengan port berbeda untuk setiap fitur
+# Multi-Chrome: each feature gets its own Chrome instance + CDP port + profile
 CHROME_PORTS = {
     "TO": 9222,
     "CANCLWORK": 9223,
     "DISPATCH": 9224,
+}
+
+CHROME_PROFILES = {
+    9222: r"C:\ChromeDebug_TO",
+    9223: r"C:\ChromeDebug_CANCLWORK",
+    9224: r"C:\ChromeDebug_DISPATCH",
 }
 
 

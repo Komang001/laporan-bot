@@ -3,6 +3,7 @@ from pathlib import Path
 import subprocess
 import socket
 import time
+import os
 
 
 class BrowserManager:
@@ -13,6 +14,7 @@ class BrowserManager:
         self.playwright = None
         self.browser = None
         self.connected = False
+        self.chrome_process = None
 
         self.cache = {
             "dashboard": None,
@@ -37,6 +39,67 @@ class BrowserManager:
         except Exception:
 
             return False
+
+    # ==================================================
+    # Launch Chrome with CDP
+    # ==================================================
+
+    def launch(self, chrome_path=None, profile_dir=None, log_callback=None):
+
+        log = log_callback or (lambda msg: None)
+
+        if self.is_chrome_running():
+            log(f"Chrome CDP port {self.cdp_port} sudah jalan.")
+            return True
+
+        from config.settings import CHROME, CHROME_PROFILES
+
+        if chrome_path is None:
+            chrome_path = CHROME
+
+        if profile_dir is None:
+            profile_dir = CHROME_PROFILES.get(self.cdp_port, f"C:\\ChromeDebug_{self.cdp_port}")
+
+        os.makedirs(profile_dir, exist_ok=True)
+
+        log(f"Launching Chrome on port {self.cdp_port}...")
+        log(f"Profile: {profile_dir}")
+
+        args = [
+            chrome_path,
+            f"--remote-debugging-port={self.cdp_port}",
+            f"--user-data-dir={profile_dir}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-default-apps",
+            "--disable-popup-blocking",
+            "--disable-extensions",
+        ]
+
+        try:
+            self.chrome_process = subprocess.Popen(
+                args,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except FileNotFoundError:
+            log(f"ERROR: Chrome tidak ditemukan: {chrome_path}")
+            return False
+        except Exception as e:
+            log(f"ERROR: Gagal launch Chrome: {e}")
+            return False
+
+        log(f"Menunggu Chrome CDP ready...")
+        for i in range(30):
+            time.sleep(1)
+            if self.is_chrome_running():
+                log(f"Chrome CDP ready! (port {self.cdp_port})")
+                return True
+            if i % 5 == 4:
+                log(f"  waiting... ({i+1}s)")
+
+        log(f"ERROR: Chrome CDP tidak ready setelah 30 detik")
+        return False
 
     # ==================================================
     # Connect (CDP only, TANPA launch Chrome)
@@ -111,6 +174,23 @@ class BrowserManager:
             self.playwright = None
 
         self.connected = False
+
+    # ==================================================
+    # Kill Chrome process (if we launched it)
+    # ==================================================
+
+    def kill_chrome(self):
+
+        if self.chrome_process:
+            try:
+                self.chrome_process.terminate()
+                self.chrome_process.wait(timeout=5)
+            except Exception:
+                try:
+                    self.chrome_process.kill()
+                except Exception:
+                    pass
+            self.chrome_process = None
 
     # ==================================================
     # Is Connected
@@ -293,6 +373,24 @@ class BrowserManager:
 
         except Exception:
             return False
+
+    # ==================================================
+    # Open URL in new tab
+    # ==================================================
+
+    def open_url(self, url):
+
+        if not self.is_connected():
+            return None
+
+        try:
+            context = self.browser.contexts[0]
+            page = context.new_page()
+            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+            self.refresh_cache()
+            return page
+        except Exception:
+            return None
 
     # ==================================================
     # Save HTML

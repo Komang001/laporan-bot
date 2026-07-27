@@ -33,19 +33,25 @@ class DispatchController:
 
         self.gui.write_log("Checking Chrome CDP...")
 
-        self.gui.update_status("CONNECTING")
+        self.gui.update_status("LAUNCHING")
 
         try:
 
             if not self.browser_manager.is_chrome_running():
 
-                self.gui.write_log("Chrome CDP belum jalan.")
+                self.gui.write_log("Chrome belum jalan. Auto-launching...")
 
-                self.gui.write_log("Jalankan: start_browser.bat")
+                launched = self.browser_manager.launch(
+                    log_callback=self.gui.write_log
+                )
 
-                self.gui.update_status("ERROR")
+                if not launched:
 
-                return False
+                    self.gui.write_log("ERROR: Gagal launch Chrome")
+
+                    self.gui.update_status("ERROR")
+
+                    return False
 
             self.gui.write_log("Chrome CDP OK.")
 
@@ -165,19 +171,27 @@ class DispatchController:
 
             while self.running:
 
-                self.gui.write_log("Step 1: Connecting browser...")
+                self.gui.write_log("Step 1: Launching Chrome...")
 
-                self.gui.update_status("CONNECTING")
+                self.gui.update_status("LAUNCHING")
 
                 if not self.browser_manager.is_chrome_running():
 
-                    self.gui.write_log("ERROR: Chrome CDP belum jalan.")
+                    launched = self.browser_manager.launch(
+                        log_callback=self.gui.write_log
+                    )
 
-                    self.gui.write_log("Jalankan: start_browser.bat")
+                    if not launched:
 
-                    self.gui.update_status("ERROR")
+                        self.gui.write_log("ERROR: Gagal launch Chrome")
 
-                    return
+                        self.gui.update_status("ERROR")
+
+                        return
+
+                self.gui.write_log("Step 2: Connecting browser...")
+
+                self.gui.update_status("CONNECTING")
 
                 try:
 
@@ -195,7 +209,7 @@ class DispatchController:
 
                 self.gui.write_log("Browser connected.")
 
-                self.gui.write_log(f"Step 2: Scanning {group_label} tickets...")
+                self.gui.write_log(f"Step 3: Scanning {group_label} tickets...")
 
                 self.gui.update_status("SCANNING")
 
@@ -306,19 +320,27 @@ class DispatchController:
 
             while self.running:
 
-                self.gui.write_log("Step 1: Connecting browser...")
+                self.gui.write_log("Step 1: Launching Chrome...")
 
-                self.gui.update_status("CONNECTING")
+                self.gui.update_status("LAUNCHING")
 
                 if not self.browser_manager.is_chrome_running():
 
-                    self.gui.write_log("ERROR: Chrome CDP belum jalan.")
+                    launched = self.browser_manager.launch(
+                        log_callback=self.gui.write_log
+                    )
 
-                    self.gui.write_log("Jalankan: start_browser.bat")
+                    if not launched:
 
-                    self.gui.update_status("ERROR")
+                        self.gui.write_log("ERROR: Gagal launch Chrome")
 
-                    return
+                        self.gui.update_status("ERROR")
+
+                        return
+
+                self.gui.write_log("Step 2: Connecting browser...")
+
+                self.gui.update_status("CONNECTING")
 
                 try:
 
@@ -336,7 +358,7 @@ class DispatchController:
 
                 self.gui.write_log("Browser connected.")
 
-                self.gui.write_log("Step 2: Scanning CANCLWORK tickets...")
+                self.gui.write_log("Step 3: Scanning CANCLWORK tickets...")
 
                 self.gui.update_status("SCANNING")
 
@@ -447,19 +469,27 @@ class DispatchController:
 
             while self.running:
 
-                self.gui.write_log("Step 1: Connecting browser...")
+                self.gui.write_log("Step 1: Launching Chrome...")
 
-                self.gui.update_status("CONNECTING")
+                self.gui.update_status("LAUNCHING")
 
                 if not self.browser_manager.is_chrome_running():
 
-                    self.gui.write_log("ERROR: Chrome CDP belum jalan.")
+                    launched = self.browser_manager.launch(
+                        log_callback=self.gui.write_log
+                    )
 
-                    self.gui.write_log("Jalankan: start_browser.bat")
+                    if not launched:
 
-                    self.gui.update_status("ERROR")
+                        self.gui.write_log("ERROR: Gagal launch Chrome")
 
-                    return
+                        self.gui.update_status("ERROR")
+
+                        return
+
+                self.gui.write_log("Step 2: Connecting browser...")
+
+                self.gui.update_status("CONNECTING")
 
                 try:
 
@@ -477,7 +507,7 @@ class DispatchController:
 
                 self.gui.write_log("Browser connected.")
 
-                self.gui.write_log("Step 2: Scanning DISPATCH tickets...")
+                self.gui.write_log("Step 3: Scanning DISPATCH tickets...")
 
                 self.gui.update_status("SCANNING")
 
@@ -558,22 +588,30 @@ class DispatchController:
         try:
 
             # ========================================
-            # Step 1: Connect Browser (Playwright di background thread)
+            # Step 1: Launch + Connect Browser
             # ========================================
 
-            self.gui.write_log("Step 1/4: Connecting browser...")
+            self.gui.write_log("Step 1/4: Launching Chrome...")
 
-            self.gui.update_status("CONNECTING")
+            self.gui.update_status("LAUNCHING")
 
             if not self.browser_manager.is_chrome_running():
 
-                self.gui.write_log("ERROR: Chrome CDP belum jalan.")
+                launched = self.browser_manager.launch(
+                    log_callback=self.gui.write_log
+                )
 
-                self.gui.write_log("Jalankan: start_browser.bat")
+                if not launched:
 
-                self.gui.update_status("ERROR")
+                    self.gui.write_log("ERROR: Gagal launch Chrome")
 
-                return
+                    self.gui.update_status("ERROR")
+
+                    return
+
+            self.gui.write_log("Step 2/4: Connecting browser...")
+
+            self.gui.update_status("CONNECTING")
 
             try:
 
@@ -603,7 +641,7 @@ class DispatchController:
             # Step 2: Tunggu Ticket Page
             # ========================================
 
-            self.gui.write_log("Step 2/4: Waiting for ticket page...")
+            self.gui.write_log("Step 3/4: Waiting for ticket page...")
 
             self.gui.write_log("")
 
@@ -635,7 +673,7 @@ class DispatchController:
             # Step 3: Read Ticket
             # ========================================
 
-            self.gui.write_log("Step 3/4: Reading ticket data...")
+            self.gui.write_log("Step 4/4: Reading ticket data...")
 
             self.gui.update_status("READING")
 
@@ -699,7 +737,7 @@ class DispatchController:
             # Step 4: Dispatch
             # ========================================
 
-            self.gui.write_log("Step 4/4: Dispatching...")
+            self.gui.write_log("Step 5/5: Dispatching...")
 
             self.gui.update_status("DISPATCHING")
 
