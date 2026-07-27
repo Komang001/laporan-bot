@@ -616,24 +616,27 @@ class SygapService:
                     log(f"    BISCUIT response: {response.status} - {response.message}")
 
                     if response.status == "SUCCESS":
+                        complete_note = "Cek Kembali"
                         log(f"    BISCUIT SUKSES! Complete ticket...")
-                        page.bring_to_front()
-                        page.wait_for_timeout(1000)
-                        if not ticket_page.is_closed():
-                            browser_manager.activate_page(ticket_page)
-                            ticket_page.wait_for_timeout(1000)
-                            completed = self.complete_ticket(ticket_page, note="Cek Kembali")
-                            if completed:
-                                log(f"    Waiting COMPLETED status...")
-                                is_completed = self.wait_for_completed(ticket_page)
-                                if is_completed:
-                                    log(f"    Ticket {code} -> COMPLETED")
-                                else:
-                                    log(f"    Ticket {code} status belum COMPLETED")
-                            else:
-                                log(f"    Gagal complete ticket {code}")
                     else:
-                        log(f"    BISCUIT response bukan SUKSES, skip complete")
+                        complete_note = response.message
+                        log(f"    BISCUIT GAGAL! Complete dengan alasan error...")
+
+                    page.bring_to_front()
+                    page.wait_for_timeout(1000)
+                    if not ticket_page.is_closed():
+                        browser_manager.activate_page(ticket_page)
+                        ticket_page.wait_for_timeout(1000)
+                        completed = self.complete_ticket(ticket_page, note=complete_note)
+                        if completed:
+                            log(f"    Waiting COMPLETED status...")
+                            is_completed = self.wait_for_completed(ticket_page)
+                            if is_completed:
+                                log(f"    Ticket {code} -> COMPLETED ({response.status})")
+                            else:
+                                log(f"    Ticket {code} status belum COMPLETED")
+                        else:
+                            log(f"    Gagal complete ticket {code}")
 
                     total_processed += 1
                     results.append({
@@ -819,23 +822,26 @@ class SygapService:
 
                         if response.status == "SUCCESS":
                             log(f"    BISCUIT SUKSES! Complete ticket...")
-                            page.bring_to_front()
-                            page.wait_for_timeout(1000)
-                            if not ticket_page.is_closed():
-                                browser_manager.activate_page(ticket_page)
-                                ticket_page.wait_for_timeout(1000)
-                                completed = self.complete_ticket(ticket_page, note="Cek Kembali")
-                                if completed:
-                                    log(f"    Waiting COMPLETED status...")
-                                    is_completed = self.wait_for_completed(ticket_page)
-                                    if is_completed:
-                                        log(f"    Ticket {code} -> COMPLETED")
-                                    else:
-                                        log(f"    Ticket {code} status belum COMPLETED")
-                                else:
-                                    log(f"    Gagal complete ticket {code}")
+                            complete_note = "Cek Kembali"
                         else:
-                            log(f"    BISCUIT response bukan SUKSES, skip complete")
+                            log(f"    BISCUIT GAGAL! Complete dengan alasan error...")
+                            complete_note = response.message
+
+                        page.bring_to_front()
+                        page.wait_for_timeout(1000)
+                        if not ticket_page.is_closed():
+                            browser_manager.activate_page(ticket_page)
+                            ticket_page.wait_for_timeout(1000)
+                            completed = self.complete_ticket(ticket_page, note=complete_note)
+                            if completed:
+                                log(f"    Waiting COMPLETED status...")
+                                is_completed = self.wait_for_completed(ticket_page)
+                                if is_completed:
+                                    log(f"    Ticket {code} -> COMPLETED ({response.status})")
+                                else:
+                                    log(f"    Ticket {code} status belum COMPLETED")
+                            else:
+                                log(f"    Gagal complete ticket {code}")
 
                         total_processed += 1
                         results.append({
