@@ -193,6 +193,41 @@ class SygapService:
                 continue
         return None
 
+    def read_ticket_inc(self, ticket_page):
+        """Read INC number from ticket page (header, input, or text content)"""
+        import re
+
+        selectors = [
+            "input[name$='_ticket_no']",
+            "input[name*='ticket_no']",
+            "input[name$='_request_no']",
+            "input[name*='request_no']",
+            "input[name$='_no_ticket']",
+            "#ticket_no",
+            "#request_no",
+        ]
+        for sel in selectors:
+            try:
+                loc = ticket_page.locator(sel)
+                if loc.count() > 0:
+                    val = loc.first.input_value().strip()
+                    if val:
+                        m = re.search(r'INC\d+', val, re.IGNORECASE)
+                        if m:
+                            return m.group(0).upper()
+            except Exception:
+                continue
+
+        try:
+            body_text = ticket_page.locator("body").inner_text(timeout=5000)
+            m = re.search(r'INC\d+', body_text)
+            if m:
+                return m.group(0).upper()
+        except Exception:
+            pass
+
+        return None
+
     def is_dispatch_ticket(self, note):
         if not note:
             return False
@@ -803,8 +838,8 @@ class SygapService:
                     inc_number = extract_inc_number(note)
                     print(f"    [DEBUG] OG={owner_group} | INC={inc_number} | C4={'C4' in note_upper}")
 
-                    if owner_group and inc_number:
-                        log(f"    OG: {owner_group} | INC: {inc_number}")
+                    if owner_group:
+                        log(f"    OG: {owner_group} | INC from note: {inc_number or 'N/A'}")
 
                         if status != "ASSIGNED":
                             log(f"    Status: {status} -> TO ke saya dulu...")
@@ -818,6 +853,15 @@ class SygapService:
                             log(f"    TO FAILED: {code}")
                             continue
                         log(f"    TO CONFIRMED: {code}")
+
+                        if not inc_number:
+                            log(f"    INC not in note, reading from ticket page...")
+                            inc_number = self.read_ticket_inc(ticket_page)
+                            log(f"    INC from page: {inc_number or 'NOT FOUND'}")
+
+                        if not inc_number:
+                            log(f"    INC number not found anywhere, SKIP")
+                            continue
 
                         biscuit = BiscuitService()
                         if not biscuit.open():

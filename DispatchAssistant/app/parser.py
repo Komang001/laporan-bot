@@ -84,6 +84,15 @@ def extract_inc_number(text: str):
     return None
 
 
+def extract_wo_number(text: str):
+    if not text:
+        return None
+    match = re.search(r'WO\d+', text, re.IGNORECASE)
+    if match:
+        return match.group(0).upper()
+    return None
+
+
 # =====================================================
 # Compatibility
 # =====================================================
