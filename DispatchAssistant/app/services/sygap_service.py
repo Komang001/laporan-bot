@@ -602,6 +602,16 @@ class SygapService:
             page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
             page.wait_for_timeout(2000)
 
+            info_after = page.locator("#requestFulfillmentTable_info").inner_text()
+            if "0 entries" in info_after or "0 of 0" in info_after:
+                log(f"No tickets after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                return results
+
+            processed_this_round = sum(1 for r in results if r.get("request_code") in [row["request_code"] for row in rows])
+            if processed_this_round == 0:
+                log(f"No actionable tickets. Waiting {LOOP_INTERVAL // 60} minutes...")
+                return results
+
         return results
 
     def extract_wo_number(self, note):
@@ -817,6 +827,16 @@ class SygapService:
             self.filter_canclwork(page)
             page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
             page.wait_for_timeout(2000)
+
+            info_after = page.locator("#requestFulfillmentTable_info").inner_text()
+            if "0 entries" in info_after or "0 of 0" in info_after:
+                log(f"No tickets after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                return results
+
+            processed_this_round = sum(1 for r in results if r.get("request_code") in [row["request_code"] for row in rows])
+            if processed_this_round == 0:
+                log(f"No actionable tickets. Waiting {LOOP_INTERVAL // 60} minutes...")
+                return results
 
         return results
 
@@ -1089,5 +1109,15 @@ class SygapService:
             self.filter_dispatch(page)
             page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
             page.wait_for_timeout(2000)
+
+            info_after = page.locator("#requestFulfillmentTable_info").inner_text()
+            if "0 entries" in info_after or "0 of 0" in info_after:
+                log(f"No tickets after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                return results
+
+            processed_this_round = sum(1 for r in results if r.get("request_code") in [row["request_code"] for row in rows])
+            if processed_this_round == 0:
+                log(f"No actionable tickets. Waiting {LOOP_INTERVAL // 60} minutes...")
+                return results
 
         return results
