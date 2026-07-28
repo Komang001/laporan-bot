@@ -798,25 +798,6 @@ class SygapService:
                         log(f"    SAFETY: No CANCELWORK in note, SKIP")
                         continue
 
-                    has_osm = any(kw in note_upper for kw in ["OSM", "SOM", "TOM"])
-                    if not has_osm:
-                        warn = "untuk permintaan CANCLWORK pastikan status OSM sudah CANCEL COMPLETE atau ABORTED"
-                        log(f"    SAFETY: No OSM/SOM/TOM in note")
-                        log(f"    Complete ticket dengan note: {warn}")
-                        self.complete_ticket(ticket_page, note=warn)
-                        page.bring_to_front()
-                        continue
-
-                    wo_number = self.extract_wo_number(note)
-                    if not wo_number:
-                        wo_number = self.read_wo_from_field(ticket_page)
-                        if wo_number:
-                            log(f"    WO from field: {wo_number}")
-                    if not wo_number:
-                        log(f"    WO number not found anywhere, SKIP")
-                        continue
-                    log(f"    WO found: {wo_number}")
-
                     current_solver = ticket_page.locator("#id_coordinator")
                     solver_val = ""
                     if current_solver.count() > 0:
@@ -835,6 +816,25 @@ class SygapService:
                         log(f"    TO CONFIRMED: {code}")
                     else:
                         log(f"    Solver sudah saya, skip TO")
+
+                    has_osm = any(kw in note_upper for kw in ["OSM", "SOM", "TOM"])
+                    if not has_osm:
+                        warn = "untuk permintaan CANCLWORK pastikan status OSM sudah CANCEL COMPLETE atau ABORTED"
+                        log(f"    SAFETY: No OSM/SOM/TOM in note")
+                        log(f"    Complete ticket dengan note: {warn}")
+                        self.complete_ticket(ticket_page, note=warn)
+                        page.bring_to_front()
+                        continue
+
+                    wo_number = self.extract_wo_number(note)
+                    if not wo_number:
+                        wo_number = self.read_wo_from_field(ticket_page)
+                        if wo_number:
+                            log(f"    WO from field: {wo_number}")
+                    if not wo_number:
+                        log(f"    WO number not found anywhere, SKIP")
+                        continue
+                    log(f"    WO found: {wo_number}")
 
                     biscuit = BiscuitService(browser_manager=self.browser_manager)
                     if not biscuit.open():
