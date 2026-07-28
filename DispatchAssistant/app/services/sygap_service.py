@@ -768,7 +768,7 @@ class SygapService:
                 code = row_info["request_code"]
                 status = row_info["status"]
 
-                if status in ("COMPLETED", "COMPLETE", "IN_PROGRESS"):
+                if status in ("COMPLETED", "COMPLETE"):
                     log(f"  [{i+1}] {code} - SKIP (status: {status})")
                     continue
 
