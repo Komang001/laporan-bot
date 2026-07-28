@@ -661,6 +661,47 @@ class SygapService:
         except Exception as e:
             print(f"Filter CANCLWORK error: {e}")
 
+    def filter_cancelwork(self, page):
+        try:
+            page.locator("#searchSelect").select_option(label="OPEN")
+            page.wait_for_timeout(500)
+
+            adv_link = page.locator('a[href="#multiCollapseExample1"]')
+            if adv_link.count() > 0:
+                adv_link.click()
+            page.wait_for_selector("#multiCollapseExample1.show", timeout=5000)
+            page.wait_for_timeout(500)
+
+            notes_input = page.locator("#notes")
+            if notes_input.count() == 0:
+                notes_input = page.locator("input[name='notes']")
+            if notes_input.count() > 0:
+                notes_input.fill("")
+                page.wait_for_timeout(300)
+                notes_input.fill("CANCELWORK")
+                page.wait_for_timeout(500)
+            else:
+                print("WARNING: Notes input field not found!")
+                return
+
+            verify_val = notes_input.input_value().strip()
+            print(f"Notes filter value: '{verify_val}'")
+            if "CANCELWORK" not in verify_val:
+                print("FAILED to set Notes filter!")
+                return
+
+            page.locator("#btn_apply").click()
+            page.wait_for_timeout(4000)
+
+            notes_val_after = notes_input.input_value().strip()
+            print(f"Notes after Apply: '{notes_val_after}'")
+
+            rows = page.locator("#requestFulfillmentTable tbody tr")
+            count = rows.count()
+            print(f"Filter CANCELWORK: {count} row(s) found")
+        except Exception as e:
+            print(f"Filter CANCELWORK error: {e}")
+
     def process_canclwork_tickets(self, log_callback=None):
         from app.services.biscuit_service import BiscuitService
         log = log_callback or (lambda msg: None)
@@ -669,24 +710,42 @@ class SygapService:
         page = self.navigate_to_dashboard()
         log(f"Dashboard loaded: {page.url[:60]}")
 
-        self.filter_canclwork(page)
-        log("Filtered: OPEN + CANCLWORK")
+        filters = ["CANCLWORK", "CANCELWORK"]
+        filter_idx = 0
+        current_filter = filters[filter_idx]
 
-        page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
-        page.wait_for_timeout(2000)
+        def apply_filter(filter_name):
+            if filter_name == "CANCLWORK":
+                self.filter_canclwork(page)
+            else:
+                self.filter_cancelwork(page)
+            page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
+            page.wait_for_timeout(2000)
+
+        apply_filter(current_filter)
+        log(f"Filtered: OPEN + {current_filter}")
 
         total_processed = 0
 
         while True:
             info_text = page.locator("#requestFulfillmentTable_info").inner_text()
-            log(f"--- {info_text} ---")
+            log(f"--- {current_filter} | {info_text} ---")
 
             rows = self.get_ticket_rows(page)
             log(f"Found {len(rows)} row(s)")
 
             if len(rows) == 0:
-                log(f"No tickets found. Waiting {LOOP_INTERVAL // 60} minutes...")
-                return results
+                filter_idx += 1
+                if filter_idx < len(filters):
+                    current_filter = filters[filter_idx]
+                    log(f"No {filters[filter_idx-1]} tickets. Switching to {current_filter}...")
+                    apply_filter(current_filter)
+                    continue
+                else:
+                    log(f"No tickets found. Waiting {LOOP_INTERVAL // 60} minutes...")
+                    return results
+
+            processed_this_round = 0
 
             for i, row_info in enumerate(rows):
                 code = row_info["request_code"]
@@ -713,15 +772,18 @@ class SygapService:
                     note_short = note[:100] + "..." if len(note) > 100 else note
                     log(f"    Note: {note_short}")
 
-                    if "CANCLWORK" not in note.upper():
+                    note_upper = note.upper()
+                    if current_filter == "CANCLWORK" and "CANCLWORK" not in note_upper:
                         log(f"    SAFETY: No CANCLWORK in note, SKIP")
                         continue
+                    if current_filter == "CANCELWORK" and "CANCELWORK" not in note_upper:
+                        log(f"    SAFETY: No CANCELWORK in note, SKIP")
+                        continue
 
-                    note_upper = note.upper()
                     has_osm = any(kw in note_upper for kw in ["OSM", "SOM", "TOM"])
                     if not has_osm:
                         log(f"    SAFETY: No OSM/SOM/TOM in note")
-                        log(f"    Untuk permintaan CANCLWORK, pastikan status OSM sudah CANCEL COMPLETE atau ABORTED")
+                        log(f"    Pastikan status OSM sudah CANCEL COMPLETE atau ABORTED")
                         log(f"    SKIP")
                         continue
 
@@ -735,7 +797,6 @@ class SygapService:
                         continue
                     log(f"    WO found: {wo_number}")
 
-                    # Cek solver saat ini
                     current_solver = ticket_page.locator("#id_coordinator")
                     solver_val = ""
                     if current_solver.count() > 0:
@@ -803,6 +864,7 @@ class SygapService:
                         else:
                             log(f"    Gagal complete ticket {code}")
 
+                    processed_this_round += 1
                     total_processed += 1
                     results.append({
                         "request_code": code,
@@ -824,19 +886,30 @@ class SygapService:
                     page.wait_for_timeout(1500)
 
             log(f"Page done. Re-applying filter...")
-            self.filter_canclwork(page)
-            page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
-            page.wait_for_timeout(2000)
+            apply_filter(current_filter)
 
             info_after = page.locator("#requestFulfillmentTable_info").inner_text()
             if "0 entries" in info_after or "0 of 0" in info_after:
-                log(f"No tickets after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
-                return results
+                filter_idx += 1
+                if filter_idx < len(filters):
+                    current_filter = filters[filter_idx]
+                    log(f"No {filters[filter_idx-1]} tickets. Switching to {current_filter}...")
+                    apply_filter(current_filter)
+                    continue
+                else:
+                    log(f"No tickets after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                    return results
 
-            processed_this_round = sum(1 for r in results if r.get("request_code") in [row["request_code"] for row in rows])
             if processed_this_round == 0:
-                log(f"No actionable tickets. Waiting {LOOP_INTERVAL // 60} minutes...")
-                return results
+                filter_idx += 1
+                if filter_idx < len(filters):
+                    current_filter = filters[filter_idx]
+                    log(f"No actionable {filters[filter_idx-1]} tickets. Switching to {current_filter}...")
+                    apply_filter(current_filter)
+                    continue
+                else:
+                    log(f"No actionable tickets. Waiting {LOOP_INTERVAL // 60} minutes...")
+                    return results
 
         return results
 
