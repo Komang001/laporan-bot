@@ -1035,8 +1035,8 @@ class SygapService:
                 code = row_info["request_code"]
                 status = row_info["status"]
 
-                if status == "COMPLETED":
-                    log(f"  [{i+1}] {code} - SKIP (already COMPLETED)")
+                if status in ("COMPLETED", "COMPLETE"):
+                    log(f"  [{i+1}] {code} - SKIP (status: {status})")
                     continue
 
                 if code in self.processed_ids:
