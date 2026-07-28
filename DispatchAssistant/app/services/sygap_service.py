@@ -719,10 +719,25 @@ class SygapService:
                 self.filter_canclwork(page)
             else:
                 self.filter_cancelwork(page)
-            page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
-            page.wait_for_timeout(2000)
+            try:
+                page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
+                page.wait_for_timeout(2000)
+                return True
+            except Exception:
+                log(f"No rows found for {filter_name}")
+                return False
 
-        apply_filter(current_filter)
+        if not apply_filter(current_filter):
+            log(f"No tickets for {current_filter}. Switching...")
+            filter_idx += 1
+            if filter_idx < len(filters):
+                current_filter = filters[filter_idx]
+                if not apply_filter(current_filter):
+                    log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                    return results
+            else:
+                log(f"No tickets found. Waiting {LOOP_INTERVAL // 60} minutes...")
+                return results
         log(f"Filtered: OPEN + {current_filter}")
 
         total_processed = 0
@@ -739,7 +754,9 @@ class SygapService:
                 if filter_idx < len(filters):
                     current_filter = filters[filter_idx]
                     log(f"No {filters[filter_idx-1]} tickets. Switching to {current_filter}...")
-                    apply_filter(current_filter)
+                    if not apply_filter(current_filter):
+                        log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                        return results
                     continue
                 else:
                     log(f"No tickets found. Waiting {LOOP_INTERVAL // 60} minutes...")
@@ -751,8 +768,8 @@ class SygapService:
                 code = row_info["request_code"]
                 status = row_info["status"]
 
-                if status == "COMPLETED":
-                    log(f"  [{i+1}] {code} - SKIP (already COMPLETED)")
+                if status in ("COMPLETED", "COMPLETE", "IN_PROGRESS"):
+                    log(f"  [{i+1}] {code} - SKIP (status: {status})")
                     continue
 
                 if code in self.processed_ids:
@@ -782,9 +799,11 @@ class SygapService:
 
                     has_osm = any(kw in note_upper for kw in ["OSM", "SOM", "TOM"])
                     if not has_osm:
+                        warn = "untuk permintaan CANCLWORK pastikan status OSM sudah CANCEL COMPLETE atau ABORTED"
                         log(f"    SAFETY: No OSM/SOM/TOM in note")
-                        log(f"    Pastikan status OSM sudah CANCEL COMPLETE atau ABORTED")
-                        log(f"    SKIP")
+                        log(f"    Complete ticket dengan note: {warn}")
+                        self.complete_ticket(ticket_page, note=warn)
+                        page.bring_to_front()
                         continue
 
                     wo_number = self.extract_wo_number(note)
@@ -886,7 +905,9 @@ class SygapService:
                     page.wait_for_timeout(1500)
 
             log(f"Page done. Re-applying filter...")
-            apply_filter(current_filter)
+            if not apply_filter(current_filter):
+                log(f"No rows after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                return results
 
             info_after = page.locator("#requestFulfillmentTable_info").inner_text()
             if "0 entries" in info_after or "0 of 0" in info_after:
@@ -894,7 +915,9 @@ class SygapService:
                 if filter_idx < len(filters):
                     current_filter = filters[filter_idx]
                     log(f"No {filters[filter_idx-1]} tickets. Switching to {current_filter}...")
-                    apply_filter(current_filter)
+                    if not apply_filter(current_filter):
+                        log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                        return results
                     continue
                 else:
                     log(f"No tickets after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
@@ -905,7 +928,9 @@ class SygapService:
                 if filter_idx < len(filters):
                     current_filter = filters[filter_idx]
                     log(f"No actionable {filters[filter_idx-1]} tickets. Switching to {current_filter}...")
-                    apply_filter(current_filter)
+                    if not apply_filter(current_filter):
+                        log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                        return results
                     continue
                 else:
                     log(f"No actionable tickets. Waiting {LOOP_INTERVAL // 60} minutes...")
