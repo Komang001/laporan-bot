@@ -777,6 +777,7 @@ class SygapService:
                     continue
 
                 total_processed += 1
+                processed_this_round += 1
                 log(f"  [{i+1}/{len(rows)}] Opening {code}...")
 
                 ticket_page = self.click_ticket(page, row_info)
@@ -883,8 +884,6 @@ class SygapService:
                         else:
                             log(f"    Gagal complete ticket {code}")
 
-                    processed_this_round += 1
-                    total_processed += 1
                     results.append({
                         "request_code": code,
                         "wo_number": wo_number,
