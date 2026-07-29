@@ -149,6 +149,8 @@ class SygapService:
                         continue
                     if "biscuit" in url and "tools" in url:
                         continue
+                    if "oss-incident.telkom.co.id" in url:
+                        continue
                     p.close()
             except Exception:
                 pass
