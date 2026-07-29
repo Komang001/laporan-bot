@@ -1192,12 +1192,18 @@ class SygapService:
                     gamas_page.wait_for_load_state("domcontentloaded", timeout=15000)
                     gamas_page.wait_for_timeout(3000)
 
+                    page_url = gamas_page.url.lower()
+                    if "login" in page_url or "index" in page_url:
+                        log(f"    INSERA belum login! Buka tab INSERA lalu login manual.")
+                        log(f"    URL: {gamas_page.url[:80]}")
+                        continue
+
                     child_field = gamas_page.locator("#child_ticket")
                     parent_field = gamas_page.locator("#parent_ticket")
 
                     if child_field.count() == 0 or parent_field.count() == 0:
                         log(f"    Gamas Relations form fields not found!")
-                        gamas_page.close()
+                        log(f"    URL: {gamas_page.url[:80]}")
                         continue
 
                     child_field.fill(child_str)

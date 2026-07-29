@@ -979,8 +979,12 @@ class DispatchController:
                 )
 
                 self.gui.write_log("")
-                self.gui.write_log("Pastikan sudah login ke INSERA (oss-incident.telkom.co.id)")
-                self.gui.write_log("Buka tab INSERA secara manual jika belum login.")
+                self.gui.write_log("============================================")
+                self.gui.write_log("LOGIN INSERA DULU sebelum mulai scan!")
+                self.gui.write_log("Buka tab INSERA lalu login ke:")
+                self.gui.write_log("https://oss-incident.telkom.co.id")
+                self.gui.write_log("Setelah login, bot akan mulai scan.")
+                self.gui.write_log("============================================")
                 self.gui.write_log("")
 
                 self.gui.write_log("Step 3: Scanning GAMAS tickets...")
