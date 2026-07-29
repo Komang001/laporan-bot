@@ -287,7 +287,6 @@ class SygapService:
             "input[name$='_ticket_no']",
             "input[name*='ticket_no']",
         ]
-        ]
         for sel in selectors:
             try:
                 loc = ticket_page.locator(sel)
