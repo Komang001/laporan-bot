@@ -1210,36 +1210,29 @@ class SygapService:
                     log(f"    Child INCs ({len(child_incs)}): {','.join(child_incs[:5])}...")
 
                     child_str = ",".join(child_incs)
-                    log(f"    Opening Gamas Relations page...")
 
-                    gamas_page = self.browser_manager.open_url(
-                        "https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/gamasRelations"
-                    )
-                    if gamas_page is None:
-                        log(f"    Failed to open Gamas Relations page")
+                    from app.services.insera_gamas_service import InseraGamasService
+                    insera = InseraGamasService(browser_manager=self.browser_manager)
+                    if not insera.open():
+                        log(f"    INSERA tab not found! Buka tab INSERA lalu login.")
                         continue
 
-                    gamas_page.wait_for_load_state("domcontentloaded", timeout=15000)
-                    gamas_page.wait_for_timeout(3000)
+                    if not insera.navigate_to_relations():
+                        log(f"    Failed navigate to Gamas Relations")
+                        continue
 
-                    page_url = gamas_page.url.lower()
+                    page_url = insera.get_page().url.lower()
                     if "login" in page_url or "index" in page_url:
-                        log(f"    INSERA belum login! Buka tab INSERA lalu login manual.")
-                        log(f"    URL: {gamas_page.url[:80]}")
+                        log(f"    INSERA belum login! Login manual dulu.")
                         continue
 
-                    child_field = gamas_page.locator("#child_ticket")
-                    parent_field = gamas_page.locator("#parent_ticket")
-
-                    if child_field.count() == 0 or parent_field.count() == 0:
-                        log(f"    Gamas Relations form fields not found!")
-                        log(f"    URL: {gamas_page.url[:80]}")
+                    if not insera.fill_parent(parent_inc):
+                        log(f"    Failed fill parent field")
                         continue
 
-                    child_field.fill(child_str)
-                    gamas_page.wait_for_timeout(500)
-                    parent_field.fill(parent_inc)
-                    gamas_page.wait_for_timeout(500)
+                    if not insera.fill_child(child_str):
+                        log(f"    Failed fill child field")
+                        continue
 
                     log(f"    Parent: {parent_inc}")
                     log(f"    Child: {child_str[:100]}...")

@@ -289,6 +289,7 @@ class BrowserManager:
             "dashboard": None,
             "biscuit": None,
             "ticket": None,
+            "insera_gamas": None,
         }
 
         for page in self.get_pages():
@@ -315,6 +316,10 @@ class BrowserManager:
                 elif "biscuit-dashboard" in url:
 
                     self.cache["biscuit"] = page
+
+                elif "oss-incident.telkom.co.id" in url:
+
+                    self.cache["insera_gamas"] = page
 
             except Exception:
                 continue
@@ -355,6 +360,20 @@ class BrowserManager:
 
         self.refresh_cache()
         return self.cache.get("biscuit")
+
+    # ==================================================
+    # INSERA Gamas
+    # ==================================================
+
+    def get_insera_gamas_page(self):
+
+        page = self.cache.get("insera_gamas")
+
+        if self.is_page_alive(page):
+            return page
+
+        self.refresh_cache()
+        return self.cache.get("insera_gamas")
 
     # ==================================================
     # Activate Page
@@ -449,16 +468,19 @@ class BrowserManager:
 
         log = log_callback or (lambda msg: None)
 
-        from config.settings import DASHBOARD_URL
+        from config.settings import DASHBOARD_URL, GAMAS_RELATIONS_URL
 
         existing = self.get_pages()
         has_sygap = False
+        has_insera = False
 
         for p in existing:
             try:
                 url = p.url.lower()
                 if "sygap.telkom.co.id" in url:
                     has_sygap = True
+                if "oss-incident.telkom.co.id" in url:
+                    has_insera = True
             except Exception:
                 continue
 
@@ -470,12 +492,23 @@ class BrowserManager:
             else:
                 log("WARNING: Gagal buka SYGAP")
 
+        if not has_insera:
+            log(f"Opening INSERA GAMAS: {GAMAS_RELATIONS_URL[:50]}...")
+            page = self.open_url(GAMAS_RELATIONS_URL)
+            if page:
+                log("INSERA GAMAS tab opened.")
+                log("Pastikan sudah login ke INSERA!")
+            else:
+                log("WARNING: Gagal buka INSERA GAMAS")
+
         self.refresh_cache()
 
-        if has_sygap:
-            log("SYGAP tab already open.")
-        else:
-            log("SYGAP tab opened.")
+        if has_sygap and has_insera:
+            log("SYGAP & INSERA tabs already open.")
+        elif has_sygap:
+            log("INSERA tab opened. SYGAP already open.")
+        elif has_insera:
+            log("SYGAP tab opened. INSERA already open.")
 
     # ==================================================
     # Save HTML
