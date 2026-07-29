@@ -974,7 +974,7 @@ class DispatchController:
 
                 self.gui.write_log("Opening SYGAP + INSERA tabs...")
 
-                self.browser_manager.open_required_tabs(
+                self.browser_manager.open_required_tabs_gamas(
                     log_callback=self.gui.write_log
                 )
 

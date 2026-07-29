@@ -442,6 +442,55 @@ class BrowserManager:
             log("SYGAP tab opened. BISCUIT already open.")
 
     # ==================================================
+    # Open SYGAP + INSERA tabs (for GAMAS RELATIONS)
+    # ==================================================
+
+    def open_required_tabs_gamas(self, log_callback=None):
+
+        log = log_callback or (lambda msg: None)
+
+        from config.settings import DASHBOARD_URL, GAMAS_RELATIONS_URL
+
+        existing = self.get_pages()
+        has_sygap = False
+        has_insera = False
+
+        for p in existing:
+            try:
+                url = p.url.lower()
+                if "sygap.telkom.co.id" in url:
+                    has_sygap = True
+                if "oss-incident.telkom.co.id" in url:
+                    has_insera = True
+            except Exception:
+                continue
+
+        if not has_sygap:
+            log(f"Opening SYGAP: {DASHBOARD_URL[:50]}...")
+            page = self.open_url(DASHBOARD_URL)
+            if page:
+                log("SYGAP tab opened.")
+            else:
+                log("WARNING: Gagal buka SYGAP")
+
+        if not has_insera:
+            log(f"Opening INSERA GAMAS: {GAMAS_RELATIONS_URL[:50]}...")
+            page = self.open_url(GAMAS_RELATIONS_URL)
+            if page:
+                log("INSERA GAMAS tab opened.")
+            else:
+                log("WARNING: Gagal buka INSERA GAMAS")
+
+        self.refresh_cache()
+
+        if has_sygap and has_insera:
+            log("SYGAP & INSERA tabs already open.")
+        elif has_sygap:
+            log("INSERA tab opened. SYGAP already open.")
+        elif has_insera:
+            log("SYGAP tab opened. INSERA already open.")
+
+    # ==================================================
     # Save HTML
     # ==================================================
 
