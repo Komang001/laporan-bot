@@ -287,6 +287,7 @@ class SygapService:
             "input[name$='_ticket_no']",
             "input[name*='ticket_no']",
         ]
+        ]
         for sel in selectors:
             try:
                 loc = ticket_page.locator(sel)
@@ -323,6 +324,68 @@ class SygapService:
             pass
 
         return None
+
+    def extract_child_incs_from_note(self, note):
+        """Extract child INC numbers from ticket note.
+        
+        Looks for comma-separated INC numbers in the note text.
+        Returns list of INC numbers (uppercase).
+        """
+        import re
+        if not note:
+            return []
+
+        matches = re.findall(r'INC\d+', note, re.IGNORECASE)
+        if len(matches) > 1:
+            return [m.upper() for m in matches]
+
+        return []
+
+    def read_child_incs_from_field(self, ticket_page):
+        """Read child INC numbers from 'INSERA - Ticket ID' field.
+        
+        First tries to find a field labeled 'Ticket ID' or 'INSERA - Ticket ID'
+        that contains comma-separated INC numbers.
+        Falls back to reading all INC numbers from the page body.
+        """
+        import re
+
+        selectors = [
+            "input[name$='_ticket_id']",
+            "input[name*='ticket_id']",
+            "textarea[name$='_ticket_id']",
+            "textarea[name*='ticket_id']",
+            "input[name$='_ticket_no']",
+            "input[name*='ticket_no']",
+        ]
+        for sel in selectors:
+            try:
+                loc = ticket_page.locator(sel)
+                if loc.count() > 0:
+                    val = loc.first.input_value().strip()
+                    if val:
+                        matches = re.findall(r'INC\d+', val, re.IGNORECASE)
+                        if len(matches) > 1:
+                            return [m.upper() for m in matches]
+            except Exception:
+                continue
+
+        try:
+            id_labels = ticket_page.locator("label:has-text('Ticket ID'), label:has-text('INSERA'), label:has-text('Ticket No')")
+            for idx in range(id_labels.count()):
+                label = id_labels.nth(idx)
+                container = label.locator("xpath=ancestor::div[contains(@class,'form') or contains(@class,'field') or contains(@class,'group')][1]")
+                inp = container.locator("input[type='text'], input:not([type]), textarea")
+                if inp.count() > 0:
+                    val = inp.first.input_value().strip()
+                    if val:
+                        matches = re.findall(r'INC\d+', val, re.IGNORECASE)
+                        if len(matches) > 1:
+                            return [m.upper() for m in matches]
+        except Exception:
+            pass
+
+        return []
 
     def is_dispatch_ticket(self, note):
         if not note:
@@ -1000,7 +1063,183 @@ class SygapService:
         except Exception as e:
             print(f"Filter DISPATCH error: {e}")
 
-    def process_dispatch_tickets(self, log_callback=None):
+    def filter_gamas_relations(self, page):
+        try:
+            page.locator("#searchSelect").select_option(label="OPEN")
+            page.wait_for_timeout(500)
+
+            adv_link = page.locator('a[href="#multiCollapseExample1"]')
+            if adv_link.count() > 0:
+                adv_link.click()
+            page.wait_for_selector("#multiCollapseExample1.show", timeout=5000)
+            page.wait_for_timeout(500)
+
+            notes_input = page.locator("#notes")
+            if notes_input.count() == 0:
+                notes_input = page.locator("input[name='notes']")
+            if notes_input.count() > 0:
+                notes_input.fill("")
+                page.wait_for_timeout(300)
+                notes_input.fill("gamas")
+                page.wait_for_timeout(500)
+            else:
+                print("WARNING: Notes input field not found!")
+                return
+
+            from config.settings import INSERA_GROUP_ID
+            js_set_og = f"""
+            (function() {{
+                var el = document.getElementById('solverGroupSearch');
+                if (el && window.jQuery) {{
+                    var $el = jQuery(el);
+                    $el.empty();
+                    $el.append(new Option('MO-INSERA', '{INSERA_GROUP_ID}', true, true));
+                    $el.val('{INSERA_GROUP_ID}').trigger('change');
+                }}
+            }})();
+            """
+            page.evaluate(js_set_og)
+            page.wait_for_timeout(1000)
+
+            page.locator("#btn_apply").click()
+            page.wait_for_timeout(4000)
+
+            rows = page.locator("#requestFulfillmentTable tbody tr")
+            count = rows.count()
+            print(f"Filter GAMAS RELATIONS: {count} row(s) found")
+        except Exception as e:
+            print(f"Filter GAMAS RELATIONS error: {e}")
+
+    def process_gamas_relations_tickets(self, log_callback=None):
+        log = log_callback or (lambda msg: None)
+        results = []
+
+        page = self.navigate_to_dashboard()
+        log(f"Dashboard loaded: {page.url[:60]}")
+
+        self.filter_gamas_relations(page)
+        log("Filtered: OPEN + gamas + MO-INSERA")
+
+        try:
+            page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
+        except Exception:
+            log("No tickets found after filter")
+            return results
+        page.wait_for_timeout(2000)
+
+        total_processed = 0
+
+        while True:
+            info_text = page.locator("#requestFulfillmentTable_info").inner_text()
+            log(f"--- {info_text} ---")
+
+            rows = self.get_ticket_rows(page)
+            log(f"Found {len(rows)} row(s)")
+
+            if len(rows) == 0:
+                log(f"No tickets found. Waiting {LOOP_INTERVAL // 60} minutes...")
+                return results
+
+            for i, row_info in enumerate(rows):
+                code = row_info["request_code"]
+                status = row_info["status"]
+
+                if status in ("COMPLETED", "COMPLETE"):
+                    log(f"  [{i+1}] {code} - SKIP (status: {status})")
+                    continue
+
+                if code in self.processed_ids:
+                    log(f"  [{i+1}] {code} - SKIP (already processed)")
+                    continue
+
+                total_processed += 1
+                log(f"  [{i+1}/{len(rows)}] Opening {code}...")
+
+                ticket_page = self.click_ticket(page, row_info)
+                if ticket_page is None:
+                    log(f"    Failed to open {code}")
+                    continue
+
+                try:
+                    parent_inc = self.read_ticket_inc(ticket_page)
+                    if not parent_inc:
+                        parent_inc = self.read_ticket_id_from_field(ticket_page)
+                    if not parent_inc:
+                        log(f"    Parent INC not found, SKIP")
+                        continue
+                    log(f"    Parent INC: {parent_inc}")
+
+                    note = self.read_ticket_note(ticket_page)
+                    child_incs = self.extract_child_incs_from_note(note)
+                    if not child_incs:
+                        child_incs = self.read_child_incs_from_field(ticket_page)
+                    if not child_incs:
+                        log(f"    No child INCs found, SKIP")
+                        continue
+                    log(f"    Child INCs ({len(child_incs)}): {','.join(child_incs[:5])}...")
+
+                    child_str = ",".join(child_incs)
+                    log(f"    Opening Gamas Relations page...")
+
+                    gamas_page = self.browser_manager.open_url(
+                        "https://oss-incident.telkom.co.id/jw/web/userview/ticketIncidentService/ticketIncidentService/_/gamasRelations"
+                    )
+                    if gamas_page is None:
+                        log(f"    Failed to open Gamas Relations page")
+                        continue
+
+                    gamas_page.wait_for_load_state("domcontentloaded", timeout=15000)
+                    gamas_page.wait_for_timeout(3000)
+
+                    child_field = gamas_page.locator("#child_ticket")
+                    parent_field = gamas_page.locator("#parent_ticket")
+
+                    if child_field.count() == 0 or parent_field.count() == 0:
+                        log(f"    Gamas Relations form fields not found!")
+                        gamas_page.close()
+                        continue
+
+                    child_field.fill(child_str)
+                    gamas_page.wait_for_timeout(500)
+                    parent_field.fill(parent_inc)
+                    gamas_page.wait_for_timeout(500)
+
+                    log(f"    Parent: {parent_inc}")
+                    log(f"    Child: {child_str[:100]}...")
+                    log(f"    Fields filled. Waiting for save...")
+
+                    results.append({
+                        "request_code": code,
+                        "parent_inc": parent_inc,
+                        "child_incs": child_incs,
+                    })
+
+                except Exception as e:
+                    log(f"    Error: {e}")
+                finally:
+                    try:
+                        if not ticket_page.is_closed():
+                            ticket_page.close()
+                    except Exception:
+                        pass
+                    self.processed_ids.add(code)
+                    self._close_extra_tabs(page)
+                    page.wait_for_timeout(1500)
+
+            log(f"Page done. Re-applying filter...")
+            self.filter_gamas_relations(page)
+            page.wait_for_timeout(3000)
+
+            info_after = page.locator("#requestFulfillmentTable_info").inner_text()
+            if "0 entries" in info_after or "0 of 0" in info_after:
+                log(f"No tickets after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                return results
+
+            if total_processed == 0:
+                log(f"No actionable tickets. Waiting {LOOP_INTERVAL // 60} minutes...")
+                return results
+
+        return results
         from app.services.biscuit_service import BiscuitService
         log = log_callback or (lambda msg: None)
         results = []

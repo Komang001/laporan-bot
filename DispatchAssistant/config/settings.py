@@ -33,6 +33,11 @@ BISCUIT_URL = (
     "/helpdesk/tools/inseratools"
 )
 
+GAMAS_RELATIONS_URL = (
+    "https://oss-incident.telkom.co.id"
+    "/jw/web/userview/ticketIncidentService/ticketIncidentService/_/gamasRelations"
+)
+
 
 # ==================================================
 # Dispatch

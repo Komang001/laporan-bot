@@ -892,3 +892,160 @@ class DispatchController:
             time.sleep(3)
 
         return None
+
+    # ==========================================
+    # Start GAMAS RELATIONS
+    # ==========================================
+
+    def start_gamas_relations(self):
+
+        if self.running:
+
+            self.gui.write_log("Assistant already running.")
+
+            return
+
+        self.running = True
+
+        self.gui.update_status("STARTING")
+
+        self.gui.write_log("=" * 40)
+
+        self.gui.write_log("Starting GAMAS RELATIONS...")
+
+        self.gui.write_log("=" * 40)
+
+        thread = threading.Thread(
+            target=self._run_gamas_relations,
+            daemon=True,
+        )
+
+        thread.start()
+
+    # ==========================================
+    # Run GAMAS RELATIONS - Background Thread
+    # ==========================================
+
+    def _run_gamas_relations(self):
+
+        connected_in_thread = False
+
+        try:
+
+            while self.running:
+
+                self.gui.write_log("Step 1: Launching Chrome...")
+
+                self.gui.update_status("LAUNCHING")
+
+                if not self.browser_manager.is_chrome_running():
+
+                    launched = self.browser_manager.launch(
+                        log_callback=self.gui.write_log
+                    )
+
+                    if not launched:
+
+                        self.gui.write_log("ERROR: Gagal launch Chrome")
+
+                        self.gui.update_status("ERROR")
+
+                        return
+
+                self.gui.write_log("Step 2: Connecting browser...")
+
+                self.gui.update_status("CONNECTING")
+
+                try:
+
+                    self.browser_manager.connect()
+
+                    connected_in_thread = True
+
+                except Exception as e:
+
+                    self.gui.write_log(f"ERROR: Browser gagal: {e}")
+
+                    self.gui.update_status("ERROR")
+
+                    return
+
+                self.gui.write_log("Browser connected.")
+
+                self.gui.write_log("Opening SYGAP + INSERA tabs...")
+
+                self.browser_manager.open_required_tabs(
+                    log_callback=self.gui.write_log
+                )
+
+                self.gui.write_log("Step 3: Scanning GAMAS tickets...")
+
+                self.gui.update_status("SCANNING")
+
+                sygap = SygapService(browser_manager=self.browser_manager)
+
+                tickets = sygap.process_gamas_relations_tickets(
+                    log_callback=self.gui.write_log,
+                )
+
+                if not tickets:
+
+                    self.gui.write_log("No GAMAS tickets found.")
+
+                else:
+
+                    self.gui.write_log(f"Found {len(tickets)} GAMAS ticket(s)!")
+
+                    for idx, t in enumerate(tickets):
+
+                        code = t["request_code"]
+
+                        parent = t["parent_inc"]
+
+                        children = len(t["child_incs"])
+
+                        self.gui.write_log(f"  [{idx+1}] {code} -> Parent: {parent}, Children: {children}")
+
+                self.gui.write_log("")
+
+                self.gui.write_log("=" * 40)
+
+                self.gui.write_log("GAMAS RELATIONS SELESAI")
+
+                self.gui.write_log("=" * 40)
+
+                self.gui.write_log(f"Menunggu {LOOP_INTERVAL // 60} menit...")
+
+                self.gui.update_status("WAITING")
+
+                for _ in range(LOOP_INTERVAL):
+
+                    if not self.running:
+
+                        break
+
+                    time.sleep(1)
+
+        except Exception as e:
+
+            self.gui.write_log(f"ERROR: {e}")
+
+            self.gui.update_status("ERROR")
+
+        finally:
+
+            self.running = False
+
+            if connected_in_thread:
+
+                try:
+
+                    self.browser_manager.disconnect()
+
+                except Exception:
+
+                    pass
+
+            if self.on_complete:
+
+                self.on_complete()

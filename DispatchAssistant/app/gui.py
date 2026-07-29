@@ -103,6 +103,13 @@ class DispatchAssistantGUI(ctk.CTk):
                 "hover": "#059669",
                 "port_key": "DISPATCH",
             },
+            {
+                "key": "gamas_relations",
+                "label": "GAMAS RELATIONS",
+                "color": "#EC4899",
+                "hover": "#DB2777",
+                "port_key": "DISPATCH",
+            },
         ]
 
         for feat in features:
@@ -181,6 +188,8 @@ class DispatchAssistantGUI(ctk.CTk):
             ctrl.start_canclwork()
         elif key == "dispatch":
             ctrl.start_dispatch()
+        elif key == "gamas_relations":
+            ctrl.start_gamas_relations()
 
     def _stop_feature(self, key):
 
