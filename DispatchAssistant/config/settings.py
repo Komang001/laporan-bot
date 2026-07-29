@@ -13,12 +13,14 @@ CHROME_PORTS = {
     "TO": 9222,
     "CANCLWORK": 9223,
     "DISPATCH": 9224,
+    "GAMAS": 9225,
 }
 
 CHROME_PROFILES = {
     9222: r"C:\ChromeDebug_TO",
     9223: r"C:\ChromeDebug_CANCLWORK",
     9224: r"C:\ChromeDebug_DISPATCH",
+    9225: r"C:\ChromeDebug_GAMAS",
 }
 
 

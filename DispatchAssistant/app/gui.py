@@ -108,7 +108,7 @@ class DispatchAssistantGUI(ctk.CTk):
                 "label": "GAMAS RELATIONS",
                 "color": "#EC4899",
                 "hover": "#DB2777",
-                "port_key": "DISPATCH",
+                "port_key": "GAMAS",
             },
         ]
 
@@ -265,6 +265,7 @@ class DispatchAssistantGUI(ctk.CTk):
         self.write_log(f"  TO        -> port {CHROME_PORTS['TO']}")
         self.write_log(f"  CANCLWORK -> port {CHROME_PORTS['CANCLWORK']}")
         self.write_log(f"  DISPATCH  -> port {CHROME_PORTS['DISPATCH']}")
+        self.write_log(f"  GAMAS     -> port {CHROME_PORTS['GAMAS']}")
         self.write_log("==========================")
 
     # =================================================
