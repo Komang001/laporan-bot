@@ -343,44 +343,44 @@ class SygapService:
     def read_child_incs_from_field(self, ticket_page):
         """Read child INC numbers from 'INSERA - Ticket ID' field.
         
-        First tries to find a field labeled 'Ticket ID' or 'INSERA - Ticket ID'
-        that contains comma-separated INC numbers.
-        Falls back to reading all INC numbers from the page body.
+        Two-step approach:
+        1. First check note for comma-separated INC numbers (multiple children)
+        2. Then scan 'INSERA - Ticket ID And User ID' > 'Ticket ID' field (single child)
         """
         import re
 
-        selectors = [
-            "input[name$='_ticket_id']",
-            "input[name*='ticket_id']",
-            "textarea[name$='_ticket_id']",
-            "textarea[name*='ticket_id']",
-            "input[name$='_ticket_no']",
-            "input[name*='ticket_no']",
-        ]
-        for sel in selectors:
-            try:
-                loc = ticket_page.locator(sel)
-                if loc.count() > 0:
-                    val = loc.first.input_value().strip()
-                    if val:
-                        matches = re.findall(r'INC\d+', val, re.IGNORECASE)
-                        if len(matches) > 1:
-                            return [m.upper() for m in matches]
-            except Exception:
-                continue
+        try:
+            sections = ticket_page.locator("div:has-text('INSERA - Ticket ID And User ID')")
+            for idx in range(sections.count()):
+                section = sections.nth(idx)
+                ticket_id_labels = section.locator("label:has-text('Ticket ID')")
+                for lbl_idx in range(ticket_id_labels.count()):
+                    label = ticket_id_labels.nth(lbl_idx)
+                    container = label.locator("xpath=ancestor::div[contains(@class,'form') or contains(@class,'field') or contains(@class,'group') or contains(@class,'row')][1]")
+                    inp = container.locator("input[type='text'], input:not([type])")
+                    if inp.count() > 0:
+                        val = inp.first.input_value().strip()
+                        if val:
+                            matches = re.findall(r'INC\d+', val, re.IGNORECASE)
+                            if matches:
+                                return [m.upper() for m in matches]
+        except Exception:
+            pass
 
         try:
-            id_labels = ticket_page.locator("label:has-text('Ticket ID'), label:has-text('INSERA'), label:has-text('Ticket No')")
-            for idx in range(id_labels.count()):
-                label = id_labels.nth(idx)
-                container = label.locator("xpath=ancestor::div[contains(@class,'form') or contains(@class,'field') or contains(@class,'group')][1]")
-                inp = container.locator("input[type='text'], input:not([type]), textarea")
-                if inp.count() > 0:
-                    val = inp.first.input_value().strip()
-                    if val:
-                        matches = re.findall(r'INC\d+', val, re.IGNORECASE)
-                        if len(matches) > 1:
-                            return [m.upper() for m in matches]
+            all_labels = ticket_page.locator("label:has-text('Ticket ID')")
+            for idx in range(all_labels.count()):
+                label = all_labels.nth(idx)
+                text = label.inner_text().strip()
+                if text == "Ticket ID":
+                    container = label.locator("xpath=ancestor::div[contains(@class,'form') or contains(@class,'field') or contains(@class,'group') or contains(@class,'row')][1]")
+                    inp = container.locator("input[type='text'], input:not([type])")
+                    if inp.count() > 0:
+                        val = inp.first.input_value().strip()
+                        if val:
+                            matches = re.findall(r'INC\d+', val, re.IGNORECASE)
+                            if matches:
+                                return [m.upper() for m in matches]
         except Exception:
             pass
 
