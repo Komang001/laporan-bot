@@ -1123,12 +1123,17 @@ class SygapService:
         logged_in = False
         for wait in range(120):
             pages = page.context.pages
+            if wait % 10 == 0:
+                log(f"  Tabs detected: {len(pages)}")
+                for idx, p in enumerate(pages):
+                    try:
+                        log(f"    Tab {idx+1}: {p.url[:80]}")
+                    except Exception:
+                        log(f"    Tab {idx+1}: (error reading url)")
             for p in pages:
                 try:
-                    if "oss-incident.telkom.co.id" in p.url and "gamasRelations" in p.url:
-                        logged_in = True
-                        break
-                    if "oss-incident.telkom.co.id" in p.url and "login" not in p.url and "index" not in p.url:
+                    url = p.url.lower()
+                    if "oss-incident" in url:
                         logged_in = True
                         break
                 except Exception:
