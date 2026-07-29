@@ -1276,6 +1276,8 @@ class SygapService:
                 return results
 
         return results
+
+    def process_dispatch_tickets(self, log_callback=None):
         from app.services.biscuit_service import BiscuitService
         log = log_callback or (lambda msg: None)
         results = []
