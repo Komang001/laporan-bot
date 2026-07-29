@@ -1118,6 +1118,31 @@ class SygapService:
         page = self.navigate_to_dashboard()
         log(f"Dashboard loaded: {page.url[:60]}")
 
+        log("Menunggu user login ke INSERA...")
+        log("Buka tab baru, akses oss-incident.telkom.co.id, lalu login.")
+        logged_in = False
+        for wait in range(120):
+            pages = page.context.pages
+            for p in pages:
+                try:
+                    if "oss-incident.telkom.co.id" in p.url and "gamasRelations" in p.url:
+                        logged_in = True
+                        break
+                    if "oss-incident.telkom.co.id" in p.url and "login" not in p.url and "index" not in p.url:
+                        logged_in = True
+                        break
+                except Exception:
+                    continue
+            if logged_in:
+                log("INSERA tab detected! Mulai scan...")
+                break
+            if wait % 10 == 0:
+                log(f"  Menunggu INSERA login... ({wait}s)")
+            time.sleep(1)
+
+        if not logged_in:
+            log("INSERA belum login setelah 120 detik. Scan tetap dimulai...")
+
         self.filter_gamas_relations(page)
         log("Filtered: OPEN + gamas + MO-INSERA")
 
@@ -1230,7 +1255,6 @@ class SygapService:
                     except Exception:
                         pass
                     self.processed_ids.add(code)
-                    self._close_extra_tabs(page)
                     page.wait_for_timeout(1500)
 
             log(f"Page done. Re-applying filter...")
