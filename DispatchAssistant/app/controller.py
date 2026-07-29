@@ -972,11 +972,16 @@ class DispatchController:
 
                 self.gui.write_log("Browser connected.")
 
-                self.gui.write_log("Opening SYGAP + INSERA tabs...")
+                self.gui.write_log("Opening SYGAP tab...")
 
                 self.browser_manager.open_required_tabs_gamas(
                     log_callback=self.gui.write_log
                 )
+
+                self.gui.write_log("")
+                self.gui.write_log("Pastikan sudah login ke INSERA (oss-incident.telkom.co.id)")
+                self.gui.write_log("Buka tab INSERA secara manual jika belum login.")
+                self.gui.write_log("")
 
                 self.gui.write_log("Step 3: Scanning GAMAS tickets...")
 
