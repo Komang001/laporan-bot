@@ -191,3 +191,13 @@ class BiscuitService:
         except:
 
             return 0
+
+    def wait_for_ready(self):
+        if self.page is None:
+            return False
+        try:
+            self.page.wait_for_timeout(1000)
+            self.response_count_before = self.get_bot_message_count()
+            return True
+        except Exception:
+            return False

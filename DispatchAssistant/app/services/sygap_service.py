@@ -1,7 +1,7 @@
 import re
 import time
 
-from app.parser import extract_owner_group, extract_inc_number
+from app.parser import extract_owner_group, extract_inc_number, is_bulk_og_change, extract_bulk_og_target, extract_bulk_inc_list
 from config.settings import USER_ID, USER_NAME, INSERA_GROUP_ID
 
 LOOP_INTERVAL = 600
@@ -124,8 +124,9 @@ class SygapService:
                 continue
         return result
 
-    def click_ticket(self, page, row_info):
-        self._close_extra_tabs(page)
+    def click_ticket(self, page, row_info, skip_close=False):
+        if not skip_close:
+            self._close_extra_tabs(page)
         link = row_info["link"]
         old_count = len(page.context.pages)
         link.click()
@@ -138,7 +139,8 @@ class SygapService:
                 return p
         return None
 
-    def _close_extra_tabs(self, dashboard_page):
+    def _close_extra_tabs(self, dashboard_page, log_callback=None):
+        log = log_callback or (lambda msg: None)
         for p in dashboard_page.context.pages:
             if p == dashboard_page:
                 continue
@@ -146,11 +148,15 @@ class SygapService:
                 if not p.is_closed():
                     url = p.url.lower()
                     if "biscuit-dashboard" in url:
+                        log(f"  [close_tab] SKIP biscuit-dashboard: {url[:60]}")
                         continue
                     if "biscuit" in url and "tools" in url:
+                        log(f"  [close_tab] SKIP biscuit-tools: {url[:60]}")
                         continue
-                    if "oss-incident.telkom.co.id" in url:
+                    if "oss-incident" in url:
+                        log(f"  [close_tab] SKIP oss-incident: {url[:60]}")
                         continue
+                    log(f"  [close_tab] CLOSING: {url[:60]}")
                     p.close()
             except Exception:
                 pass
@@ -458,6 +464,66 @@ class SygapService:
             print(f"take_ownership JS error: {e}")
             return None
 
+    def is_my_ticket(self, ticket_page):
+        try:
+            val = ticket_page.evaluate("""
+                (function() {
+                    var el = document.getElementById('id_coordinator');
+                    if (!el) return '';
+                    return el.value || '';
+                })();
+            """)
+            return str(val).strip() == str(USER_ID).strip()
+        except Exception:
+            return False
+
+    def change_coordinator_to_me(self, ticket_page):
+        try:
+            ticket_page.wait_for_load_state("domcontentloaded", timeout=15000)
+            ticket_page.wait_for_timeout(2000)
+        except Exception:
+            pass
+
+        js_code = f"""
+        (async function() {{
+            function sleep(ms) {{ return new Promise(r => setTimeout(r, ms)); }}
+
+            for (var w = 0; w < 10; w++) {{
+                if (window.jQuery && jQuery.fn.select2) break;
+                await sleep(500);
+            }}
+            if (!window.jQuery) return 'NO_JQUERY';
+
+            var ic = document.getElementById('id_coordinator');
+            if (!ic) return 'NO_IC';
+            var $ic = jQuery(ic);
+            if ($ic.find('option[value="{USER_ID}"]').length === 0) {{
+                $ic.append(new Option('{USER_NAME}', '{USER_ID}', false, false));
+            }}
+            $ic.val('{USER_ID}').trigger('change');
+            await sleep(1500);
+
+            var icVal = $ic.val();
+            if (icVal !== '{USER_ID}') {{
+                return 'VERIFY_FAIL:ic=' + icVal;
+            }}
+
+            var saveBtn = document.getElementById('btn_submit_request');
+            if (saveBtn && saveBtn.offsetParent !== null) {{
+                saveBtn.click(); return 'SAVE';
+            }}
+            return 'NO_BUTTON';
+        }})();
+        """
+
+        try:
+            result = ticket_page.evaluate(js_code)
+            ticket_page.wait_for_timeout(3000)
+            return result
+        except Exception as e:
+            print(f"change_coordinator JS error: {e}")
+            return None
+
     def wait_for_in_progress(self, ticket_page, timeout=45):
         start = time.time()
         while time.time() - start < timeout:
@@ -640,6 +706,7 @@ class SygapService:
                     confirmed = self.wait_for_in_progress(ticket_page)
                     if confirmed:
                         log(f"    TO CONFIRMED: {code} -> {group_label} / IN_PROGRESS")
+                        self.processed_ids.add(code)
                         results.append({
                             "request_code": code,
                             "ticket_id": ticket_id,
@@ -657,8 +724,7 @@ class SygapService:
                             ticket_page.close()
                     except Exception:
                         pass
-                    self.processed_ids.add(code)
-                    self._close_extra_tabs(page)
+                    self._close_extra_tabs(page, log_callback=log)
                     page.wait_for_timeout(1500)
 
             log(f"Page done. Re-applying filter...")
@@ -911,15 +977,27 @@ class SygapService:
 
                     command = f"/pushmasscanclwork {wo_number}"
                     log(f"    Sending: {command}")
-                    biscuit.send(command)
-                    log(f"    Command sent to BISCUIT")
 
-                    from app.services.response_service import ResponseService
-                    response = ResponseService(
-                        biscuit.get_page(),
-                        biscuit.get_response_count_before()
-                    ).read()
-                    log(f"    BISCUIT response: {response.status} - {response.message}")
+                    max_retries = 2
+                    response = None
+                    for attempt in range(1, max_retries + 1):
+                        biscuit.send(command)
+                        log(f"    Command sent (attempt {attempt})")
+
+                        from app.services.response_service import ResponseService
+                        response = ResponseService(
+                            biscuit.get_page(),
+                            biscuit.get_response_count_before()
+                        ).read()
+                        log(f"    BISCUIT response: {response.status} - {response.message}")
+
+                        if response.status != "UNKNOWN":
+                            break
+
+                        if attempt < max_retries:
+                            log(f"    BISCUIT timeout, retrying...")
+                            biscuit.focus_command()
+                            biscuit.wait_for_ready()
 
                     if response.status == "SUCCESS":
                         complete_note = "Cek Kembali"
@@ -954,6 +1032,7 @@ class SygapService:
                         "note": note,
                         "biscuit_status": response.status,
                     })
+                    self.processed_ids.add(code)
 
                 except Exception as e:
                     log(f"    Error: {e}")
@@ -963,8 +1042,7 @@ class SygapService:
                             ticket_page.close()
                     except Exception:
                         pass
-                    self.processed_ids.add(code)
-                    self._close_extra_tabs(page)
+                    self._close_extra_tabs(page, log_callback=log)
                     page.wait_for_timeout(1500)
 
             log(f"Page done. Re-applying filter...")
@@ -1186,12 +1264,22 @@ class SygapService:
                 total_processed += 1
                 log(f"  [{i+1}/{len(rows)}] Opening {code}...")
 
-                ticket_page = self.click_ticket(page, row_info)
+                ticket_page = self.click_ticket(page, row_info, skip_close=True)
                 if ticket_page is None:
                     log(f"    Failed to open {code}")
                     continue
 
                 try:
+                    log(f"    Taking ownership...")
+                    btn_action = self.take_ownership(ticket_page)
+                    log(f"    Button clicked: {btn_action}")
+
+                    confirmed = self.wait_for_in_progress(ticket_page)
+                    if not confirmed:
+                        log(f"    TO FAILED: {code}")
+                        continue
+                    log(f"    TO CONFIRMED: {code}")
+
                     parent_inc = self.read_ticket_inc(ticket_page)
                     if not parent_inc:
                         parent_inc = self.read_ticket_id_from_field(ticket_page)
@@ -1212,18 +1300,53 @@ class SygapService:
                     child_str = ",".join(child_incs)
 
                     from app.services.insera_gamas_service import InseraGamasService
-                    insera = InseraGamasService(browser_manager=self.browser_manager)
+                    insera = InseraGamasService(browser_manager=self.browser_manager, log_callback=log)
                     if not insera.open():
                         log(f"    INSERA tab not found! Buka tab INSERA lalu login.")
                         continue
 
-                    if not insera.navigate_to_relations():
-                        log(f"    Failed navigate to Gamas Relations")
+                    max_nav_retries = 3
+                    nav_ok = False
+                    for nav_attempt in range(1, max_nav_retries + 1):
+                        if not insera.navigate_to_relations():
+                            log(f"    Failed navigate to Gamas Relations (attempt {nav_attempt})")
+                            if nav_attempt < max_nav_retries:
+                                insera.get_page().wait_for_timeout(5000)
+                            continue
+
+                        page_url = insera.get_page().url.lower()
+                        page_content = ""
+                        try:
+                            page_content = insera.get_page().content().lower()
+                        except Exception:
+                            pass
+
+                        if "login" in page_url:
+                            log(f"    INSERA belum login! Login manual dulu.")
+                            break
+
+                        is_error = "system error" in page_content or (
+                            "unintended error" in page_content
+                        )
+                        if is_error:
+                            log(f"    Joget error at: {page_url[:60]}")
+                            if nav_attempt < max_nav_retries:
+                                log(f"    Retrying in 10s... (attempt {nav_attempt}/{max_nav_retries})")
+                                insera.get_page().wait_for_timeout(10000)
+                                insera.navigate_to_relations()
+                            continue
+
+                        if "gamasrelations" in page_url:
+                            nav_ok = True
+                            break
+
+                    if not nav_ok:
+                        log(f"    INSERA GAMAS not accessible, SKIP")
                         continue
 
-                    page_url = insera.get_page().url.lower()
-                    if "login" in page_url or "index" in page_url:
-                        log(f"    INSERA belum login! Login manual dulu.")
+                    log(f"    Waiting for INSERA fields to load...")
+                    if not insera.wait_for_fields(timeout=30):
+                        log(f"    INSERA fields not visible, SKIP")
                         continue
 
                     if not insera.fill_parent(parent_inc):
@@ -1236,13 +1359,39 @@ class SygapService:
 
                     log(f"    Parent: {parent_inc}")
                     log(f"    Child: {child_str[:100]}...")
-                    log(f"    Fields filled. Waiting for save...")
+
+                    if not insera.click_save():
+                        log(f"    Failed save on INSERA")
+                        continue
+
+                    log(f"    INSERA save OK, completing ticket...")
+
+                    page.bring_to_front()
+                    page.wait_for_timeout(1000)
+                    self.browser_manager.activate_page(ticket_page)
+                    try:
+                        ticket_page.reload(wait_until="domcontentloaded", timeout=15000)
+                    except Exception:
+                        pass
+                    ticket_page.wait_for_timeout(3000)
+
+                    completed = self.complete_ticket(ticket_page, note="Cek Kembali")
+                    if completed:
+                        log(f"    Waiting COMPLETED status...")
+                        is_completed = self.wait_for_completed(ticket_page)
+                        if is_completed:
+                            log(f"    Ticket {code} -> COMPLETED")
+                        else:
+                            log(f"    Ticket {code} status belum COMPLETED")
+                    else:
+                        log(f"    Gagal complete ticket {code}")
 
                     results.append({
                         "request_code": code,
                         "parent_inc": parent_inc,
                         "child_incs": child_incs,
                     })
+                    self.processed_ids.add(code)
 
                 except Exception as e:
                     log(f"    Error: {e}")
@@ -1252,7 +1401,6 @@ class SygapService:
                             ticket_page.close()
                     except Exception:
                         pass
-                    self.processed_ids.add(code)
                     page.wait_for_timeout(1500)
 
             log(f"Page done. Re-applying filter...")
@@ -1330,8 +1478,132 @@ class SygapService:
                         log(f"    SAFETY: No 'dispatch' in note, SKIP")
                         continue
 
-                    if "workzone" in note.lower():
-                        log(f"    SAFETY: 'workzone' found in note, SKIP")
+                    if "workzone" in note.lower() or "work zone" in note.lower():
+                        log(f"    SAFETY: 'workzone'/'work zone' found in note, SKIP")
+                        continue
+
+                    if is_bulk_og_change(note):
+                        bulk_og = extract_bulk_og_target(note)
+                        bulk_incs = extract_bulk_inc_list(note)
+                        log(f"    BULK OG CHANGE: target={bulk_og} | INCs={len(bulk_incs)}")
+
+                        if not bulk_og:
+                            log(f"    Cannot parse bulk OG target, SKIP")
+                            continue
+
+                        if not bulk_incs:
+                            inc_from_page = self.read_ticket_inc(ticket_page)
+                            if not inc_from_page:
+                                inc_from_page = self.read_ticket_id_from_field(ticket_page)
+                            if inc_from_page:
+                                bulk_incs = [inc_from_page]
+                                log(f"    INC from page: {inc_from_page}")
+                            else:
+                                log(f"    No INCs found in note or page, SKIP")
+                                continue
+
+                        if status == "IN_PROGRESS":
+                            if self.is_my_ticket(ticket_page):
+                                log(f"    IN_PROGRESS, already my ticket -> proceed")
+                            else:
+                                log(f"    IN_PROGRESS, not my ticket -> change coordinator")
+                                result = self.change_coordinator_to_me(ticket_page)
+                                log(f"    Change coordinator: {result}")
+                                if not result or "SAVE" not in str(result):
+                                    log(f"    Failed change coordinator, SKIP")
+                                    continue
+                                log(f"    Coordinator changed to me, saved")
+                        else:
+                            log(f"    Status: {status} -> TO ke saya dulu...")
+                            btn_action = self.take_ownership(ticket_page)
+                            log(f"    Button clicked: {btn_action}")
+
+                            confirmed = self.wait_for_in_progress(ticket_page)
+                            if not confirmed:
+                                log(f"    TO FAILED: {code}")
+                                continue
+                            log(f"    TO CONFIRMED: {code}")
+
+                        biscuit = BiscuitService(browser_manager=self.browser_manager)
+                        if not biscuit.open():
+                            log(f"    BISCUIT tab not found!")
+                            continue
+                        if not biscuit.focus_command():
+                            log(f"    BISCUIT command box not found!")
+                            continue
+
+                        all_success = True
+                        failed_incs = []
+                        for idx, inc in enumerate(bulk_incs):
+                            command = f"/dispatchticket {inc} {bulk_og}"
+                            log(f"    [{idx+1}/{len(bulk_incs)}] Sending: {command}")
+
+                            max_retries = 2
+                            response = None
+                            for attempt in range(1, max_retries + 1):
+                                biscuit.send(command)
+                                log(f"    Command sent (attempt {attempt})")
+
+                                from app.services.response_service import ResponseService
+                                response = ResponseService(
+                                    biscuit.get_page(),
+                                    biscuit.get_response_count_before()
+                                ).read()
+                                log(f"    BISCUIT response: {response.status} - {response.message}")
+
+                                if response.status != "UNKNOWN":
+                                    break
+
+                                if attempt < max_retries:
+                                    log(f"    BISCUIT timeout, retrying...")
+                                    biscuit.focus_command()
+                                    biscuit.wait_for_ready()
+
+                            if response.status == "SUCCESS":
+                                log(f"    {inc} -> OK")
+                            else:
+                                log(f"    {inc} -> FAILED: {response.message}")
+                                all_success = False
+                                failed_incs.append(f"{inc}: {response.message}")
+
+                            if idx < len(bulk_incs) - 1:
+                                biscuit.focus_command()
+                                biscuit.wait_for_ready()
+
+                        if all_success:
+                            complete_note = "Cek Kembali"
+                            log(f"    All INCs dispatched successfully")
+                        else:
+                            complete_note = "Gagal dispatch: " + "; ".join(failed_incs[:3])
+                            log(f"    Some INCs failed: {len(failed_incs)}")
+
+                        page.bring_to_front()
+                        page.wait_for_timeout(1000)
+                        if not ticket_page.is_closed():
+                            self.browser_manager.activate_page(ticket_page)
+                            try:
+                                ticket_page.reload(wait_until="domcontentloaded", timeout=15000)
+                            except Exception:
+                                pass
+                            ticket_page.wait_for_timeout(3000)
+                            completed = self.complete_ticket(ticket_page, note=complete_note)
+                            if completed:
+                                log(f"    Waiting COMPLETED status...")
+                                is_completed = self.wait_for_completed(ticket_page)
+                                if is_completed:
+                                    log(f"    Ticket {code} -> COMPLETED")
+                                else:
+                                    log(f"    Ticket {code} status belum COMPLETED")
+                                results.append({
+                                    "request_code": code,
+                                    "type": "BULK_OG_CHANGE",
+                                    "bulk_og": bulk_og,
+                                    "total_incs": len(bulk_incs),
+                                    "failed_incs": len(failed_incs),
+                                })
+                                self.processed_ids.add(code)
+                            else:
+                                log(f"    Gagal complete ticket {code}")
                         continue
 
                     note_upper = note.upper()
@@ -1343,18 +1615,66 @@ class SygapService:
                     if owner_group:
                         log(f"    OG: {owner_group} | INC from note: {inc_number or 'N/A'}")
 
-                        if status != "ASSIGNED":
+                        if "TIF SPM DATIN" in owner_group:
+                            log(f"    SKIP: OG '{owner_group}' -> TIF SPM DATIN")
+                            continue
+
+                        if "C4" in owner_group.upper():
+                            log(f"    OG is C4 ({owner_group}) -> TO + complete, no dispatch")
+                            btn_action = self.take_ownership(ticket_page)
+                            log(f"    Button clicked: {btn_action}")
+
+                            confirmed = self.wait_for_in_progress(ticket_page)
+                            if not confirmed:
+                                log(f"    TO FAILED: {code}")
+                                continue
+                            log(f"    TO CONFIRMED: {code}")
+
+                            page.bring_to_front()
+                            page.wait_for_timeout(1000)
+                            self.browser_manager.activate_page(ticket_page)
+                            ticket_page.wait_for_timeout(1000)
+
+                            completed = self.complete_ticket(ticket_page, note="untuk permintaan dispatch ke C4_CONSUMER silahkan koordinasikan ke OG terkait")
+                            if completed:
+                                log(f"    Waiting COMPLETED status...")
+                                is_completed = self.wait_for_completed(ticket_page)
+                                if is_completed:
+                                    log(f"    Ticket {code} -> COMPLETED (C4)")
+                                else:
+                                    log(f"    Ticket {code} status belum COMPLETED")
+                                results.append({
+                                    "request_code": code,
+                                    "type": "C4_COMPLETE",
+                                    "note": note,
+                                })
+                            else:
+                                log(f"    Gagal complete ticket {code} (C4)")
+                            continue
+
+                        if status == "IN_PROGRESS":
+                            if self.is_my_ticket(ticket_page):
+                                log(f"    IN_PROGRESS, already my ticket -> proceed")
+                            else:
+                                log(f"    IN_PROGRESS, not my ticket -> change coordinator")
+                                result = self.change_coordinator_to_me(ticket_page)
+                                log(f"    Change coordinator: {result}")
+                                if not result or "SAVE" not in str(result):
+                                    log(f"    Failed change coordinator, SKIP")
+                                    continue
+                                log(f"    Coordinator changed to me, saved")
+                        else:
                             log(f"    Status: {status} -> TO ke saya dulu...")
 
-                        log(f"    Taking ownership...")
-                        btn_action = self.take_ownership(ticket_page)
-                        log(f"    Button clicked: {btn_action}")
+                            log(f"    Taking ownership...")
+                            btn_action = self.take_ownership(ticket_page)
+                            log(f"    Button clicked: {btn_action}")
 
-                        confirmed = self.wait_for_in_progress(ticket_page)
-                        if not confirmed:
-                            log(f"    TO FAILED: {code}")
-                            continue
-                        log(f"    TO CONFIRMED: {code}")
+                            confirmed = self.wait_for_in_progress(ticket_page)
+                            if not confirmed:
+                                log(f"    TO FAILED: {code}")
+                                continue
+                            log(f"    TO CONFIRMED: {code}")
 
                         if not inc_number:
                             log(f"    INC not in note, reading from ticket page...")
@@ -1379,15 +1699,27 @@ class SygapService:
 
                         command = f"/dispatchticket {inc_number} {owner_group}"
                         log(f"    Sending: {command}")
-                        biscuit.send(command)
-                        log(f"    Command sent to BISCUIT")
 
-                        from app.services.response_service import ResponseService
-                        response = ResponseService(
-                            biscuit.get_page(),
-                            biscuit.get_response_count_before()
-                        ).read()
-                        log(f"    BISCUIT response: {response.status} - {response.message}")
+                        max_retries = 2
+                        response = None
+                        for attempt in range(1, max_retries + 1):
+                            biscuit.send(command)
+                            log(f"    Command sent (attempt {attempt})")
+
+                            from app.services.response_service import ResponseService
+                            response = ResponseService(
+                                biscuit.get_page(),
+                                biscuit.get_response_count_before()
+                            ).read()
+                            log(f"    BISCUIT response: {response.status} - {response.message}")
+
+                            if response.status != "UNKNOWN":
+                                break
+
+                            if attempt < max_retries:
+                                log(f"    BISCUIT timeout, retrying...")
+                                biscuit.focus_command()
+                                biscuit.wait_for_ready()
 
                         if response.status == "SUCCESS":
                             log(f"    BISCUIT SUKSES! Complete ticket...")
@@ -1423,6 +1755,7 @@ class SygapService:
                             "note": note,
                             "biscuit_status": response.status,
                         })
+                        self.processed_ids.add(code)
 
                     elif "C4" in note_upper:
                         log(f"    No OG but C4 found -> TO dulu...")
@@ -1453,6 +1786,7 @@ class SygapService:
                                 "type": "C4_COMPLETE",
                                 "note": note,
                             })
+                            self.processed_ids.add(code)
                         else:
                             log(f"    Gagal complete ticket {code} (C4)")
 
@@ -1468,8 +1802,7 @@ class SygapService:
                             ticket_page.close()
                     except Exception:
                         pass
-                    self.processed_ids.add(code)
-                    self._close_extra_tabs(page)
+                    self._close_extra_tabs(page, log_callback=log)
                     page.wait_for_timeout(1500)
 
             log(f"Page done. Re-applying filter...")

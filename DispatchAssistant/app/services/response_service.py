@@ -63,7 +63,7 @@ class ResponseService:
                 "div.bg-\\[\\#182533\\]"
             )
 
-            timeout = 20
+            timeout = 15
             start = time.time()
 
             while True:
