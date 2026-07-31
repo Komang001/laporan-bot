@@ -1488,40 +1488,6 @@ class SygapService:
                     inc_number = extract_inc_number(note)
                     print(f"    [DEBUG] OG={owner_group} | INC={inc_number} | C4={'C4' in note_upper}")
 
-                    if owner_group and "C4" in owner_group.upper():
-                        log(f"    OG is C4 ({owner_group}) -> TO + complete, no dispatch")
-                        btn_action = self.take_ownership(ticket_page)
-                        log(f"    Button clicked: {btn_action}")
-
-                        confirmed = self.wait_for_in_progress(ticket_page)
-                        if not confirmed:
-                            log(f"    TO FAILED: {code}")
-                            continue
-                        log(f"    TO CONFIRMED: {code}")
-
-                        page.bring_to_front()
-                        page.wait_for_timeout(1000)
-                        self.browser_manager.activate_page(ticket_page)
-                        ticket_page.wait_for_timeout(1000)
-
-                        completed = self.complete_ticket(ticket_page, note="untuk permintaan dispatch ke C4_CONSUMER silahkan koordinasikan ke OG terkait")
-                        if completed:
-                            log(f"    Waiting COMPLETED status...")
-                            is_completed = self.wait_for_completed(ticket_page)
-                            if is_completed:
-                                log(f"    Ticket {code} -> COMPLETED (C4)")
-                            else:
-                                log(f"    Ticket {code} status belum COMPLETED")
-                            results.append({
-                                "request_code": code,
-                                "type": "C4_COMPLETE",
-                                "note": note,
-                            })
-                            self.processed_ids.add(code)
-                        else:
-                            log(f"    Gagal complete ticket {code} (C4)")
-                        continue
-
                     if is_bulk_og_change(note):
                         bulk_og = extract_bulk_og_target(note)
                         bulk_incs = extract_bulk_inc_list(note)
