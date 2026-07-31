@@ -1611,11 +1611,11 @@ class SygapService:
                                 biscuit.wait_for_ready()
 
                         if all_success:
-                            complete_note = "Cek Kembali"
                             log(f"    All INCs dispatched successfully")
                         else:
-                            complete_note = "Gagal dispatch: " + "; ".join(failed_incs[:3])
                             log(f"    Some INCs failed: {len(failed_incs)}")
+
+                        complete_note = "Cek Kembali"
 
                         page.bring_to_front()
                         page.wait_for_timeout(1000)
