@@ -348,6 +348,36 @@ class SygapService:
 
         return []
 
+    def extract_parent_gamas_from_note(self, note):
+        """Extract parent GAMAS INC from note.
+        
+        Looks for pattern: Induk gamas : INC...
+        Returns INC number or None.
+        """
+        import re
+        if not note:
+            return None
+
+        match = re.search(r'Induk\s+gamas\s*:\s*(INC\d+)', note, re.IGNORECASE)
+        if match:
+            return match.group(1).upper()
+        return None
+
+    def extract_child_incs_excluding_parent(self, note):
+        """Extract child INCs from note, excluding the parent GAMAS."""
+        import re
+        if not note:
+            return []
+
+        parent = self.extract_parent_gamas_from_note(note)
+        all_incs = re.findall(r'INC\d+', note, re.IGNORECASE)
+        all_incs = [m.upper() for m in all_incs]
+
+        if parent and parent in all_incs:
+            all_incs.remove(parent)
+
+        return all_incs
+
     def read_child_incs_from_field(self, ticket_page):
         """Read child INC numbers from 'INSERA - Ticket ID' field.
         
@@ -1280,16 +1310,21 @@ class SygapService:
                         continue
                     log(f"    TO CONFIRMED: {code}")
 
-                    parent_inc = self.read_ticket_inc(ticket_page)
-                    if not parent_inc:
-                        parent_inc = self.read_ticket_id_from_field(ticket_page)
+                    note = self.read_ticket_note(ticket_page)
+                    parent_inc = self.extract_parent_gamas_from_note(note)
+                    if parent_inc:
+                        log(f"    Parent INC from note: {parent_inc}")
+                    else:
+                        parent_inc = self.read_ticket_inc(ticket_page)
+                        if not parent_inc:
+                            parent_inc = self.read_ticket_id_from_field(ticket_page)
+                        if parent_inc:
+                            log(f"    Parent INC from page: {parent_inc}")
                     if not parent_inc:
                         log(f"    Parent INC not found, SKIP")
                         continue
-                    log(f"    Parent INC: {parent_inc}")
 
-                    note = self.read_ticket_note(ticket_page)
-                    child_incs = self.extract_child_incs_from_note(note)
+                    child_incs = self.extract_child_incs_excluding_parent(note)
                     if not child_incs:
                         child_incs = self.read_child_incs_from_field(ticket_page)
                     if not child_incs:
