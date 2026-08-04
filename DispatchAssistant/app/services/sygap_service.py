@@ -365,13 +365,14 @@ class SygapService:
     def extract_parent_gamas_from_note(self, note):
         """Extract parent GAMAS INC from note.
         
-        Looks for pattern: Induk gamas : INC... (colon optional)
+        Looks for GAMAS keyword followed by INC number.
+        Supports: 'Induk gamas : INC', 'Tiket GAMAS berikut : INC', etc.
         Returns INC number or None.
         """
         if not note:
             return None
 
-        match = re.search(r'Induk\s+gamas\s*:?\s*(INC\d+)', note, re.IGNORECASE)
+        match = re.search(r'GAMAS\s*\w*\s*:?\s*(INC\d+)', note, re.IGNORECASE)
         if match:
             return match.group(1).upper()
         return None
