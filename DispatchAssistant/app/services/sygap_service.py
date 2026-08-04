@@ -164,6 +164,34 @@ class SygapService:
             except Exception:
                 pass
 
+    def read_ticket_status(self, ticket_page):
+        """Quick status check from form field - tanpa tunggu full load"""
+        selectors = [
+            "select[name*='status'] option[selected]",
+            "select[name*='status']",
+            "#status",
+        ]
+        for sel in selectors:
+            try:
+                loc = ticket_page.locator(sel)
+                if loc.count() > 0:
+                    val = loc.first.inner_text().strip().upper()
+                    if not val:
+                        val = loc.first.input_value().strip().upper()
+                    if "COMPLETED" in val or "COMPLETE" in val:
+                        return "COMPLETED"
+                    if val:
+                        return val
+            except Exception:
+                continue
+        try:
+            body = ticket_page.locator("body").inner_text(timeout=3000)
+            if "Request Status:" in body and "COMPLETED" in body.upper():
+                return "COMPLETED"
+        except Exception:
+            pass
+        return None
+
     def read_ticket_note(self, ticket_page):
         try:
             ticket_page.wait_for_load_state("domcontentloaded", timeout=15000)
@@ -691,10 +719,15 @@ class SygapService:
 
                 ticket_page = self.click_ticket(page, row_info)
                 if ticket_page is None:
-                    log(f"    Failed to open ticket {code}")
+                    log(f"    Failed to open {code}")
                     continue
 
                 try:
+                    quick_status = self.read_ticket_status(ticket_page)
+                    if quick_status and "COMPLETED" in quick_status:
+                        log(f"    SKIP: tiket sudah COMPLETED di form")
+                        continue
+
                     note = self.read_ticket_note(ticket_page)
                     ticket_id = self.read_ticket_id(ticket_page)
                     note_short = note[:80] + "..." if len(note) > 80 else note
@@ -918,6 +951,11 @@ class SygapService:
                     continue
 
                 try:
+                    quick_status = self.read_ticket_status(ticket_page)
+                    if quick_status and "COMPLETED" in quick_status:
+                        log(f"    SKIP: tiket sudah COMPLETED di form")
+                        continue
+
                     note = self.read_ticket_note(ticket_page)
                     note_short = note[:100] + "..." if len(note) > 100 else note
                     log(f"    Note: {note_short}")
@@ -1282,6 +1320,11 @@ class SygapService:
                     continue
 
                 try:
+                    quick_status = self.read_ticket_status(ticket_page)
+                    if quick_status and "COMPLETED" in quick_status:
+                        log(f"    SKIP: tiket sudah COMPLETED di form")
+                        continue
+
                     log(f"    Taking ownership...")
                     btn_action = self.take_ownership(ticket_page)
                     log(f"    Button clicked: {btn_action}")
