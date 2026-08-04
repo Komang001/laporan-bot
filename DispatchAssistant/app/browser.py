@@ -301,7 +301,7 @@ class BrowserManager:
 
                     self.cache["biscuit"] = page
 
-                elif "oss-incident.telkom.co.id" in url:
+                elif "oss-incident" in url or "insera" in url:
 
                     self.cache["insera_gamas"] = page
 
@@ -463,7 +463,7 @@ class BrowserManager:
                 url = p.url.lower()
                 if "sygap.telkom.co.id" in url:
                     has_sygap = True
-                if "oss-incident.telkom.co.id" in url:
+                if "oss-incident" in url or "insera" in url:
                     has_insera = True
             except Exception:
                 continue

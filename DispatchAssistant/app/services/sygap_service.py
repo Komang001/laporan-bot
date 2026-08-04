@@ -153,7 +153,7 @@ class SygapService:
                     if "biscuit" in url and "tools" in url:
                         log(f"  [close_tab] SKIP biscuit-tools: {url[:60]}")
                         continue
-                    if "oss-incident" in url:
+                    if "oss-incident" in url or "insera" in url:
                         log(f"  [close_tab] SKIP oss-incident: {url[:60]}")
                         continue
                     log(f"  [close_tab] CLOSING: {url[:60]}")
@@ -1208,7 +1208,8 @@ class SygapService:
         has_insera = False
         for p in existing_pages:
             try:
-                if "oss-incident" in p.url.lower():
+                url_lower = p.url.lower()
+                if "oss-incident" in url_lower or "insera" in url_lower:
                     has_insera = True
                     break
             except Exception:
@@ -1221,7 +1222,7 @@ class SygapService:
         try:
             for p in self.browser_manager.get_pages():
                 try:
-                    if "oss-incident" in p.url.lower():
+                    if "oss-incident" in p.url.lower() or "insera" in p.url.lower():
                         self.browser_manager.activate_page(p)
                         break
                 except Exception:
@@ -1245,7 +1246,7 @@ class SygapService:
             for p in pages:
                 try:
                     url = p.url.lower()
-                    if "oss-incident" in url and "login" not in url:
+                    if ("oss-incident" in url or "insera" in url) and "login" not in url:
                         logged_in = True
                         break
                 except Exception:
