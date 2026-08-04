@@ -479,7 +479,7 @@ class BrowserManager:
             page = self.open_url(GAMAS_RELATIONS_URL)
             if page:
                 log("INSERA GAMAS tab opened.")
-                log("Pastikan sudah login ke INSERA!")
+                log(f"Login INSERA HARUS di window ini (Chrome GAMAS port {self.cdp_port})!")
             else:
                 log("WARNING: Gagal buka INSERA GAMAS")
 
