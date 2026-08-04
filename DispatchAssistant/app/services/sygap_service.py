@@ -1806,18 +1806,18 @@ class SygapService:
                         if not confirmed:
                             log(f"    TO FAILED: {code}")
                             continue
-                            log(f"    TO CONFIRMED: {code}")
+                        log(f"    TO CONFIRMED: {code}")
 
-                            page.bring_to_front()
-                            page.wait_for_timeout(1000)
-                            self.browser_manager.activate_page(ticket_page)
-                            try:
-                                ticket_page.reload(wait_until="domcontentloaded", timeout=15000)
-                            except Exception:
-                                pass
-                            ticket_page.wait_for_timeout(3000)
+                        page.bring_to_front()
+                        page.wait_for_timeout(1000)
+                        self.browser_manager.activate_page(ticket_page)
+                        try:
+                            ticket_page.reload(wait_until="domcontentloaded", timeout=15000)
+                        except Exception:
+                            pass
+                        ticket_page.wait_for_timeout(3000)
 
-                            completed = self.complete_ticket(ticket_page, note="untuk permintaan dispatch ke C4_CONSUMER silahkan koordinasikan ke OG terkait")
+                        completed = self.complete_ticket(ticket_page, note="untuk permintaan dispatch ke C4_CONSUMER silahkan koordinasikan ke OG terkait")
                         if completed:
                             log(f"    Waiting COMPLETED status...")
                             is_completed = self.wait_for_completed(ticket_page)
