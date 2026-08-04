@@ -31,7 +31,7 @@ class ResponseService:
                 continue
             if line.startswith("BISCUIT BOT"):
                 continue
-            if re.match(r'^\d{2}:\d{2}\s*(AM|PM)?$', line, re.IGNORECASE):
+            if re.match(r'^\d{1,2}:\d{2}\s*(AM|PM)?$', line, re.IGNORECASE):
                 continue
             if "dispatchticket" in line.lower() and ("gagal" in line.lower() or "berhasil" in line.lower()):
                 continue

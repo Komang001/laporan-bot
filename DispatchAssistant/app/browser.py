@@ -19,6 +19,7 @@ class BrowserManager:
             "dashboard": None,
             "biscuit": None,
             "ticket": None,
+            "insera_gamas": None,
         }
 
     # ==================================================
@@ -152,6 +153,7 @@ class BrowserManager:
             "dashboard": None,
             "biscuit": None,
             "ticket": None,
+            "insera_gamas": None,
         }
 
         if self.browser:
