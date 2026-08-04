@@ -6,8 +6,6 @@
 
 CHROME = r"C:\Program Files\Google\Chrome\Application\chrome.exe"
 
-CHROME_PROFILE = r"C:\ChromeDebug"
-
 # Multi-Chrome: each feature gets its own Chrome instance + CDP port + profile
 CHROME_PORTS = {
     "TO": 9222,
@@ -45,8 +43,6 @@ GAMAS_RELATIONS_URL = (
 # Dispatch
 # ==================================================
 
-COMMAND_DISPATCH = "/dispatchticket"
-
 AUTO_ENTER = True
 
 
@@ -54,12 +50,8 @@ AUTO_ENTER = True
 # User (untuk Take Ownership)
 # ==================================================
 
-USER_NIK = "CRS2019332"
-
 USER_NAME = "I Nyoman Windu"
 
 USER_ID = "55654"
 
 INSERA_GROUP_ID = "80148276"
-
-BIMA_GROUP_ID = ""

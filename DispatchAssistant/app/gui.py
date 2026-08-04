@@ -1,6 +1,5 @@
 import sys
 import os
-import threading
 
 import customtkinter as ctk
 from datetime import datetime

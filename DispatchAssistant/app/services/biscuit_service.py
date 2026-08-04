@@ -2,9 +2,6 @@ from playwright.sync_api import TimeoutError
 
 from config.settings import AUTO_ENTER
 
-from app.command_builder import build_dispatch_command
-from app.services.response_service import ResponseService
-
 
 class BiscuitService:
 
@@ -126,40 +123,6 @@ class BiscuitService:
             print("Gagal mengirim command.")
             print(e)
             return False
-
-    # ==================================================
-    # Dispatch Ticket
-    # ==================================================
-
-    def dispatch(self, ticket):
-
-        if ticket is None:
-
-            print("Ticket tidak ditemukan.")
-            return None
-
-        if not self.open():
-            return None
-
-        if not self.focus_command():
-            return None
-
-        command = build_dispatch_command(ticket)
-
-        if command is None:
-
-            print("Command dispatch gagal dibuat.")
-            return None
-
-        if not self.send(command):
-            return None
-
-        response = ResponseService(
-            self.page,
-            self.response_count_before
-        ).read()
-
-        return response
 
     # ==================================================
     # Getter

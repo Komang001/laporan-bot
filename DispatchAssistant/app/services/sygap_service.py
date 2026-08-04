@@ -1,8 +1,7 @@
-import re
 import time
 
 from app.parser import extract_owner_group, extract_inc_number, is_bulk_og_change, extract_bulk_og_target, extract_bulk_inc_list
-from config.settings import USER_ID, USER_NAME, INSERA_GROUP_ID
+from config.settings import USER_ID, USER_NAME
 
 LOOP_INTERVAL = 600
 
@@ -205,7 +204,6 @@ class SygapService:
 
     def read_ticket_inc(self, ticket_page):
         """Read INC number from ticket page (header, input, or text content)"""
-        import re
 
         selectors = [
             "input[name$='_ticket_no']",
@@ -240,7 +238,6 @@ class SygapService:
 
     def read_wo_from_field(self, ticket_page):
         """Read WO number from form field below note (e.g. 'BIMA - WO Number')"""
-        import re
 
         selectors = [
             "input[name$='_wo_number']",
@@ -287,7 +284,6 @@ class SygapService:
 
     def read_ticket_id_from_field(self, ticket_page):
         """Read Ticket ID/INC from form field below note (e.g. 'INSERA - Ticket ID')"""
-        import re
 
         selectors = [
             "input[name$='_ticket_id']",
@@ -332,29 +328,12 @@ class SygapService:
 
         return None
 
-    def extract_child_incs_from_note(self, note):
-        """Extract child INC numbers from ticket note.
-        
-        Looks for comma-separated INC numbers in the note text.
-        Returns list of INC numbers (uppercase).
-        """
-        import re
-        if not note:
-            return []
-
-        matches = re.findall(r'INC\d+', note, re.IGNORECASE)
-        if len(matches) > 1:
-            return [m.upper() for m in matches]
-
-        return []
-
     def extract_parent_gamas_from_note(self, note):
         """Extract parent GAMAS INC from note.
         
         Looks for pattern: Induk gamas : INC...
         Returns INC number or None.
         """
-        import re
         if not note:
             return None
 
@@ -365,7 +344,6 @@ class SygapService:
 
     def extract_child_incs_excluding_parent(self, note):
         """Extract child INCs from note, excluding the parent GAMAS."""
-        import re
         if not note:
             return []
 
@@ -385,7 +363,6 @@ class SygapService:
         1. First check note for comma-separated INC numbers (multiple children)
         2. Then scan 'INSERA - Ticket ID And User ID' > 'Ticket ID' field (single child)
         """
-        import re
 
         try:
             sections = ticket_page.locator("div:has-text('INSERA - Ticket ID And User ID')")
@@ -423,17 +400,6 @@ class SygapService:
             pass
 
         return []
-
-    def is_dispatch_ticket(self, note):
-        if not note:
-            return False
-        lower = note.lower()
-        keywords = ["dispatch", "pindah og", "pindah loket", "pindah loker",
-                     "salah dispatch", "owner group"]
-        for kw in keywords:
-            if kw in lower:
-                return True
-        return False
 
     def take_ownership(self, ticket_page):
         try:

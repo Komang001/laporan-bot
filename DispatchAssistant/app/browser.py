@@ -1,5 +1,4 @@
 from playwright.sync_api import sync_playwright
-from pathlib import Path
 import subprocess
 import socket
 import time
@@ -174,23 +173,6 @@ class BrowserManager:
             self.playwright = None
 
         self.connected = False
-
-    # ==================================================
-    # Kill Chrome process (if we launched it)
-    # ==================================================
-
-    def kill_chrome(self):
-
-        if self.chrome_process:
-            try:
-                self.chrome_process.terminate()
-                self.chrome_process.wait(timeout=5)
-            except Exception:
-                try:
-                    self.chrome_process.kill()
-                except Exception:
-                    pass
-            self.chrome_process = None
 
     # ==================================================
     # Is Connected
@@ -509,23 +491,3 @@ class BrowserManager:
             log("INSERA tab opened. SYGAP already open.")
         elif has_insera:
             log("SYGAP tab opened. INSERA already open.")
-
-    # ==================================================
-    # Save HTML
-    # ==================================================
-
-    def save_html(self, filename="sygap.html"):
-
-        page = self.get_active_ticket_page()
-
-        if page is None:
-            return False
-
-        try:
-
-            html = page.content()
-            Path(filename).write_text(html, encoding="utf-8")
-            return True
-
-        except Exception:
-            return False
