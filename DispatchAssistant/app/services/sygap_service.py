@@ -1524,6 +1524,11 @@ class SygapService:
                     continue
 
                 try:
+                    quick_status = self.read_ticket_status(ticket_page)
+                    if quick_status and "COMPLETED" in quick_status:
+                        log(f"    SKIP: tiket sudah COMPLETED di form")
+                        continue
+
                     note = self.read_ticket_note(ticket_page)
                     note_short = note[:100] + "..." if len(note) > 100 else note
                     log(f"    Note: {note_short}")
