@@ -365,30 +365,50 @@ class SygapService:
     def extract_parent_gamas_from_note(self, note):
         """Extract parent GAMAS INC from note.
         
-        Looks for GAMAS keyword followed by INC number.
-        Supports: 'Induk gamas : INC', 'Tiket GAMAS berikut : INC',
-                  'GAMAS INC...', 'Induk Gamas INC...' etc.
+        Supports all formats:
+        - 'Induk gamas : INC...', 'Induk gamas ; INC...'
+        - 'Tiket GAMAS berikut : INC...'
+        - 'GAMAS INC...', 'Induk Gamas INC...'
+        - 'IG: INC...', 'IG : INC...'
         Returns INC number or None.
         """
         if not note:
             return None
 
-        # Pattern 1: GAMAS ... : INC (with colon separator)
-        match = re.search(r'GAMAS\s*\w*\s*:\s*(INC\d+)', note, re.IGNORECASE)
+        # Pattern 1: IG keyword (short form for Induk Gamas)
+        match = re.search(r'\bIG\s*[:;]\s*(INC\d+)', note, re.IGNORECASE)
         if match:
             return match.group(1).upper()
-        # Pattern 2: GAMAS INC (direct, no colon)
+        # Pattern 2: GAMAS ... : or ; INC (with colon/semicolon separator)
+        match = re.search(r'GAMAS\s*\w*\s*[:;]\s*(INC\d+)', note, re.IGNORECASE)
+        if match:
+            return match.group(1).upper()
+        # Pattern 3: GAMAS INC (direct, no separator)
         match = re.search(r'GAMAS\s+(INC\d+)', note, re.IGNORECASE)
         if match:
             return match.group(1).upper()
         return None
 
     def extract_child_incs_excluding_parent(self, note):
-        """Extract child INCs from note, excluding the parent GAMAS."""
+        """Extract child INCs from note, excluding the parent GAMAS.
+        
+        Supports:
+        - 'AG : INC...' or 'AG: INC...' (short form for Anak Gamas)
+        - 'Anak gamas ; INC...' or 'Anak gamas : INC...'
+        - Fallback: all INCs excluding parent
+        """
         if not note:
             return []
 
         parent = self.extract_parent_gamas_from_note(note)
+
+        # Try explicit AG / Anak gamas pattern first
+        ag_match = re.search(r'\b(?:AG|Anak\s+gamas)\s*[:;]\s*((?:INC\d+[\s,]*)+)', note, re.IGNORECASE)
+        if ag_match:
+            incs = re.findall(r'INC\d+', ag_match.group(1), re.IGNORECASE)
+            return [m.upper() for m in incs]
+
+        # Fallback: all INCs excluding parent
         all_incs = re.findall(r'INC\d+', note, re.IGNORECASE)
         all_incs = [m.upper() for m in all_incs]
 
