@@ -153,7 +153,7 @@ class SygapService:
                     if "biscuit" in url and "tools" in url:
                         log(f"  [close_tab] SKIP biscuit-tools: {url[:60]}")
                         continue
-                    if "oss-incident" in url or "insera" in url:
+                    if "oss-incident" in url:
                         log(f"  [close_tab] SKIP oss-incident: {url[:60]}")
                         continue
                     log(f"  [close_tab] CLOSING: {url[:60]}")
@@ -946,7 +946,7 @@ class SygapService:
                     else:
                         log(f"    Solver sudah saya, skip TO")
 
-                    has_osm = any(re.search(r'\b' + kw + r'\b', note_upper) for kw in ["OSM", "SOM", "TOM"])
+                    has_osm = any(kw in note_upper for kw in ["OSM", "SOM", "TOM"])
                     if not has_osm:
                         warn = "untuk permintaan CANCLWORK pastikan status OSM sudah CANCEL COMPLETE atau ABORTED"
                         log(f"    SAFETY: No OSM/SOM/TOM in note")
@@ -1195,70 +1195,35 @@ class SygapService:
         page = self.navigate_to_dashboard()
         log(f"Dashboard loaded: {page.url[:60]}")
 
-        log("=" * 50)
-        log("LOGIN INSERA:")
-        log("  Wajib login di WINDOW CHROME GAMAS (port 9225)!")
-        log("  Bukan di Chrome biasa / browser lain!")
-        log("  URL: https://oss-incident.telkom.co.id")
-        log("=" * 50)
-
-        from config.settings import GAMAS_RELATIONS_URL
-
-        existing_pages = self.browser_manager.get_pages()
-        has_insera = False
-        for p in existing_pages:
-            try:
-                url_lower = p.url.lower()
-                if "oss-incident" in url_lower or "insera" in url_lower:
-                    has_insera = True
-                    break
-            except Exception:
-                continue
-        if not has_insera:
-            log("Tab INSERA belum ada. Membuka tab login INSERA otomatis...")
-            self.browser_manager.open_url(GAMAS_RELATIONS_URL)
-            log("Tab INSERA dibuka di window Chrome GAMAS.")
-
-        try:
-            for p in self.browser_manager.get_pages():
-                try:
-                    if "oss-incident" in p.url.lower() or "insera" in p.url.lower():
-                        self.browser_manager.activate_page(p)
-                        break
-                except Exception:
-                    continue
-        except Exception:
-            pass
-
+        log("Menunggu user login ke INSERA...")
+        log("Buka tab baru, akses oss-incident.telkom.co.id, lalu login.")
         logged_in = False
-        wait = 0
-        MAX_LOGIN_WAIT = 600
-        while wait < MAX_LOGIN_WAIT:
-            pages = self.browser_manager.get_pages()
-            if wait % 15 == 0:
+        for wait in range(120):
+            pages = page.context.pages
+            if wait % 10 == 0:
                 log(f"  Tabs detected: {len(pages)}")
                 for idx, p in enumerate(pages):
                     try:
                         log(f"    Tab {idx+1}: {p.url[:80]}")
                     except Exception:
-                        log(f"    Tab {idx+1}: (error)")
-                log(f"  >> LOGIN di window Chrome GAMAS (port 9225)! ({wait}s/{MAX_LOGIN_WAIT}s)")
+                        log(f"    Tab {idx+1}: (error reading url)")
             for p in pages:
                 try:
                     url = p.url.lower()
-                    if ("oss-incident" in url or "insera" in url) and "login" not in url:
+                    if "oss-incident" in url:
                         logged_in = True
                         break
                 except Exception:
                     continue
             if logged_in:
-                log("INSERA tab terdeteksi (sudah login)! Mulai scan...")
+                log("INSERA tab detected! Mulai scan...")
                 break
+            if wait % 10 == 0:
+                log(f"  Menunggu INSERA login... ({wait}s)")
             time.sleep(1)
-            wait += 1
 
         if not logged_in:
-            log("INSERA belum login setelah 10 menit. Scan tetap dimulai...")
+            log("INSERA belum login setelah 120 detik. Scan tetap dimulai...")
 
         self.filter_gamas_relations(page)
         log("Filtered: OPEN + gamas + MO-INSERA")
@@ -1335,7 +1300,7 @@ class SygapService:
                     from app.services.insera_gamas_service import InseraGamasService
                     insera = InseraGamasService(browser_manager=self.browser_manager, log_callback=log)
                     if not insera.open():
-                        log(f"    INSERA tab not found! Buka tab INSERA di window Chrome GAMAS (port 9225) lalu login.")
+                        log(f"    INSERA tab not found! Buka tab INSERA lalu login.")
                         continue
 
                     max_nav_retries = 3
@@ -1355,7 +1320,7 @@ class SygapService:
                             pass
 
                         if "login" in page_url:
-                            log(f"    INSERA belum login! Login manual di window Chrome GAMAS (port 9225).")
+                            log(f"    INSERA belum login! Login manual dulu.")
                             break
 
                         is_error = "system error" in page_content or (
@@ -1434,7 +1399,6 @@ class SygapService:
                             ticket_page.close()
                     except Exception:
                         pass
-                    self._close_extra_tabs(page, log_callback=log)
                     page.wait_for_timeout(1500)
 
             log(f"Page done. Re-applying filter...")
@@ -1520,7 +1484,7 @@ class SygapService:
 
                     owner_group = extract_owner_group(note)
                     inc_number = extract_inc_number(note)
-                    log(f"    OG={owner_group} | INC={inc_number or 'N/A'} | C4={'C4' in note_upper}")
+                    print(f"    [DEBUG] OG={owner_group} | INC={inc_number} | C4={'C4' in note_upper}")
 
                     if is_bulk_og_change(note):
                         bulk_og = extract_bulk_og_target(note)

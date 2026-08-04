@@ -151,7 +151,7 @@ class BiscuitService:
                 "div.bg-\\[\\#182533\\]"
             ).count()
 
-        except Exception:
+        except:
 
             return 0
 

@@ -4,7 +4,7 @@ import os
 import customtkinter as ctk
 from datetime import datetime
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.controller import DispatchController
 from config.settings import INSERA_GROUP_ID, CHROME_PORTS
@@ -283,6 +283,7 @@ class DispatchAssistantGUI(ctk.CTk):
         self.log_box.see("end")
 
     def update_status(self, status):
+
         pass
 
 

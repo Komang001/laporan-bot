@@ -19,7 +19,6 @@ class BrowserManager:
             "dashboard": None,
             "biscuit": None,
             "ticket": None,
-            "insera_gamas": None,
         }
 
     # ==================================================
@@ -153,7 +152,6 @@ class BrowserManager:
             "dashboard": None,
             "biscuit": None,
             "ticket": None,
-            "insera_gamas": None,
         }
 
         if self.browser:
@@ -301,7 +299,7 @@ class BrowserManager:
 
                     self.cache["biscuit"] = page
 
-                elif "oss-incident" in url or "insera" in url:
+                elif "oss-incident.telkom.co.id" in url:
 
                     self.cache["insera_gamas"] = page
 
@@ -463,7 +461,7 @@ class BrowserManager:
                 url = p.url.lower()
                 if "sygap.telkom.co.id" in url:
                     has_sygap = True
-                if "oss-incident" in url or "insera" in url:
+                if "oss-incident.telkom.co.id" in url:
                     has_insera = True
             except Exception:
                 continue
@@ -481,7 +479,7 @@ class BrowserManager:
             page = self.open_url(GAMAS_RELATIONS_URL)
             if page:
                 log("INSERA GAMAS tab opened.")
-                log(f"Login INSERA HARUS di window ini (Chrome GAMAS port {self.cdp_port})!")
+                log("Pastikan sudah login ke INSERA!")
             else:
                 log("WARNING: Gagal buka INSERA GAMAS")
 
