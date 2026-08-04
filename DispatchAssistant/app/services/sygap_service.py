@@ -333,13 +333,13 @@ class SygapService:
     def extract_parent_gamas_from_note(self, note):
         """Extract parent GAMAS INC from note.
         
-        Looks for pattern: Induk gamas : INC...
+        Looks for pattern: Induk gamas : INC... (colon optional)
         Returns INC number or None.
         """
         if not note:
             return None
 
-        match = re.search(r'Induk\s+gamas\s*:\s*(INC\d+)', note, re.IGNORECASE)
+        match = re.search(r'Induk\s+gamas\s*:?\s*(INC\d+)', note, re.IGNORECASE)
         if match:
             return match.group(1).upper()
         return None
@@ -1283,13 +1283,7 @@ class SygapService:
                     if parent_inc:
                         log(f"    Parent INC from note: {parent_inc}")
                     else:
-                        parent_inc = self.read_ticket_inc(ticket_page)
-                        if not parent_inc:
-                            parent_inc = self.read_ticket_id_from_field(ticket_page)
-                        if parent_inc:
-                            log(f"    Parent INC from page: {parent_inc}")
-                    if not parent_inc:
-                        log(f"    Parent INC not found, SKIP")
+                        log(f"    'Induk gamas' tidak ada di note. SKIP (hindari relasi salah).")
                         continue
 
                     child_incs = self.extract_child_incs_excluding_parent(note)
