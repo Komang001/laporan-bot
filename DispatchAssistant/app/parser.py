@@ -40,6 +40,11 @@ def parse_owner_group(note: str):
 
         candidate = match.group(1).strip()
 
+        # Strip label prefixes: "Owner Group", "LOKER", "OWNER GROUP"
+        candidate = re.sub(r"(?i)\bowner\s+group\b", "", candidate)
+        candidate = re.sub(r"(?i)\bloker\b", "", candidate)
+        candidate = re.sub(r"\s+", " ", candidate).strip()
+
         # Ambil hanya kata UPPERCASE (OG selalu UPPERCASE)
         words = candidate.split()
         og_words = []
@@ -138,6 +143,12 @@ def extract_bulk_og_target(note: str):
 
 def _clean_og_target(raw: str):
     raw = raw.strip().rstrip(".,;:")
+
+    # Strip label prefixes: "Owner Group", "LOKER", "OWNER GROUP"
+    raw = re.sub(r"(?i)\bowner\s+group\b", "", raw)
+    raw = re.sub(r"(?i)\bloker\b", "", raw)
+    raw = re.sub(r"\s+", " ", raw).strip()
+
     words = raw.split()
     og_words = []
     for w in words:
