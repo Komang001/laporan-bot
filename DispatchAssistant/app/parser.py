@@ -114,20 +114,24 @@ def extract_bulk_og_target(note: str):
     text = re.sub(r"<[^>]+>", " ", note)
     text = re.sub(r"\s+", " ", text).strip()
 
-    # Pattern1: "ke {OG} tiket :"
-    match = re.search(r"ke\s+(.+?)\s+tiket\s*:", text, re.IGNORECASE)
-    if match:
-        return _clean_og_target(match.group(1))
+    # Try "ke" and "menjadi" patterns with priorities
+    prefixes = [r"ke", r"menjadi"]
 
-    # Pattern2: "ke {OG}" (sampai akhir atau sebelum kata kunci lain)
-    match = re.search(r"ke\s+(.+?)(?:\s+(?:Nama|Request|Mohon|moban|mohon|Inc|Ticket|User|TSEL))", text, re.IGNORECASE)
-    if match:
-        return _clean_og_target(match.group(1))
+    for prefix in prefixes:
+        # Pattern1: "{prefix} {OG} tiket :"
+        match = re.search(rf"{prefix}\s+(.+?)\s+tiket\s*:", text, re.IGNORECASE)
+        if match:
+            return _clean_og_target(match.group(1))
 
-    # Pattern3: "ke {OG}" sampai akhir string
-    match = re.search(r"ke\s+(.+)", text, re.IGNORECASE)
-    if match:
-        return _clean_og_target(match.group(1))
+        # Pattern2: "{prefix} {OG}" (before keywords like Nama, Request, Mohon, etc.)
+        match = re.search(rf"{prefix}\s+(.+?)(?:\s+(?:Nama|Request|Mohon|moban|mohon|Inc|Ticket|User|TSEL))", text, re.IGNORECASE)
+        if match:
+            return _clean_og_target(match.group(1))
+
+        # Pattern3: "{prefix} {OG}" sampai akhir string
+        match = re.search(rf"{prefix}\s+(.+)", text, re.IGNORECASE)
+        if match:
+            return _clean_og_target(match.group(1))
 
     return None
 
