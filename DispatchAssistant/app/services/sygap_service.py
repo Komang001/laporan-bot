@@ -366,13 +366,19 @@ class SygapService:
         """Extract parent GAMAS INC from note.
         
         Looks for GAMAS keyword followed by INC number.
-        Supports: 'Induk gamas : INC', 'Tiket GAMAS berikut : INC', etc.
+        Supports: 'Induk gamas : INC', 'Tiket GAMAS berikut : INC',
+                  'GAMAS INC...', 'Induk Gamas INC...' etc.
         Returns INC number or None.
         """
         if not note:
             return None
 
-        match = re.search(r'GAMAS\s*\w*\s*:?\s*(INC\d+)', note, re.IGNORECASE)
+        # Pattern 1: GAMAS ... : INC (with colon separator)
+        match = re.search(r'GAMAS\s*\w*\s*:\s*(INC\d+)', note, re.IGNORECASE)
+        if match:
+            return match.group(1).upper()
+        # Pattern 2: GAMAS INC (direct, no colon)
+        match = re.search(r'GAMAS\s+(INC\d+)', note, re.IGNORECASE)
         if match:
             return match.group(1).upper()
         return None
@@ -1355,7 +1361,7 @@ class SygapService:
                     if parent_inc:
                         log(f"    Parent INC from note: {parent_inc}")
                     else:
-                        log(f"    'Induk gamas' tidak ada di note. SKIP (hindari relasi salah).")
+                        log(f"    GAMAS parent INC tidak ditemukan di note. SKIP (hindari relasi salah).")
                         continue
 
                     child_incs = self.extract_child_incs_excluding_parent(note)
