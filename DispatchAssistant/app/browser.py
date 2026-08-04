@@ -278,7 +278,10 @@ class BrowserManager:
 
             try:
 
-                url = page.url.lower()
+                try:
+                    url = page.evaluate("window.location.href").lower()
+                except Exception:
+                    url = page.url.lower()
 
                 if (
                     "sygap.telkom.co.id" in url
@@ -299,7 +302,7 @@ class BrowserManager:
 
                     self.cache["biscuit"] = page
 
-                elif "oss-incident.telkom.co.id" in url:
+                elif "oss-incident" in url or "insera" in url:
 
                     self.cache["insera_gamas"] = page
 
@@ -409,7 +412,10 @@ class BrowserManager:
 
         for p in existing:
             try:
-                url = p.url.lower()
+                try:
+                    url = p.evaluate("window.location.href").lower()
+                except Exception:
+                    url = p.url.lower()
                 if "sygap.telkom.co.id" in url:
                     has_sygap = True
                 if "biscuit-dashboard" in url:
@@ -458,10 +464,13 @@ class BrowserManager:
 
         for p in existing:
             try:
-                url = p.url.lower()
+                try:
+                    url = p.evaluate("window.location.href").lower()
+                except Exception:
+                    url = p.url.lower()
                 if "sygap.telkom.co.id" in url:
                     has_sygap = True
-                if "oss-incident.telkom.co.id" in url:
+                if "oss-incident" in url or "insera" in url:
                     has_insera = True
             except Exception:
                 continue

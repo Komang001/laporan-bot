@@ -146,15 +146,18 @@ class SygapService:
                 continue
             try:
                 if not p.is_closed():
-                    url = p.url.lower()
+                    try:
+                        url = p.evaluate("window.location.href").lower()
+                    except Exception:
+                        url = p.url.lower()
                     if "biscuit-dashboard" in url:
                         log(f"  [close_tab] SKIP biscuit-dashboard: {url[:60]}")
                         continue
                     if "biscuit" in url and "tools" in url:
                         log(f"  [close_tab] SKIP biscuit-tools: {url[:60]}")
                         continue
-                    if "oss-incident" in url:
-                        log(f"  [close_tab] SKIP oss-incident: {url[:60]}")
+                    if "oss-incident" in url or "insera" in url:
+                        log(f"  [close_tab] SKIP INSERA: {url[:60]}")
                         continue
                     log(f"  [close_tab] CLOSING: {url[:60]}")
                     p.close()
@@ -1196,7 +1199,7 @@ class SygapService:
         log(f"Dashboard loaded: {page.url[:60]}")
 
         log("Menunggu user login ke INSERA...")
-        log("Buka tab baru, akses oss-incident.telkom.co.id, lalu login.")
+        log("Buka tab INSERA di Chrome GAMAS, lalu login.")
         logged_in = False
         for wait in range(120):
             pages = page.context.pages
@@ -1204,19 +1207,29 @@ class SygapService:
                 log(f"  Tabs detected: {len(pages)}")
                 for idx, p in enumerate(pages):
                     try:
-                        log(f"    Tab {idx+1}: {p.url[:80]}")
+                        real_url = p.evaluate("window.location.href")
+                        log(f"    Tab {idx+1}: {real_url[:80]}")
                     except Exception:
-                        log(f"    Tab {idx+1}: (error reading url)")
+                        try:
+                            log(f"    Tab {idx+1}: {p.url[:80]}")
+                        except Exception:
+                            log(f"    Tab {idx+1}: (error)")
             for p in pages:
                 try:
-                    url = p.url.lower()
-                    if "oss-incident" in url:
+                    real_url = p.evaluate("window.location.href").lower()
+                    if "oss-incident" in real_url and "login" not in real_url:
                         logged_in = True
                         break
                 except Exception:
-                    continue
+                    try:
+                        url = p.url.lower()
+                        if "oss-incident" in url:
+                            logged_in = True
+                            break
+                    except Exception:
+                        continue
             if logged_in:
-                log("INSERA tab detected! Mulai scan...")
+                log("INSERA tab terdeteksi (sudah login)! Mulai scan...")
                 break
             if wait % 10 == 0:
                 log(f"  Menunggu INSERA login... ({wait}s)")
