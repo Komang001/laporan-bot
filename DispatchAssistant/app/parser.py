@@ -27,55 +27,53 @@ def parse_owner_group(note: str):
     text = re.sub(r"<[^>]+>", " ", note)
     text = re.sub(r"\s+", " ", text).strip()
 
-    # Cari setelah "LOKER" / "OG" / "OWNER GROUP"
-    match = re.search(
+    # Try patterns in order of priority
+    patterns = [
         r"(?:loker|og|owner\s+group)\s+(.+)",
-        text,
-        re.IGNORECASE
-    )
-    if match:
-        result = match.group(1).strip()
-    else:
-        match = re.search(r"ke\s+(.+)", text, re.IGNORECASE)
-        if match:
-            result = match.group(1).strip()
-        else:
-            return None
+        r"ke\s+(.+)",
+    ]
 
-    # Ambil hanya kata UPPERCASE (OG selalu UPPERCASE)
-    words = result.split()
-    og_words = []
-    for w in words:
-        # Berhenti jika bukan UPPERCASE atau angka INC
-        if w.startswith("INC") or w.startswith("Req") or w.startswith("REQ"):
-            break
-        # Skip angka standalone di awal (bukan bagian OG)
-        if w.isdigit():
-            if og_words:
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if not match:
+            continue
+
+        candidate = match.group(1).strip()
+
+        # Ambil hanya kata UPPERCASE (OG selalu UPPERCASE)
+        words = candidate.split()
+        og_words = []
+        for w in words:
+            # Berhenti jika bukan UPPERCASE atau angka INC
+            if w.startswith("INC") or w.startswith("Req") or w.startswith("REQ"):
+                break
+            # Skip angka standalone di awal (bukan bagian OG)
+            if w.isdigit():
+                if og_words:
+                    og_words.append(w)
+                else:
+                    break
+            # Uppercase dengan huruf, angka, atau tanda hubung (misal MO-INSERA, TIF ASR FBB AREA 2)
+            elif w.replace("-", "").replace("_", "").isalpha() and w == w.upper() and len(w) > 0:
+                og_words.append(w)
+            elif w.replace("-", "").replace("_", "").isalnum() and w == w.upper() and len(w) > 0:
                 og_words.append(w)
             else:
                 break
-        # Uppercase dengan huruf, angka, atau tanda hubung (misal MO-INSERA, TIF ASR FBB AREA 2)
-        elif w.replace("-", "").replace("_", "").isalpha() and w == w.upper() and len(w) > 0:
-            og_words.append(w)
-        elif w.replace("-", "").replace("_", "").isalnum() and w == w.upper() and len(w) > 0:
-            og_words.append(w)
-        else:
-            break
 
-    result = " ".join(og_words).strip()
+        result = " ".join(og_words).strip()
 
-    # Hapus suffix
-    for suffix in REMOVE_SUFFIX:
-        if suffix in result.lower():
-            result = result.split(suffix)[0].strip()
+        # Hapus suffix
+        for suffix in REMOVE_SUFFIX:
+            if suffix in result.lower():
+                result = result.split(suffix)[0].strip()
 
-    result = result.rstrip(".,;:")
+        result = result.rstrip(".,;:")
 
-    if not result:
-        return None
+        if result:
+            return result.upper()
 
-    return result.upper()
+    return None
 
 
 # =====================================================
