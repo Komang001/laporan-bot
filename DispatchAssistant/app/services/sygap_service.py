@@ -211,6 +211,8 @@ class SygapService:
             "input[name$='_request_no']",
             "input[name*='request_no']",
             "input[name$='_no_ticket']",
+            "input[name='ticket_id']",
+            "input[name$='ticket_id']",
             "#ticket_no",
             "#request_no",
         ]
