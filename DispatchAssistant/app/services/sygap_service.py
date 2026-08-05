@@ -4,7 +4,7 @@ import time
 from app.parser import extract_owner_group, extract_inc_number, is_bulk_og_change, extract_bulk_og_target, extract_bulk_inc_list
 from config.settings import USER_ID, USER_NAME
 
-LOOP_INTERVAL = 600
+LOOP_INTERVAL = 180
 
 
 class SygapService:

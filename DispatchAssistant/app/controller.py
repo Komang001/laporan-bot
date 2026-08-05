@@ -4,7 +4,7 @@ import threading
 from app.browser import BrowserManager
 from app.services.sygap_service import SygapService
 
-LOOP_INTERVAL = 600
+LOOP_INTERVAL = 180
 
 
 class DispatchController:
