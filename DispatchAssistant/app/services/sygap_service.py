@@ -9,9 +9,13 @@ LOOP_INTERVAL = 600
 
 class SygapService:
 
-    def __init__(self, browser_manager=None):
+    def __init__(self, browser_manager=None, stop_check=None):
         self.processed_ids = set()
         self.browser_manager = browser_manager
+        self.stop_check = stop_check
+
+    def _stopped(self):
+        return bool(self.stop_check and self.stop_check())
 
     def get_dashboard_page(self):
         page = self.browser_manager.get_dashboard_page()
@@ -733,6 +737,10 @@ class SygapService:
             info_text = page.locator("#requestFulfillmentTable_info").inner_text()
             log(f"--- {info_text} ---")
 
+            if self._stopped():
+                log("STOP requested - aborting scan")
+                return results
+
             rows = self.get_ticket_rows(page)
             log(f"Found {len(rows)} row(s)")
 
@@ -743,6 +751,10 @@ class SygapService:
             for i, row_info in enumerate(rows):
                 code = row_info["request_code"]
                 status = row_info["status"]
+
+                if self._stopped():
+                    log("STOP requested - aborting scan")
+                    return results
 
                 if status in ("COMPLETED", "COMPLETE", "IN_PROGRESS"):
                     log(f"  [{i+1}] {code} - SKIP (status: {status})")
@@ -970,6 +982,10 @@ class SygapService:
             for i, row_info in enumerate(rows):
                 code = row_info["request_code"]
                 status = row_info["status"]
+
+                if self._stopped():
+                    log("STOP requested - aborting scan")
+                    return results
 
                 if status in ("COMPLETED", "COMPLETE"):
                     log(f"  [{i+1}] {code} - SKIP (status: {status})")
@@ -1295,6 +1311,9 @@ class SygapService:
             log("Menunggu user login ke INSERA...")
             log("Buka tab INSERA di Chrome GAMAS, lalu login.")
             for wait in range(120):
+                if self._stopped():
+                    log("STOP requested - aborting scan")
+                    return results
                 pages = page.context.pages
                 if wait % 10 == 0:
                     log(f"  Tabs detected: {len(pages)}")
@@ -1344,6 +1363,10 @@ class SygapService:
             info_text = page.locator("#requestFulfillmentTable_info").inner_text()
             log(f"--- {info_text} ---")
 
+            if self._stopped():
+                log("STOP requested - aborting scan")
+                return results
+
             rows = self.get_ticket_rows(page)
             log(f"Found {len(rows)} row(s)")
 
@@ -1354,6 +1377,10 @@ class SygapService:
             for i, row_info in enumerate(rows):
                 code = row_info["request_code"]
                 status = row_info["status"]
+
+                if self._stopped():
+                    log("STOP requested - aborting scan")
+                    return results
 
                 if status in ("COMPLETED", "COMPLETE"):
                     log(f"  [{i+1}] {code} - SKIP (status: {status})")
@@ -1548,6 +1575,10 @@ class SygapService:
             info_text = page.locator("#requestFulfillmentTable_info").inner_text()
             log(f"--- {info_text} ---")
 
+            if self._stopped():
+                log("STOP requested - aborting scan")
+                return results
+
             rows = self.get_ticket_rows(page)
             log(f"Found {len(rows)} row(s)")
 
@@ -1558,6 +1589,10 @@ class SygapService:
             for i, row_info in enumerate(rows):
                 code = row_info["request_code"]
                 status = row_info["status"]
+
+                if self._stopped():
+                    log("STOP requested - aborting scan")
+                    return results
 
                 if status in ("COMPLETED", "COMPLETE"):
                     log(f"  [{i+1}] {code} - SKIP (status: {status})")

@@ -119,13 +119,20 @@ class DispatchController:
 
                 self.gui.update_status("SCANNING")
 
-                sygap = SygapService(browser_manager=self.browser_manager)
+                sygap = SygapService(
+                    browser_manager=self.browser_manager,
+                    stop_check=lambda: not self.running,
+                )
 
                 tickets = sygap.find_and_process_tickets(
                     log_callback=self.gui.write_log,
                     group_label=group_label,
                     group_id=group_id,
                 )
+
+                if not self.running:
+                    self.gui.write_log("STOP - scan dihentikan user.")
+                    return
 
                 if not tickets:
 
@@ -274,11 +281,18 @@ class DispatchController:
 
                 self.gui.update_status("SCANNING")
 
-                sygap = SygapService(browser_manager=self.browser_manager)
+                sygap = SygapService(
+                    browser_manager=self.browser_manager,
+                    stop_check=lambda: not self.running,
+                )
 
                 tickets = sygap.process_canclwork_tickets(
                     log_callback=self.gui.write_log,
                 )
+
+                if not self.running:
+                    self.gui.write_log("STOP - scan dihentikan user.")
+                    return
 
                 if not tickets:
 
@@ -429,11 +443,18 @@ class DispatchController:
 
                 self.gui.update_status("SCANNING")
 
-                sygap = SygapService(browser_manager=self.browser_manager)
+                sygap = SygapService(
+                    browser_manager=self.browser_manager,
+                    stop_check=lambda: not self.running,
+                )
 
                 tickets = sygap.process_dispatch_tickets(
                     log_callback=self.gui.write_log,
                 )
+
+                if not self.running:
+                    self.gui.write_log("STOP - scan dihentikan user.")
+                    return
 
                 if not tickets:
 
@@ -589,11 +610,18 @@ class DispatchController:
 
                 self.gui.update_status("SCANNING")
 
-                sygap = SygapService(browser_manager=self.browser_manager)
+                sygap = SygapService(
+                    browser_manager=self.browser_manager,
+                    stop_check=lambda: not self.running,
+                )
 
                 tickets = sygap.process_gamas_relations_tickets(
                     log_callback=self.gui.write_log,
                 )
+
+                if not self.running:
+                    self.gui.write_log("STOP - scan dihentikan user.")
+                    return
 
                 if not tickets:
 
