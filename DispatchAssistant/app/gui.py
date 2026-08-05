@@ -7,7 +7,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.controller import DispatchController
-from config.settings import INSERA_GROUP_ID, CHROME_PORTS
+from config.settings import INSERA_GROUP_ID, CHROME_PORTS, TELEGRAM_BOT_TOKEN
 
 
 # =====================================================
@@ -41,6 +41,7 @@ class DispatchAssistantGUI(ctk.CTk):
         self.create_header()
         self.create_feature_sections()
         self.create_log_section()
+        self._start_telegram_bot()
 
     # =================================================
     # Header
@@ -285,6 +286,21 @@ class DispatchAssistantGUI(ctk.CTk):
     def update_status(self, status):
 
         pass
+
+    # =================================================
+    # Telegram Bot (Remote Control)
+    # =================================================
+
+    def _start_telegram_bot(self):
+        if not TELEGRAM_BOT_TOKEN:
+            return
+        try:
+            from app.telegram_bot import TelegramRemote
+            self.telegram = TelegramRemote(gui=self)
+            self.telegram.start()
+            self.write_log("Telegram bot started - remote control active.")
+        except Exception as e:
+            self.write_log(f"Telegram bot error: {e}")
 
 
 # =====================================================

@@ -55,3 +55,12 @@ USER_NAME = "I Nyoman Windu"
 USER_ID = "55654"
 
 INSERA_GROUP_ID = "80148276"
+
+
+# ==================================================
+# Telegram Bot (Remote Control from HP)
+# ==================================================
+
+TELEGRAM_BOT_TOKEN = ""  # isi token dari @BotFather
+
+TELEGRAM_ALLOWED_USER_IDS = []  # isi user ID Telegram yang boleh akses (kosongkan = semua boleh)
