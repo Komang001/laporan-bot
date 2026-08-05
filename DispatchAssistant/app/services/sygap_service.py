@@ -1783,10 +1783,10 @@ class SygapService:
 
                         if all_success:
                             log(f"    All INCs dispatched successfully")
+                            complete_note = "Cek Kembali"
                         else:
                             log(f"    Some INCs failed: {len(failed_incs)}")
-
-                        complete_note = "Cek Kembali"
+                            complete_note = "; ".join(failed_incs)[:200]
 
                         page.bring_to_front()
                         page.wait_for_timeout(1000)
