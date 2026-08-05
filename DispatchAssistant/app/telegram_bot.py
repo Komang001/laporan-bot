@@ -255,7 +255,10 @@ class TelegramRemote:
 
         from app.controller import DispatchController
 
-        ctrl = DispatchController(gui=self.gui, cdp_port=port)
+        ctrl = DispatchController(
+            gui=self.gui._make_feature_adapter(key),
+            cdp_port=port,
+        )
         ctrl.on_complete = lambda k=key: self.gui._on_feature_complete(k)
         self.gui.controllers[key] = ctrl
 
