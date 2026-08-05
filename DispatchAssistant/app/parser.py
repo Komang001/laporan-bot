@@ -109,7 +109,9 @@ def extract_owner_group(note: str):
 def is_bulk_og_change(note: str):
     if not note:
         return False
-    return "Salah_Dispatch_Regional_ke_Regional" in note
+    if "Salah_Dispatch_Regional_ke_Regional" not in note:
+        return False
+    return len(extract_bulk_inc_list(note)) > 1
 
 
 def extract_bulk_og_target(note: str):
