@@ -1820,10 +1820,6 @@ class SygapService:
                     if owner_group:
                         log(f"    OG: {owner_group} | INC from note: {inc_number or 'N/A'}")
 
-                        if "TIF SPM DATIN" in owner_group:
-                            log(f"    SKIP: OG '{owner_group}' -> TIF SPM DATIN")
-                            continue
-
                         if "C4" in owner_group.upper():
                             log(f"    OG is C4 ({owner_group}) -> TO + complete, no dispatch")
                             btn_action = self.take_ownership(ticket_page)
