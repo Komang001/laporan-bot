@@ -477,6 +477,23 @@ class SygapService:
 
         return []
 
+    def find_parent_from_ticket_id_field(self, ticket_page, note):
+        """Fallback: cari parent GAMAS INC di field 'Ticket ID' ketika note
+        tidak memiliki pola induk (INDUK GAMAS / IG / Tiket GAMAS berikut)
+        tapi mengandung 'ANAK GAMAS'. Field berisi INC yang tidak ada di note."""
+        if not note:
+            return None
+        if not re.search(r'\banak\s+gamas\b|\bAG\b', note, re.IGNORECASE):
+            return None
+        child_incs = self.extract_child_incs_excluding_parent(note)
+        if not child_incs:
+            return None
+        field_incs = self.read_child_incs_from_field(ticket_page)
+        for inc in field_incs:
+            if inc not in child_incs:
+                return inc
+        return None
+
     def take_ownership(self, ticket_page):
         try:
             ticket_page.wait_for_load_state("domcontentloaded", timeout=15000)
@@ -1419,8 +1436,12 @@ class SygapService:
                     if parent_inc:
                         log(f"    Parent INC from note: {parent_inc}")
                     else:
-                        log(f"    GAMAS parent INC tidak ditemukan di note. SKIP (hindari relasi salah).")
-                        continue
+                        parent_inc = self.find_parent_from_ticket_id_field(ticket_page, note)
+                        if parent_inc:
+                            log(f"    Parent INC from Ticket ID field: {parent_inc}")
+                        else:
+                            log(f"    GAMAS parent INC tidak ditemukan di note. SKIP (hindari relasi salah).")
+                            continue
 
                     child_incs = self.extract_child_incs_excluding_parent(note)
                     if not child_incs:
