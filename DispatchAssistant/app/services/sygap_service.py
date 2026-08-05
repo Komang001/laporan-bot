@@ -367,8 +367,9 @@ class SygapService:
         
         Supports all formats:
         - 'Induk gamas : INC...', 'Induk gamas ; INC...'
+        - 'INDUK GAMAS INC...'
         - 'Tiket GAMAS berikut : INC...'
-        - 'GAMAS INC...', 'Induk Gamas INC...'
+        - 'GAMAS INC...' (only if not ANAK GAMAS)
         - 'IG: INC...', 'IG : INC...'
         Returns INC number or None.
         """
@@ -379,13 +380,23 @@ class SygapService:
         match = re.search(r'\bIG\s*[:;]\s*(INC\d+)', note, re.IGNORECASE)
         if match:
             return match.group(1).upper()
-        # Pattern 2: GAMAS ... : or ; INC (with colon/semicolon separator)
-        match = re.search(r'GAMAS\s*\w*\s*[:;]\s*(INC\d+)', note, re.IGNORECASE)
+        # Pattern 2: INDUK GAMAS (explicit parent label)
+        match = re.search(r'\bINDUK\s+GAMAS\s*[:;]?\s*(INC\d+)', note, re.IGNORECASE)
         if match:
             return match.group(1).upper()
-        # Pattern 3: GAMAS INC (direct, no separator)
-        match = re.search(r'GAMAS\s+(INC\d+)', note, re.IGNORECASE)
-        if match:
+        # Pattern 3: GAMAS ... : or ; INC — but NOT if preceded by ANAK/AG
+        for match in re.finditer(r'GAMAS\s*\w*\s*[:;]\s*(INC\d+)', note, re.IGNORECASE):
+            pos = match.start()
+            prefix = note[max(0, pos-10):pos].lower()
+            if re.search(r'\b(anak|ag)\s*$', prefix):
+                continue
+            return match.group(1).upper()
+        # Pattern 4: GAMAS INC (direct, no separator) — but NOT ANAK GAMAS
+        for match in re.finditer(r'GAMAS\s+(INC\d+)', note, re.IGNORECASE):
+            pos = match.start()
+            prefix = note[max(0, pos-10):pos].lower()
+            if re.search(r'\b(anak|ag)\s*$', prefix):
+                continue
             return match.group(1).upper()
         return None
 
