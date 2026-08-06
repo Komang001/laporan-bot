@@ -312,12 +312,33 @@ class SygapService:
 
         try:
             body_text = ticket_page.locator("body").inner_text(timeout=5000)
-            m = re.search(r'WO\d+', body_text)
+            m = re.search(r'INC\d+', body_text)
             if m:
                 return m.group(0).upper()
         except Exception:
             pass
 
+        return None
+
+    def wait_for_ticket_inc(self, ticket_page, timeout=15):
+        """Poll INC number dari halaman tiket dengan retry.
+
+        Dynamic content (e.g. 'INSERA - Ticket ID And User ID' -> Ticket ID)
+        diisi asinkron setelah page load, jadi perlu ditunggu beberapa detik.
+        """
+        start = time.time()
+        while time.time() - start < timeout:
+            inc = self.read_ticket_inc(ticket_page)
+            if inc:
+                return inc
+            inc = self.read_ticket_id_from_field(ticket_page)
+            if inc:
+                return inc
+            try:
+                ticket_page.wait_for_load_state("domcontentloaded", timeout=5000)
+            except Exception:
+                pass
+            ticket_page.wait_for_timeout(2000)
         return None
 
     def read_ticket_id_from_field(self, ticket_page):
@@ -1703,9 +1724,7 @@ class SygapService:
                             continue
 
                         if not bulk_incs:
-                            inc_from_page = self.read_ticket_inc(ticket_page)
-                            if not inc_from_page:
-                                inc_from_page = self.read_ticket_id_from_field(ticket_page)
+                            inc_from_page = self.wait_for_ticket_inc(ticket_page)
                             if inc_from_page:
                                 bulk_incs = [inc_from_page]
                                 log(f"    INC from page: {inc_from_page}")
@@ -1884,12 +1903,11 @@ class SygapService:
 
                         if not inc_number:
                             log(f"    INC not in note, reading from ticket page...")
-                            inc_number = self.read_ticket_inc(ticket_page)
-                            if not inc_number:
-                                inc_number = self.read_ticket_id_from_field(ticket_page)
-                                if inc_number:
-                                    log(f"    INC from field: {inc_number}")
-                            log(f"    INC from page: {inc_number or 'NOT FOUND'}")
+                            inc_number = self.wait_for_ticket_inc(ticket_page)
+                            if inc_number:
+                                log(f"    INC from page: {inc_number}")
+                            else:
+                                log(f"    INC from page: NOT FOUND")
 
                         if not inc_number:
                             log(f"    INC number not found anywhere, SKIP")
