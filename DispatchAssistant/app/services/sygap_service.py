@@ -1470,6 +1470,13 @@ class SygapService:
                     if not child_incs:
                         log(f"    No child INCs found, SKIP")
                         continue
+                    # Proteksi: anak gamas TIDAK boleh menjadi induk gamas.
+                    # Buang parent dari daftar child; jika tidak ada child
+                    # tersisa selain parent, jangan buat relasi.
+                    child_incs = [c for c in child_incs if c != parent_inc]
+                    if not child_incs:
+                        log(f"    Parent {parent_inc} terdeteksi sebagai child juga. SKIP (hindari relasi salah).")
+                        continue
                     log(f"    Child INCs ({len(child_incs)}): {','.join(child_incs[:5])}...")
 
                     child_str = ",".join(child_incs)
