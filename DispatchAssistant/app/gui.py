@@ -7,7 +7,13 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.controller import DispatchController
-from config.settings import INSERA_GROUP_ID, CHROME_PORTS, TELEGRAM_BOT_TOKEN
+from config.settings import (
+    INSERA_GROUP_ID,
+    CHROME_PORTS,
+    TELEGRAM_BOT_TOKEN,
+    REPORT_PERSONNEL,
+    REPORT_CDP_PORT,
+)
 
 
 # =====================================================
@@ -53,6 +59,13 @@ FEATURES = [
         "hover": "#DB2777",
         "port_key": "GAMAS",
     },
+    {
+        "key": "report",
+        "label": "REPORT HARIAN",
+        "color": "#6366F1",
+        "hover": "#4F46E5",
+        "port_key": "REPORT",
+    },
 ]
 
 # Channel log dari tiap fitur -> tab tujuan
@@ -62,9 +75,10 @@ CHANNEL_TAB_MAP = {
     "canclwork": "CANCLWORK",
     "dispatch": "DISPATCH",
     "gamas_relations": "GAMAS",
+    "report": "REPORT",
 }
 
-LOG_TABS = ["SEMUA", "TO", "CANCLWORK", "DISPATCH", "GAMAS"]
+LOG_TABS = ["SEMUA", "TO", "CANCLWORK", "DISPATCH", "GAMAS", "REPORT"]
 
 STATUS_COLORS = {
     "READY": "#22C55E",
@@ -188,6 +202,8 @@ class DispatchAssistantGUI(ctk.CTk):
 
             if feat["key"] == "gamas_relations":
                 row, col, span = 2, 0, 2
+            elif feat["key"] == "report":
+                row, col, span = 3, 0, 2
             else:
                 row, col, span = i // 2, i % 2, 1
 
@@ -203,7 +219,7 @@ class DispatchAssistantGUI(ctk.CTk):
     def _create_feature_card(self, feat):
 
         key = feat["key"]
-        port = CHROME_PORTS.get(feat["port_key"], 9222)
+        port = REPORT_CDP_PORT if key == "report" else CHROME_PORTS.get(feat["port_key"], 9222)
 
         card = ctk.CTkFrame(
             self.features_frame,
@@ -277,7 +293,59 @@ class DispatchAssistantGUI(ctk.CTk):
         setattr(self, f"{key}_btn", start_btn)
         setattr(self, f"{key}_status", status_label)
 
+        if key == "report":
+            self._create_piket_input(card, key)
+
         return card
+
+    def _create_piket_input(self, card, key):
+        from app.services.report_service import get_piket
+
+        piket_row = ctk.CTkFrame(card, fg_color="transparent")
+        piket_row.pack(fill="x", padx=14, pady=(0, 10))
+
+        entry = ctk.CTkEntry(
+            piket_row,
+            placeholder_text="Nama piket, mis: windu dika rizky (atau @tag)",
+            font=("Consolas", 11),
+        )
+        current = get_piket() or REPORT_PERSONNEL
+        entry.insert(0, " ".join(current))
+        entry.pack(side="left", fill="x", expand=True)
+
+        save_btn = ctk.CTkButton(
+            piket_row,
+            text="Simpan Piket",
+            width=110,
+            height=28,
+            fg_color="#6366F1",
+            hover_color="#4F46E5",
+            font=("Arial", 11, "bold"),
+            command=lambda k=key: self._save_piket_gui(k),
+        )
+        save_btn.pack(side="right", padx=(6, 0))
+
+        setattr(self, f"{key}_piket_entry", entry)
+
+    def _save_piket_gui(self, key):
+        import re
+
+        from app.services.report_service import save_piket
+
+        entry = getattr(self, f"{key}_piket_entry", None)
+        if entry is None:
+            return
+        raw = entry.get().strip()
+        names = [n for n in re.split(r"[\s,;]+", raw) if n.strip()]
+        if not names:
+            self.write_log("[report] Nama piket kosong - tidak disimpan.", channel="report")
+            return
+        saved = save_piket(names)
+        self.write_log(
+            f"[report] Piket hari ini disimpan ({len(saved)} orang): "
+            + ", ".join(saved),
+            channel="report",
+        )
 
     # =================================================
     # Start / Stop Feature
@@ -289,7 +357,7 @@ class DispatchAssistantGUI(ctk.CTk):
             self.write_log(f"[{key}] Already running!")
             return
 
-        port = CHROME_PORTS.get(feat["port_key"], 9222)
+        port = REPORT_CDP_PORT if key == "report" else CHROME_PORTS.get(feat["port_key"], 9222)
 
         ctrl = DispatchController(
             gui=self._make_feature_adapter(key),
@@ -302,7 +370,10 @@ class DispatchAssistantGUI(ctk.CTk):
         self._update_feature_status(key, "STARTING", "#EAB308")
         getattr(self, f"{key}_btn").configure(state="disabled")
 
-        if key == "to_insera":
+        if key == "report":
+            ctrl.on_report = self._telegram_send_report
+            ctrl.start_report()
+        elif key == "to_insera":
             ctrl.start_auto(group_label="MO-INSERA", group_id=INSERA_GROUP_ID)
         elif key == "to_bima":
             ctrl.start_auto(group_label="MO-BIMA", group_id=None)
@@ -312,6 +383,16 @@ class DispatchAssistantGUI(ctk.CTk):
             ctrl.start_dispatch()
         elif key == "gamas_relations":
             ctrl.start_gamas_relations()
+
+    def _telegram_send_report(self, text):
+        tg = getattr(self, "telegram", None)
+        if tg and tg.send_report_text(text):
+            self.write_log("[report] Laporan dikirim ke Telegram.", channel="report")
+        else:
+            self.write_log(
+                "[report] Telegram belum dikonfigurasi / belum siap - laporan hanya di log.",
+                channel="report",
+            )
 
     def _stop_feature(self, key):
 
@@ -411,6 +492,7 @@ class DispatchAssistantGUI(ctk.CTk):
         self.write_log(f"  CANCLWORK -> port {CHROME_PORTS['CANCLWORK']}")
         self.write_log(f"  DISPATCH  -> port {CHROME_PORTS['DISPATCH']}")
         self.write_log(f"  GAMAS     -> port {CHROME_PORTS['GAMAS']}")
+        self.write_log(f"  REPORT    -> port {CHROME_PORTS['REPORT']}")
         self.write_log("==========================")
 
     def _setup_tags(self, box):
@@ -503,6 +585,45 @@ class DispatchAssistantGUI(ctk.CTk):
             self.write_log("Telegram bot started - remote control active.")
         except Exception as e:
             self.write_log(f"Telegram bot error: {e}")
+
+        self._start_feature_telegram_bots()
+
+    def _start_feature_telegram_bots(self):
+        from app.telegram_bot import FeatureTelegramBot
+        from config.settings import (
+            TELEGRAM_BOT_TOKEN_CANCLWORK,
+            TELEGRAM_BOT_TOKEN_DISPATCH,
+            TELEGRAM_BOT_TOKEN_GAMAS,
+            TELEGRAM_CHAT_IDS,
+            TELEGRAM_ALLOWED_USER_IDS,
+        )
+
+        specs = [
+            ("canclwork", TELEGRAM_BOT_TOKEN_CANCLWORK, "CANCLWORK"),
+            ("dispatch", TELEGRAM_BOT_TOKEN_DISPATCH, "DISPATCH"),
+            ("gamas_relations", TELEGRAM_BOT_TOKEN_GAMAS, "GAMAS"),
+        ]
+        self.feature_telegrams = {}
+        for key, token, port_key in specs:
+            if not token:
+                self.write_log(f"[telegram:{key}] token belum diatur di .env - bot dilewati.")
+                continue
+            try:
+                chat_ids = TELEGRAM_CHAT_IDS.get(key) or TELEGRAM_ALLOWED_USER_IDS
+                bot = FeatureTelegramBot(
+                    gui=self,
+                    key=key,
+                    token=token,
+                    port_key=port_key,
+                    chat_ids=chat_ids,
+                )
+                if bot.start():
+                    self.feature_telegrams[key] = bot
+                    self.write_log(f"[telegram:{key}] bot started - log live + remote control.")
+                else:
+                    self.write_log(f"[telegram:{key}] gagal start bot.")
+            except Exception as e:
+                self.write_log(f"[telegram:{key}] error: {e}")
 
 
 # =====================================================
