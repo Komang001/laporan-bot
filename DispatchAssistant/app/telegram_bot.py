@@ -101,7 +101,26 @@ class FeatureTelegramBot:
     # Forward log live ke Telegram
     # ------------------------------------------
 
+    # Hanya forward log krusial ke Telegram: kode tiket SYGAP (INC/REQ),
+    # induk/anak GAMAS, pesan/respons SYGAP-BISCUIT, dan error/failure.
+    # Log status biasa (step launch, jumlah row, deteksi tab, dll) TIDAK dikirim.
+    _CRITICAL_PATTERNS = (
+        re.compile(r"(?i)\b(?:inc|req|tt)\d{4,}\b"),  # kode tiket SYGAP
+        re.compile(r"(?i)\bincs?\b"),                 # penyebutan INC umum
+        re.compile(r"(?i)\bparent\b|\binduk\b|\bchild\b|\banak\b"),  # relasi GAMAS
+        re.compile(r"(?i)\berror\b|\bgagal\b|\bfail(?:ed|ure)?\b|\bskip\b|\bstop\b|\babort"),
+        re.compile(r"(?i)tidak ditemukan|not found|not accessible|not visible|belum login|timeout|retry"),
+        re.compile(r"(?i)biscuit response|sending:|command sent|pesan|message|note"),
+        re.compile(r"(?i)-> ok|-> failed|-> completed|-> to confirmed|completed|save ok|selesai|berhasil"),
+        re.compile(r"(?i)change coordinator|coordinator changed|already my ticket|proceed"),
+    )
+
+    def _is_critical(self, message):
+        return any(p.search(message) for p in self._CRITICAL_PATTERNS)
+
     def _forward(self, message):
+        if not self._is_critical(message):
+            return
         line = f"[{datetime.now().strftime('%H:%M:%S')}] {message}"
         self.log_buffer.append(line)
         if len(self.log_buffer) > self.max_buffer:
