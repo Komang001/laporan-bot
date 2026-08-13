@@ -118,9 +118,27 @@ class FeatureTelegramBot:
     def _is_critical(self, message):
         return any(p.search(message) for p in self._CRITICAL_PATTERNS)
 
+    _ERROR_PATTERNS = (
+        re.compile(r"(?i)\berror\b|\bgagal\b|\bfail(?:ed|ure)?\b|\bskip\b|\bstop\b|\babort"),
+        re.compile(r"(?i)tidak ditemukan|not found|not accessible|not visible|belum login|timeout|retry"),
+        re.compile(r"(?i)-> failed|failed:|sending.*fail|invalid|rejected"),
+    )
+    _SUCCESS_PATTERNS = (
+        re.compile(r"(?i)-> ok|-> completed|-> to confirmed|to confirmed:|completed|save ok|selesai|berhasil|dispatched successfully"),
+        re.compile(r"(?i)biscuit response:\s*success"),
+    )
+
+    def _mark(self, message):
+        if any(p.search(message) for p in self._ERROR_PATTERNS):
+            return "\u274c " + message
+        if any(p.search(message) for p in self._SUCCESS_PATTERNS):
+            return "\u2705 " + message
+        return "\u2139\ufe0f " + message
+
     def _forward(self, message):
         if not self._is_critical(message):
             return
+        message = self._mark(message)
         line = f"[{datetime.now().strftime('%H:%M:%S')}] {message}"
         self.log_buffer.append(line)
         if len(self.log_buffer) > self.max_buffer:
