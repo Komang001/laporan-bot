@@ -596,6 +596,7 @@ class DispatchAssistantGUI(ctk.CTk):
             TELEGRAM_BOT_TOKEN_GAMAS,
             TELEGRAM_CHAT_IDS,
             TELEGRAM_ALLOWED_USER_IDS,
+            REPORT_CHAT_IDS,
         )
 
         specs = [
@@ -609,7 +610,11 @@ class DispatchAssistantGUI(ctk.CTk):
                 self.write_log(f"[telegram:{key}] token belum diatur di .env - bot dilewati.")
                 continue
             try:
-                chat_ids = TELEGRAM_CHAT_IDS.get(key) or TELEGRAM_ALLOWED_USER_IDS
+                chat_ids = (
+                    TELEGRAM_CHAT_IDS.get(key)
+                    or TELEGRAM_ALLOWED_USER_IDS
+                    or REPORT_CHAT_IDS
+                )
                 bot = FeatureTelegramBot(
                     gui=self,
                     key=key,

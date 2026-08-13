@@ -89,7 +89,7 @@ TELEGRAM_CHAT_IDS = {
     "gamas_relations": [],
 }
 
-TELEGRAM_ALLOWED_USER_IDS = []  # kosongkan = semua boleh akses bot
+TELEGRAM_ALLOWED_USER_IDS = [903566652]  # chat ID admin/pemilik bot; kosongkan = semua boleh akses
 
 # ==================================================
 # Report Harian Helpdesk Operasional
