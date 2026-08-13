@@ -1453,6 +1453,9 @@ class SygapService:
                     log(f"    TO CONFIRMED: {code}")
 
                     note = self.read_ticket_note(ticket_page)
+                    if note:
+                        note_one_line = " ".join(note.split())[:500]
+                        log(f"    Note: {note_one_line}")
                     parent_inc = self.extract_parent_gamas_from_note(note)
                     if parent_inc:
                         log(f"    Parent INC from note: {parent_inc}")
