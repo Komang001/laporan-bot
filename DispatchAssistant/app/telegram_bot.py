@@ -3,7 +3,7 @@ import logging
 import re
 import threading
 import time
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta
 
 from telegram import Update
 from telegram.ext import (
