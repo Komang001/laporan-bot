@@ -82,3 +82,32 @@ td input{width:90px;padding:6px 8px}
 .split{display:grid;grid-template-columns:1fr 1fr;gap:18px}
 @media(max-width:760px){.split{grid-template-columns:1fr}}
 .hidden{display:none!important}
+/* toolbar + kategori */
+.toolbar{display:flex;flex-direction:column;gap:12px;margin:18px 0}
+.search{padding:12px 16px;font-size:15px}
+.cats{display:flex;gap:8px;flex-wrap:wrap}
+.chip{padding:6px 14px;border:1px solid var(--line);border-radius:999px;cursor:pointer;font-size:13px;color:var(--muted);background:var(--panel2)}
+.chip.active{background:var(--brand);color:#fff;border-color:transparent}
+/* tabs admin */
+.tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.tab{padding:9px 16px;border:1px solid var(--line);background:var(--panel2);color:var(--muted);border-radius:9px;cursor:pointer}
+.tab.active{background:var(--brand);color:#fff;border-color:transparent}
+/* modal */
+.modal-back{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:40;padding:16px}
+.modal-back.show{display:flex}
+.modal{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:22px;width:100%;max-width:480px;max-height:90vh;overflow:auto}
+.modal h3{margin-top:0}
+/* tracking */
+.track-result{margin:14px 0}
+.track-steps{display:flex;align-items:center;gap:0;margin:10px 0}
+.track-steps .step{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:var(--muted);min-width:54px}
+.track-steps .dot{width:14px;height:14px;border-radius:50%;background:var(--panel2);border:2px solid var(--line)}
+.track-steps .step.on .dot{background:var(--ok);border-color:var(--ok)}
+.track-steps .step.on{color:var(--text)}
+.track-steps .line{flex:1;height:2px;background:var(--line);min-width:14px}
+/* analytics cards */
+.cards-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:16px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px;text-align:center}
+.stat-v{font-size:24px;font-weight:800;color:var(--brand)}
+.stat-l{font-size:12px;color:var(--muted);margin-top:4px}
+

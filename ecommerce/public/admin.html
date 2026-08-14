@@ -8,8 +8,6 @@
 </head>
 <body>
 <div class="admin-wrap">
-
-  <!-- Login -->
   <div class="login" id="loginBox">
     <h2 style="margin-top:0">Login Admin</h2>
     <div class="field"><label>Password</label><input id="pwd" type="password" placeholder="Password admin"></div>
@@ -17,41 +15,102 @@
     <p class="muted" id="loginErr" style="color:var(--danger)"></p>
   </div>
 
-  <!-- Panel -->
   <div id="adminPanel" class="hidden">
     <header class="top" style="position:static;border-radius:var(--radius);margin-bottom:18px">
-      <div class="brand">Admin <span>Toko</span></div>
+      <div class="brand" id="brandName">Admin <span>Toko</span></div>
       <button class="btn small" id="logoutBtn">Keluar</button>
     </header>
 
-    <div class="panel">
-      <h3 style="margin-top:0">Tambah Produk</h3>
-      <div class="form-grid">
-        <div class="field"><label>Nama</label><input id="p_name"></div>
-        <div class="field"><label>Harga (Rp)</label><input id="p_price" type="number" min="0"></div>
-        <div class="field"><label>Stok</label><input id="p_stock" type="number" min="0" value="0"></div>
-        <div class="field"><label>URL Gambar</label><input id="p_img" placeholder="https://…"></div>
+    <div class="tabs">
+      <button class="tab active" data-tab="produk">Produk</button>
+      <button class="tab" data-tab="pesanan">Pesanan</button>
+      <button class="tab" data-tab="pengaturan">Pengaturan</button>
+      <button class="tab" data-tab="analytics">Analytics</button>
+    </div>
+
+    <!-- PRODUK -->
+    <div class="tabpane" id="tab-produk">
+      <div class="panel">
+        <h3 style="margin-top:0">Tambah Produk</h3>
+        <div class="form-grid">
+          <div class="field"><label>Nama</label><input id="p_name"></div>
+          <div class="field"><label>Harga (Rp)</label><input id="p_price" type="number" min="0"></div>
+          <div class="field"><label>Stok</label><input id="p_stock" type="number" min="0" value="0"></div>
+          <div class="field"><label>Kategori</label><input id="p_cat" placeholder="Lainnya"></div>
+          <div class="field"><label>Berat (gram)</label><input id="p_weight" type="number" min="0" value="500"></div>
+          <div class="field"><label>SKU</label><input id="p_sku"></div>
+          <div class="field"><label>URL Gambar</label><input id="p_img" placeholder="https://…"></div>
+        </div>
+        <div class="field"><label>Deskripsi</label><textarea id="p_desc" rows="2"></textarea></div>
+        <label class="muted" style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="p_active" checked style="width:auto"> Tampilkan di toko</label>
+        <button class="btn primary" id="addBtn">Simpan Produk</button>
       </div>
-      <div class="field"><label>Deskripsi</label><textarea id="p_desc" rows="2"></textarea></div>
-      <label class="muted" style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
-        <input type="checkbox" id="p_active" checked style="width:auto"> Tampilkan di toko
-      </label>
-      <button class="btn primary" id="addBtn">Simpan Produk</button>
+      <div class="panel">
+        <h3 style="margin-top:0">Daftar Produk</h3>
+        <table id="prodTable"><thead><tr><th>Nama</th><th>Kat</th><th>Harga</th><th>Stok</th><th>Tampil</th><th></th></tr></thead><tbody></tbody></table>
+      </div>
     </div>
 
-    <div class="panel">
-      <h3 style="margin-top:0">Daftar Produk (edit harga & ketersediaan)</h3>
-      <table id="prodTable"><thead><tr>
-        <th>Nama</th><th>Harga</th><th>Stok</th><th>Tampil</th><th></th>
-      </tr></thead><tbody></tbody></table>
-    </div>
-
-    <div class="panel">
-      <h3 style="margin-top:0">Pesanan Masuk</h3>
+    <!-- PESANAN -->
+    <div class="tabpane hidden" id="tab-pesanan">
       <div id="orderList"><p class="muted">Memuat…</p></div>
+    </div>
+
+    <!-- PENGATURAN -->
+    <div class="tabpane hidden" id="tab-pengaturan">
+      <div class="panel">
+        <h3 style="margin-top:0">Pengaturan Toko & Pembayaran</h3>
+        <div class="form-grid">
+          <div class="field"><label>Nama Toko</label><input id="s_store"></div>
+          <div class="field"><label>No. WA (62812…)</label><input id="s_wa"></div>
+          <div class="field"><label>URL Gambar QRIS</label><input id="s_qris"></div>
+          <div class="field"><label>Mode Ongkir</label><select id="s_shipmode"><option value="flat">Flat</option><option value="rajaongkir">RajaOngkir</option><option value="biteship">Biteship</option></select></div>
+          <div class="field"><label>Ongkir Flat (Rp)</label><input id="s_flat" type="number" min="0"></div>
+          <div class="field"><label>Gratis Ongkir Min (Rp, 0=off)</label><input id="s_free" type="number" min="0"></div>
+          <div class="field"><label>Payment Gateway</label><select id="s_pg"><option value="manual">Manual</option><option value="midtrans">Midtrans</option><option value="xendit">Xendit</option></select></div>
+          <div class="field"><label>Midtrans Server Key</label><input id="s_mid_s" type="password"></div>
+          <div class="field"><label>Midtrans Client Key</label><input id="s_mid_c"></div>
+          <div class="field"><label>Xendit Secret</label><input id="s_xen_s" type="password"></div>
+          <div class="field"><label>Xendit Public</label><input id="s_xen_p"></div>
+          <div class="field"><label>RajaOngkir Key</label><input id="s_raja" type="password"></div>
+          <div class="field"><label>Kota Asal (RajaOngkir)</label><input id="s_origin" type="number"></div>
+        </div>
+        <button class="btn primary" id="saveSettings">Simpan Pengaturan</button>
+      </div>
+    </div>
+
+    <!-- ANALYTICS -->
+    <div class="tabpane hidden" id="tab-analytics">
+      <div class="cards-row" id="statCards"></div>
+      <div class="panel"><h3 style="margin-top:0">Status Pesanan</h3><div id="byStatus"></div></div>
+      <div class="panel"><h3 style="margin-top:0">Produk Terlaris</h3><div id="topProd"></div></div>
+      <div class="panel"><h3 style="margin-top:0">Stok Menipis (≤5)</h3><div id="lowStock"></div></div>
     </div>
   </div>
 </div>
+
+<!-- Modal edit produk -->
+<div class="modal-back" id="editModal">
+  <div class="modal">
+    <h3>Edit Produk</h3>
+    <input type="hidden" id="e_id">
+    <div class="form-grid">
+      <div class="field"><label>Nama</label><input id="e_name"></div>
+      <div class="field"><label>Harga</label><input id="e_price" type="number"></div>
+      <div class="field"><label>Stok</label><input id="e_stock" type="number"></div>
+      <div class="field"><label>Kategori</label><input id="e_cat"></div>
+      <div class="field"><label>Berat (gram)</label><input id="e_weight" type="number"></div>
+      <div class="field"><label>SKU</label><input id="e_sku"></div>
+    </div>
+    <div class="field"><label>URL Gambar</label><input id="e_img"></div>
+    <div class="field"><label>Deskripsi</label><textarea id="e_desc" rows="2"></textarea></div>
+    <label class="muted" style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="e_active" style="width:auto"> Tampilkan di toko</label>
+    <button class="btn primary" id="saveEdit">Simpan</button>
+    <button class="btn" id="closeEdit">Batal</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
 <script src="/js/admin.js"></script>
 </body>
 </html>

@@ -8,12 +8,16 @@
 </head>
 <body>
 <header class="top">
-  <div class="brand">Toko<span>Kita</span></div>
+  <div class="brand" id="storeName">Toko<span>Kita</span></div>
   <a class="btn cart-btn" id="openCart">🛒 Keranjang <span class="cart-count" id="cartCount" style="display:none">0</span></a>
 </header>
 
 <div class="wrap">
-  <h1 class="section-title">Produk Kami</h1>
+  <div class="toolbar">
+    <input id="search" placeholder="🔍 Cari produk…" class="search">
+    <div class="cats" id="cats"><span class="chip active" data-cat="all">Semua</span></div>
+  </div>
+
   <div class="grid" id="productGrid"><div class="empty">Memuat produk…</div></div>
 </div>
 
@@ -22,15 +26,49 @@
   <h2>Keranjang</h2>
   <div class="items" id="cartItems"><div class="empty">Keranjang kosong</div></div>
   <div class="foot">
-    <div class="total"><span>Total</span><span id="cartTotal">Rp0</span></div>
+    <div class="total"><span>Subtotal</span><span id="cartTotal">Rp0</span></div>
     <div class="field"><label>Nama</label><input id="custName" placeholder="Nama lengkap"></div>
-    <div class="field"><label>Kontak (WA/email)</label><input id="custContact" placeholder="08xxxx / email"></div>
+    <div class="field"><label>No. WA / Kontak</label><input id="custContact" placeholder="08xxxx"></div>
+    <div class="field"><label>Alamat Pengiriman</label><textarea id="custAddr" rows="2" placeholder="Jalan, no. rumah, rt/rw"></textarea></div>
+    <div class="field"><label>Kota</label><input id="custCity" placeholder="Kota tujuan"></div>
+    <div class="field"><label>Kode Pos</label><input id="custPos" placeholder="12345"></div>
+    <div class="field"><label>Metode Pembayaran</label>
+      <select id="payMethod">
+        <option value="qris">QRIS (scan di admin)</option>
+        <option value="transfer">Transfer Bank</option>
+        <option value="cod">COD (bayar di tempat)</option>
+      </select>
+    </div>
+    <div class="field"><label>Layanan Kurir</label><select id="shipService"><option value="">— Pilih —</option></select></div>
+    <div class="total"><span>Ongkir</span><span id="shipCost">Rp0</span></div>
+    <div class="total"><span><b>Total Bayar</b></span><span id="grandTotal">Rp0</span></div>
     <button class="btn primary" id="checkoutBtn">Pesan Sekarang</button>
+    <button class="btn" id="trackBtn" style="margin-top:8px">Lacak Pesanan Saya</button>
   </div>
 </div>
 <div class="drawer-back" id="drawerBack"></div>
-<div class="toast" id="toast"></div>
 
+<!-- Tracking modal -->
+<div class="modal-back" id="trackModal">
+  <div class="modal">
+    <h3>Lacak Pesanan</h3>
+    <div class="field"><label>ID Pesanan (contoh: 12)</label><input id="trackId" placeholder="Nomor pesanan"></div>
+    <button class="btn primary" id="trackGo">Lacak</button>
+    <div id="trackResult" class="track-result"></div>
+    <button class="btn" id="trackClose">Tutup</button>
+  </div>
+</div>
+
+<!-- QRIS modal -->
+<div class="modal-back" id="qrisModal">
+  <div class="modal">
+    <h3>Pembayaran QRIS</h3>
+    <div id="qrisBody"></div>
+    <button class="btn" id="qrisClose">Tutup</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
 <script src="/js/store.js"></script>
 </body>
 </html>
