@@ -1,1 +1,1 @@
-{"name":"ecommerce","private":true}
+{"name":"ecommerce","private":true,"devDependencies":{"wrangler":"^4.123.0"}}
