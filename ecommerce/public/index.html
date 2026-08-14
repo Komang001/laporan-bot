@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Toko Online</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">Toko<span>Kita</span></div>
+  <a class="btn cart-btn" id="openCart">🛒 Keranjang <span class="cart-count" id="cartCount" style="display:none">0</span></a>
+</header>
+
+<div class="wrap">
+  <h1 class="section-title">Produk Kami</h1>
+  <div class="grid" id="productGrid"><div class="empty">Memuat produk…</div></div>
+</div>
+
+<!-- Cart drawer -->
+<div class="drawer" id="drawer">
+  <h2>Keranjang</h2>
+  <div class="items" id="cartItems"><div class="empty">Keranjang kosong</div></div>
+  <div class="foot">
+    <div class="total"><span>Total</span><span id="cartTotal">Rp0</span></div>
+    <div class="field"><label>Nama</label><input id="custName" placeholder="Nama lengkap"></div>
+    <div class="field"><label>Kontak (WA/email)</label><input id="custContact" placeholder="08xxxx / email"></div>
+    <button class="btn primary" id="checkoutBtn">Pesan Sekarang</button>
+  </div>
+</div>
+<div class="drawer-back" id="drawerBack"></div>
+<div class="toast" id="toast"></div>
+
+<script src="/js/store.js"></script>
+</body>
+</html>

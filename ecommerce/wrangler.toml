@@ -1,0 +1,13 @@
+name = "ecommerce"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# Binding database D1 (dibuat saat deploy: wrangler d1 create ecommerce)
+[[d1_databases]]
+binding = "DB"
+database_name = "ecommerce"
+database_id = "REPLACE_WITH_D1_ID"   # isi otomatis saat deploy
+
+# Menyajikan file statis (toko & admin) dari folder public/
+[assets]
+directory = "public"

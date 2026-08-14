@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin — TokoKita</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="admin-wrap">
+
+  <!-- Login -->
+  <div class="login" id="loginBox">
+    <h2 style="margin-top:0">Login Admin</h2>
+    <div class="field"><label>Password</label><input id="pwd" type="password" placeholder="Password admin"></div>
+    <button class="btn primary" id="loginBtn" style="width:100%">Masuk</button>
+    <p class="muted" id="loginErr" style="color:var(--danger)"></p>
+  </div>
+
+  <!-- Panel -->
+  <div id="adminPanel" class="hidden">
+    <header class="top" style="position:static;border-radius:var(--radius);margin-bottom:18px">
+      <div class="brand">Admin <span>Toko</span></div>
+      <button class="btn small" id="logoutBtn">Keluar</button>
+    </header>
+
+    <div class="panel">
+      <h3 style="margin-top:0">Tambah Produk</h3>
+      <div class="form-grid">
+        <div class="field"><label>Nama</label><input id="p_name"></div>
+        <div class="field"><label>Harga (Rp)</label><input id="p_price" type="number" min="0"></div>
+        <div class="field"><label>Stok</label><input id="p_stock" type="number" min="0" value="0"></div>
+        <div class="field"><label>URL Gambar</label><input id="p_img" placeholder="https://…"></div>
+      </div>
+      <div class="field"><label>Deskripsi</label><textarea id="p_desc" rows="2"></textarea></div>
+      <label class="muted" style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+        <input type="checkbox" id="p_active" checked style="width:auto"> Tampilkan di toko
+      </label>
+      <button class="btn primary" id="addBtn">Simpan Produk</button>
+    </div>
+
+    <div class="panel">
+      <h3 style="margin-top:0">Daftar Produk (edit harga & ketersediaan)</h3>
+      <table id="prodTable"><thead><tr>
+        <th>Nama</th><th>Harga</th><th>Stok</th><th>Tampil</th><th></th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+
+    <div class="panel">
+      <h3 style="margin-top:0">Pesanan Masuk</h3>
+      <div id="orderList"><p class="muted">Memuat…</p></div>
+    </div>
+  </div>
+</div>
+<script src="/js/admin.js"></script>
+</body>
+</html>
