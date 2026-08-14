@@ -409,6 +409,10 @@ class SygapService:
         match = re.search(r'\bINDUK\s+GAMAS\s*[:;]?\s*(INC\d+)', note, re.IGNORECASE)
         if match:
             return match.group(1).upper()
+        # Pattern 2b: INDUKAN (kata populer: 'INDUKAN INC...', 'INDUKAN : INC...')
+        match = re.search(r'\bINDUKAN\s*[:;]?\s*(INC\d+)', note, re.IGNORECASE)
+        if match:
+            return match.group(1).upper()
         # Pattern 3: GAMAS ... : or ; INC — but NOT if preceded by ANAK/AG
         for match in re.finditer(r'GAMAS\s*\w*\s*[:;]\s*(INC\d+)', note, re.IGNORECASE):
             pos = match.start()
@@ -438,8 +442,8 @@ class SygapService:
 
         parent = self.extract_parent_gamas_from_note(note)
 
-        # Try explicit AG / Anak gamas pattern first
-        ag_match = re.search(r'\b(?:AG|Anak\s+gamas)\s*[:;]\s*((?:INC\d+[\s,]*)+)', note, re.IGNORECASE)
+        # Try explicit AG / Anak gamas / Anakam pattern first
+        ag_match = re.search(r'\b(?:AG|Anak\s+gamas|ANAKAN)\s*[:;]?\s*((?:INC\d+[\s,]*)+)', note, re.IGNORECASE)
         if ag_match:
             incs = re.findall(r'INC\d+', ag_match.group(1), re.IGNORECASE)
             return [m.upper() for m in incs]
@@ -504,7 +508,7 @@ class SygapService:
         tapi mengandung 'ANAK GAMAS'. Field berisi INC yang tidak ada di note."""
         if not note:
             return None
-        if not re.search(r'\banak\s+gamas\b|\bAG\b', note, re.IGNORECASE):
+        if not re.search(r'\banak\s+gamas\b|\bAG\b|\bANAKAN\b', note, re.IGNORECASE):
             return None
         child_incs = self.extract_child_incs_excluding_parent(note)
         if not child_incs:
