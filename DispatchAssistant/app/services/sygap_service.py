@@ -597,6 +597,21 @@ class SygapService:
         except Exception:
             return ""
 
+    def read_coordinator_label(self, ticket_page):
+        """Return teks label Request Coordinator (mis. 'Rizky Senja Budiman - CRS...')."""
+        try:
+            val = ticket_page.evaluate("""
+                (function() {
+                    var el = document.getElementById('id_coordinator');
+                    if (!el) return '';
+                    var opt = el.options[el.selectedIndex];
+                    return opt ? (opt.text || '') : '';
+                })();
+            """)
+            return str(val).strip()
+        except Exception:
+            return ""
+
     def is_my_ticket(self, ticket_page):
         from config import settings as cfg
         return self.read_coordinator_user_id(ticket_page) == str(
@@ -604,12 +619,26 @@ class SygapService:
         ).strip()
 
     def is_coordinator_in_skip_list(self, ticket_page):
-        """True jika tiket dimiliki Request Coordinator di SKIP_COORDINATOR_USER_IDS
-        (mis. Rizky Senja Budiman / CRS2018192) -> bot tidak menyentuh tiket ini."""
+        """True jika tiket dimiliki Request Coordinator di daftar skip.
+
+        Entri bisa berupa ID angka ('55652') atau nama/username ('Rizky Senja Budiman',
+        'CRS2018192'). Teks dicocokkan sebagian (case-insensitive) terhadap label
+        koordinator di form tiket.
+        """
         from config import settings as cfg
         uid = self.read_coordinator_user_id(ticket_page)
+        label = self.read_coordinator_label(ticket_page)
         skip_ids = getattr(cfg, "SKIP_COORDINATOR_USER_IDS", []) or []
-        return uid in [str(x).strip() for x in skip_ids]
+        for item in skip_ids:
+            item_s = str(item).strip()
+            if not item_s:
+                continue
+            if item_s.isdigit():
+                if uid == item_s:
+                    return True
+            elif item_s.lower() in label.lower():
+                return True
+        return False
 
     def change_coordinator_to_me(self, ticket_page):
         from config import settings as cfg

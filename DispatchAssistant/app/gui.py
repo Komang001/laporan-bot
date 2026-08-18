@@ -961,9 +961,9 @@ class DispatchAssistantGUI(ctk.CTk):
             "Jeda scan ulang tiap fitur. Min 60 detik.",
         )
         e_skip = row(
-            "Skip Coordinator ID (pisah koma)",
+            "Skip Coordinator (ID atau Nama, pisah koma)",
             ", ".join(cur.get("skip_coordinator_user_ids") or DEFAULTS["skip_coordinator_user_ids"]),
-            "Tiket dengan Request Coordinator ini dilewati bot. Mis: 55652 (Rizky).",
+            "Angka = ID (mis. 55652). Teks = nama/username, dicocokkan ke label koordinator di SYGAP (mis. Rizky Senja Budiman).",
         )
         e_uid = row("User ID (Request Coordinator)", str(cur.get("user_id", DEFAULTS["user_id"])))
         e_uname = row(
