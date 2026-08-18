@@ -1,5 +1,6 @@
 import sys
 import os
+import re
 
 import customtkinter as ctk
 from datetime import datetime
@@ -23,10 +24,26 @@ from config.settings import (
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
+BG_MAIN = "#0B0F1A"
+BG_CARD = "#141A2E"
+BG_CARD_HOVER = "#182040"
+BORDER = "#232B45"
+BORDER_LIGHT = "#2E3A5F"
+TEXT_DIM = "#8A93AD"
+TEXT_MUTED = "#5C6380"
+ACCENT = "#7C3AED"
+ACCENT2 = "#0EA5E9"
+ACCENT3 = "#EC4899"
+
+FONT_UI = "Segoe UI"
+FONT_MONO = "Consolas"
+
 FEATURES = [
     {
         "key": "to_insera",
         "label": "TO MO-INSERA",
+        "icon": "\U0001F916",
+        "desc": "Take Ownership tiket group MO-INSERA",
         "color": "#7C3AED",
         "hover": "#6D28D9",
         "port_key": "TO",
@@ -34,6 +51,8 @@ FEATURES = [
     {
         "key": "to_bima",
         "label": "TO MO-BIMA",
+        "icon": "\U0001F3ED",
+        "desc": "Take Ownership tiket group MO-BIMA",
         "color": "#0EA5E9",
         "hover": "#0284C7",
         "port_key": "TO",
@@ -41,6 +60,8 @@ FEATURES = [
     {
         "key": "canclwork",
         "label": "CANCLWORK WO",
+        "icon": "\U0001F527",
+        "desc": "Cancel work order via BISCUIT",
         "color": "#F97316",
         "hover": "#EA580C",
         "port_key": "CANCLWORK",
@@ -48,6 +69,8 @@ FEATURES = [
     {
         "key": "dispatch",
         "label": "DISPATCH",
+        "icon": "\U0001F680",
+        "desc": "Dispatch tiket via BISCUIT",
         "color": "#10B981",
         "hover": "#059669",
         "port_key": "DISPATCH",
@@ -55,6 +78,8 @@ FEATURES = [
     {
         "key": "gamas_relations",
         "label": "GAMAS RELATIONS",
+        "icon": "\U0001F517",
+        "desc": "Relasi induk & anak GAMAS di INSERA",
         "color": "#EC4899",
         "hover": "#DB2777",
         "port_key": "GAMAS",
@@ -62,6 +87,8 @@ FEATURES = [
     {
         "key": "report",
         "label": "REPORT HARIAN",
+        "icon": "\U0001F4CA",
+        "desc": "Laporan harian helpdesk operasional",
         "color": "#6366F1",
         "hover": "#4F46E5",
         "port_key": "REPORT",
@@ -91,6 +118,11 @@ STATUS_COLORS = {
     "STOPPING": "#F97316",
     "STOPPED": "#EF4444",
     "ERROR": "#EF4444",
+}
+
+# Status yang dot-nya berkedip
+_BLINK_STATUSES = {
+    "STARTING", "LAUNCHING", "CONNECTING", "SCANNING", "RUNNING", "STOPPING",
 }
 
 
@@ -123,18 +155,24 @@ class DispatchAssistantGUI(ctk.CTk):
 
         self.controllers = {}
         self.log_boxes = {}
+        self._blink_jobs = {}
+        self._clock_job = None
 
         self.title("Industrial Programmer - DispatchAssistant")
 
-        self.geometry("1040x780")
+        self.geometry("1120x800")
 
-        self.minsize(960, 700)
+        self.minsize(1000, 720)
 
         self.resizable(True, True)
+
+        self.configure(fg_color=BG_MAIN)
 
         self.create_header()
         self.create_feature_sections()
         self.create_log_section()
+        self.create_footer()
+        self._start_clock()
         self._start_telegram_bot()
 
     # =================================================
@@ -145,44 +183,62 @@ class DispatchAssistantGUI(ctk.CTk):
 
         frame = ctk.CTkFrame(
             self,
-            corner_radius=12,
-            fg_color="#1C1C2E",
+            corner_radius=14,
+            fg_color="#12172A",
             border_width=1,
-            border_color="#2A2A3E",
+            border_color=BORDER_LIGHT,
         )
 
         frame.pack(fill="x", padx=20, pady=(20, 10))
 
-        inner = ctk.CTkFrame(frame, fg_color="transparent")
+        # Gradient strip atas (ungu -> biru -> pink)
+        strip = ctk.CTkFrame(frame, height=5, corner_radius=0, fg_color=ACCENT)
+        strip.pack(fill="x", side="top")
 
-        inner.pack(pady=(16, 12))
+        inner = ctk.CTkFrame(frame, fg_color="transparent")
+        inner.pack(fill="x", padx=20, pady=(14, 12))
+
+        left = ctk.CTkFrame(inner, fg_color="transparent")
+        left.pack(side="left")
 
         title = ctk.CTkLabel(
-            inner,
+            left,
             text="DispatchAssistant",
-            font=("Arial", 26, "bold"),
+            font=(FONT_UI, 26, "bold"),
             text_color="#FFFFFF",
         )
-
-        title.pack()
+        title.pack(anchor="w")
 
         subtitle = ctk.CTkLabel(
-            inner,
-            text="Industrial Programmer Automation System - Multi Chrome",
-            font=("Arial", 12),
-            text_color="#9CA3AF",
+            left,
+            text="Industrial Programmer Automation System  \u2022  Multi-Chrome  \u2022  Telegram Remote",
+            font=(FONT_UI, 12),
+            text_color=TEXT_DIM,
         )
+        subtitle.pack(anchor="w", pady=(2, 0))
 
-        subtitle.pack(pady=(2, 0))
+        right = ctk.CTkFrame(inner, fg_color="transparent")
+        right.pack(side="right")
 
-        divider = ctk.CTkFrame(
-            frame,
-            height=3,
-            fg_color="#7C3AED",
-            corner_radius=0,
+        badge = ctk.CTkLabel(
+            right,
+            text="  \u25CF SYSTEM READY  ",
+            font=(FONT_UI, 12, "bold"),
+            text_color="#22C55E",
+            fg_color="#12241C",
+            corner_radius=14,
         )
+        badge.pack(anchor="e")
+        self._badge_ready = badge
 
-        divider.pack(fill="x", side="bottom")
+        clock = ctk.CTkLabel(
+            right,
+            text="",
+            font=(FONT_MONO, 13, "bold"),
+            text_color="#E2E8F0",
+        )
+        clock.pack(anchor="e", pady=(4, 0))
+        self._clock_label = clock
 
     # =================================================
     # Feature Cards (2 kolom)
@@ -223,71 +279,92 @@ class DispatchAssistantGUI(ctk.CTk):
 
         card = ctk.CTkFrame(
             self.features_frame,
-            corner_radius=10,
+            corner_radius=12,
             border_width=2,
             border_color=feat["color"],
-            fg_color="#17171F",
+            fg_color=BG_CARD,
         )
 
         top = ctk.CTkFrame(card, fg_color="transparent")
+        top.pack(fill="x", padx=14, pady=(12, 4))
 
-        top.pack(fill="x", padx=14, pady=(10, 4))
-
-        name = ctk.CTkLabel(
+        icon = ctk.CTkLabel(
             top,
-            text=feat["label"],
-            font=("Arial", 15, "bold"),
+            text=feat["icon"],
+            font=(FONT_UI, 20),
             text_color=feat["color"],
         )
+        icon.pack(side="left", padx=(0, 8))
 
-        name.pack(side="left")
+        name_col = ctk.CTkFrame(top, fg_color="transparent")
+        name_col.pack(side="left", fill="x", expand=True)
+
+        name = ctk.CTkLabel(
+            name_col,
+            text=feat["label"],
+            font=(FONT_UI, 15, "bold"),
+            text_color="#FFFFFF",
+        )
+        name.pack(anchor="w")
+
+        desc = ctk.CTkLabel(
+            name_col,
+            text=feat["desc"],
+            font=(FONT_UI, 11),
+            text_color=TEXT_DIM,
+        )
+        desc.pack(anchor="w")
 
         status_label = ctk.CTkLabel(
             top,
             text="\u25CF READY",
-            font=("Arial", 12, "bold"),
+            font=(FONT_UI, 12, "bold"),
             text_color="#22C55E",
         )
-
-        status_label.pack(side="right")
+        status_label.pack(side="right", padx=(8, 0))
 
         bottom = ctk.CTkFrame(card, fg_color="transparent")
+        bottom.pack(fill="x", padx=14, pady=(6, 12))
 
-        bottom.pack(fill="x", padx=14, pady=(0, 10))
-
-        port_label = ctk.CTkLabel(
+        chip = ctk.CTkLabel(
             bottom,
             text=f"port {port}",
-            font=("Consolas", 11),
-            text_color="#9CA3AF",
+            font=(FONT_MONO, 11, "bold"),
+            text_color=feat["color"],
+            fg_color="#1B2136",
+            corner_radius=10,
+            padx=10,
+            pady=2,
         )
-
-        port_label.pack(side="left")
+        chip.pack(side="left")
 
         stop_btn = ctk.CTkButton(
             bottom,
             text="STOP",
             width=72,
-            height=28,
-            fg_color="#EF4444",
-            hover_color="#DC2626",
-            font=("Arial", 12, "bold"),
+            height=30,
+            corner_radius=8,
+            fg_color="#3B1520",
+            hover_color="#5B1E2F",
+            border_width=1,
+            border_color="#7F1D1D",
+            text_color="#FCA5A5",
+            font=(FONT_UI, 12, "bold"),
             command=lambda k=key: self._stop_feature(k),
         )
-
         stop_btn.pack(side="right", padx=(6, 0))
 
         start_btn = ctk.CTkButton(
             bottom,
             text="START",
-            width=80,
-            height=28,
+            width=84,
+            height=30,
+            corner_radius=8,
             fg_color=feat["color"],
             hover_color=feat["hover"],
-            font=("Arial", 12, "bold"),
+            font=(FONT_UI, 12, "bold"),
             command=lambda k=key, f=feat: self._start_feature(k, f),
         )
-
         start_btn.pack(side="right")
 
         setattr(self, f"{key}_btn", start_btn)
@@ -302,12 +379,14 @@ class DispatchAssistantGUI(ctk.CTk):
         from app.services.report_service import get_piket
 
         piket_row = ctk.CTkFrame(card, fg_color="transparent")
-        piket_row.pack(fill="x", padx=14, pady=(0, 10))
+        piket_row.pack(fill="x", padx=14, pady=(0, 12))
 
         entry = ctk.CTkEntry(
             piket_row,
             placeholder_text="Nama piket, mis: windu dika rizky (atau @tag)",
-            font=("Consolas", 11),
+            font=(FONT_MONO, 11),
+            fg_color="#0E1322",
+            border_color=BORDER,
         )
         current = get_piket() or REPORT_PERSONNEL
         entry.insert(0, " ".join(current))
@@ -318,9 +397,10 @@ class DispatchAssistantGUI(ctk.CTk):
             text="Simpan Piket",
             width=110,
             height=28,
-            fg_color="#6366F1",
+            corner_radius=8,
+            fg_color="#3D3563",
             hover_color="#4F46E5",
-            font=("Arial", 11, "bold"),
+            font=(FONT_UI, 11, "bold"),
             command=lambda k=key: self._save_piket_gui(k),
         )
         save_btn.pack(side="right", padx=(6, 0))
@@ -328,7 +408,6 @@ class DispatchAssistantGUI(ctk.CTk):
         setattr(self, f"{key}_piket_entry", entry)
 
     def _save_piket_gui(self, key):
-        import re
 
         from app.services.report_service import save_piket
 
@@ -423,6 +502,36 @@ class DispatchAssistantGUI(ctk.CTk):
                 text_color=color,
             ))
 
+        self._manage_blink(key, status)
+
+    def _manage_blink(self, key, status):
+        """Dot status berkedip saat fitur aktif, berhenti saat diam."""
+
+        job = self._blink_jobs.pop(key, None)
+        if job is not None:
+            try:
+                self.after_cancel(job)
+            except Exception:
+                pass
+
+        if status.upper() not in _BLINK_STATUSES:
+            return
+
+        lbl = getattr(self, f"{key}_status", None)
+        if lbl is None:
+            return
+
+        color = STATUS_COLORS.get(status.upper(), "#22C55E")
+        dim = "#2E3A5F"
+        state = {"on": True}
+
+        def tick():
+            state["on"] = not state["on"]
+            lbl.configure(text_color=color if state["on"] else dim)
+            self._blink_jobs[key] = self.after(650, tick)
+
+        tick()
+
     def _update_feature_status_from_controller(self, key, status):
 
         status = str(status).upper()
@@ -439,47 +548,88 @@ class DispatchAssistantGUI(ctk.CTk):
 
     def create_log_section(self):
 
-        frame = ctk.CTkFrame(self)
+        frame = ctk.CTkFrame(
+            self,
+            corner_radius=12,
+            fg_color="#10142A",
+            border_width=1,
+            border_color=BORDER,
+        )
 
         frame.pack(
             fill="both",
             expand=True,
             padx=20,
-            pady=(0, 20),
+            pady=(0, 10),
         )
 
         header = ctk.CTkFrame(frame, fg_color="transparent")
-
-        header.pack(fill="x", padx=12, pady=(10, 4))
+        header.pack(fill="x", padx=14, pady=(10, 4))
 
         ctk.CTkLabel(
             header,
             text="Activity Log",
-            font=("Arial", 14, "bold"),
+            font=(FONT_UI, 14, "bold"),
+            text_color="#FFFFFF",
         ).pack(side="left")
+
+        ctk.CTkLabel(
+            header,
+            text="log live per fitur",
+            font=(FONT_UI, 11),
+            text_color=TEXT_DIM,
+        ).pack(side="left", padx=(8, 0), pady=(3, 0))
+
+        ctk.CTkButton(
+            header,
+            text="Copy",
+            width=64,
+            height=26,
+            corner_radius=8,
+            fg_color="#2A3356",
+            hover_color="#39436E",
+            font=(FONT_UI, 11, "bold"),
+            command=self._copy_log,
+        ).pack(side="right", padx=(6, 0))
 
         ctk.CTkButton(
             header,
             text="Clear",
-            width=70,
+            width=64,
             height=26,
-            fg_color="#3B3B4F",
-            hover_color="#4B4B63",
+            corner_radius=8,
+            fg_color="#2A3356",
+            hover_color="#39436E",
+            font=(FONT_UI, 11, "bold"),
             command=self._clear_log,
         ).pack(side="right")
 
-        self.tabs = ctk.CTkTabview(frame)
+        self.tabs = ctk.CTkTabview(
+            frame,
+            corner_radius=10,
+            fg_color="#0D1124",
+            segmented_button_selected_color=ACCENT,
+            segmented_button_selected_hover_color="#6D28D9",
+            segmented_button_unselected_color="#1A2138",
+            segmented_button_unselected_hover_color="#232C4C",
+            text_color="#E2E8F0",
+        )
 
-        self.tabs.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+        self.tabs.pack(fill="both", expand=True, padx=14, pady=(6, 14))
 
         for name in LOG_TABS:
             tab = self.tabs.add(name)
             box = ctk.CTkTextbox(
                 tab,
-                font=("Consolas", 11),
+                font=(FONT_MONO, 11),
                 wrap="word",
+                fg_color="#0B0F1E",
+                border_color=BORDER,
+                border_width=1,
+                corner_radius=8,
+                text_color="#D3DAEE",
             )
-            box.pack(fill="both", expand=True, padx=6, pady=6)
+            box.pack(fill="both", expand=True, padx=4, pady=4)
             self.log_boxes[name] = box
             self._setup_tags(box)
 
@@ -546,6 +696,73 @@ class DispatchAssistantGUI(ctk.CTk):
         box = self.log_boxes.get(name)
         if box:
             box.delete("1.0", "end")
+
+    def _copy_log(self):
+
+        try:
+            name = self.tabs.get()
+        except Exception:
+            name = "SEMUA"
+
+        box = self.log_boxes.get(name)
+        if box is None:
+            return
+        content = box.get("1.0", "end").strip()
+        if not content:
+            return
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(content)
+            self.write_log("[gui] Log disalin ke clipboard.")
+        except Exception as e:
+            self.write_log(f"[gui] Gagal copy log: {e}")
+
+    # =================================================
+    # Footer
+    # =================================================
+
+    def create_footer(self):
+
+        footer = ctk.CTkFrame(
+            self,
+            corner_radius=10,
+            fg_color="#12172A",
+            border_width=1,
+            border_color=BORDER,
+        )
+
+        footer.pack(fill="x", padx=20, pady=(0, 14))
+
+        ctk.CTkLabel(
+            footer,
+            text="\u25CF ONLINE",
+            font=(FONT_UI, 11, "bold"),
+            text_color="#22C55E",
+        ).pack(side="left", padx=14, pady=8)
+
+        ctk.CTkLabel(
+            footer,
+            text="auto-pilot aktif  \u2022  gunakan STOP saat intervensi manual",
+            font=(FONT_UI, 11),
+            text_color=TEXT_DIM,
+        ).pack(side="left", padx=(10, 0), pady=8)
+
+        ctk.CTkLabel(
+            footer,
+            text="v3.0",
+            font=(FONT_UI, 11, "bold"),
+            text_color="#4C5470",
+        ).pack(side="right", padx=14, pady=8)
+
+    def _start_clock(self):
+
+        def tick():
+            self._clock_label.configure(
+                text=datetime.now().strftime("%H:%M:%S")
+            )
+            self._clock_job = self.after(1000, tick)
+
+        tick()
 
     # =================================================
     # Functions
