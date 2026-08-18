@@ -31,6 +31,8 @@ SHEET_URL = os.environ.get(
 )
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+# Untuk group forum mode: ID topik tujuan (message_thread_id)
+THREAD_ID = os.environ.get("TELEGRAM_MESSAGE_THREAD_ID", "").strip()
 
 SHIFTS = [
     ("Shift 1", "00:00", "09:00"),
@@ -206,9 +208,10 @@ def send_message(text):
         cid = cid.strip()
         if not cid:
             continue
-        data = urllib.parse.urlencode(
-            {"chat_id": cid, "text": text, "disable_web_page_preview": "true"}
-        ).encode()
+        params = {"chat_id": cid, "text": text, "disable_web_page_preview": "true"}
+        if THREAD_ID:
+            params["message_thread_id"] = THREAD_ID
+        data = urllib.parse.urlencode(params).encode()
         req = urllib.request.Request(url, data=data)
         with urllib.request.urlopen(req, timeout=30) as resp:
             body = resp.read().decode()
