@@ -14,6 +14,9 @@ from config.settings import (
     REPORT_CDP_PORT,
 )
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LOGO_PATH = os.path.join(BASE_DIR, "assets", "logo.png")
+
 
 # =====================================================
 # Appearance
@@ -195,8 +198,10 @@ class DispatchAssistantGUI(ctk.CTk):
         inner = ctk.CTkFrame(frame, fg_color="transparent")
         inner.pack(fill="x", padx=20, pady=(14, 12))
 
+        inner.grid_columnconfigure(1, weight=1)
+
         left = ctk.CTkFrame(inner, fg_color="transparent")
-        left.pack(side="left")
+        left.grid(row=0, column=0, sticky="w")
 
         title = ctk.CTkLabel(
             left,
@@ -214,8 +219,46 @@ class DispatchAssistantGUI(ctk.CTk):
         )
         subtitle.pack(anchor="w", pady=(2, 0))
 
+        # Logo Garuda Mekanik di tengah (antara judul dan jam)
+        center = ctk.CTkFrame(inner, fg_color="transparent")
+        center.grid(row=0, column=1)
+
+        logo_label = None
+        if os.path.exists(LOGO_PATH):
+            try:
+                from PIL import Image
+
+                pil_img = Image.open(LOGO_PATH)
+                logo_img = ctk.CTkImage(
+                    light_image=pil_img,
+                    dark_image=pil_img,
+                    size=(56, 56),
+                )
+                logo_label = ctk.CTkLabel(
+                    center,
+                    text="",
+                    image=logo_img,
+                )
+            except Exception:
+                logo_label = None
+        if logo_label is None:
+            logo_label = ctk.CTkLabel(
+                center,
+                text="\U0001F989",
+                font=(FONT_UI, 26),
+                text_color=WHITE,
+            )
+        logo_label.pack()
+
+        ctk.CTkLabel(
+            center,
+            text="GARUDA MEKANIK",
+            font=(FONT_UI, 11, "bold"),
+            text_color=WHITE,
+        ).pack(pady=(2, 0))
+
         right = ctk.CTkFrame(inner, fg_color="transparent")
-        right.pack(side="right")
+        right.grid(row=0, column=2, sticky="e")
 
         badge = ctk.CTkLabel(
             right,
