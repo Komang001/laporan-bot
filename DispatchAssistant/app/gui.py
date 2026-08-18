@@ -232,7 +232,7 @@ class DispatchAssistantGUI(ctk.CTk):
                 logo_img = ctk.CTkImage(
                     light_image=pil_img,
                     dark_image=pil_img,
-                    size=(56, 56),
+                    size=(76, 76),
                 )
                 logo_label = ctk.CTkLabel(
                     center,
@@ -249,13 +249,6 @@ class DispatchAssistantGUI(ctk.CTk):
                 text_color=WHITE,
             )
         logo_label.pack()
-
-        ctk.CTkLabel(
-            center,
-            text="GARUDA MEKANIK",
-            font=(FONT_UI, 11, "bold"),
-            text_color=WHITE,
-        ).pack(pady=(2, 0))
 
         right = ctk.CTkFrame(inner, fg_color="transparent")
         right.grid(row=0, column=2, sticky="e")
