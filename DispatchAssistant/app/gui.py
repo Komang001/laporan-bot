@@ -226,7 +226,7 @@ class DispatchAssistantGUI(ctk.CTk):
         logo_label = None
         if os.path.exists(LOGO_PATH):
             try:
-                from PIL import Image
+                from PIL import Image, ImageChops
 
                 pil_img = Image.open(LOGO_PATH).convert("RGBA")
 
@@ -245,10 +245,24 @@ class DispatchAssistantGUI(ctk.CTk):
                 except Exception:
                     pass
 
+                # Crop margin transparan agar yang tampil murni logo (bukan kotak),
+                # dengan padding kecil supaya tidak menempel tepi.
+                try:
+                    bbox = alpha.getbbox()
+                    if bbox and bbox != (0, 0, pil_img.size[0], pil_img.size[1]):
+                        pad = 12
+                        x0 = max(0, bbox[0] - pad)
+                        y0 = max(0, bbox[1] - pad)
+                        x1 = min(pil_img.size[0], bbox[2] + pad)
+                        y1 = min(pil_img.size[1], bbox[3] + pad)
+                        pil_img = pil_img.crop((x0, y0, x1, y1))
+                except Exception:
+                    pass
+
                 logo_img = ctk.CTkImage(
                     light_image=pil_img,
                     dark_image=pil_img,
-                    size=(200, 200),
+                    size=(140, 140),
                 )
                 logo_label = ctk.CTkLabel(
                     center,
