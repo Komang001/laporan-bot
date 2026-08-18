@@ -24,7 +24,7 @@ from config.settings import (
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-BG_MAIN = "#F5F6FA"
+BG_MAIN = "#FDF5F5"
 BG_CARD = "#FFFFFF"
 BORDER = "#E5E7EB"
 BORDER_RED = "#FECACA"
@@ -249,23 +249,16 @@ class DispatchAssistantGUI(ctk.CTk):
 
         self.features_frame.pack(fill="x", padx=20, pady=(0, 10))
 
-        self.features_frame.grid_columnconfigure(0, weight=1)
-        self.features_frame.grid_columnconfigure(1, weight=1)
+        for col in range(3):
+            self.features_frame.grid_columnconfigure(col, weight=1)
 
         for i, feat in enumerate(FEATURES):
             card = self._create_feature_card(feat)
-
-            if feat["key"] == "gamas_relations":
-                row, col, span = 2, 0, 2
-            elif feat["key"] == "report":
-                row, col, span = 3, 0, 2
-            else:
-                row, col, span = i // 2, i % 2, 1
+            row, col = i // 3, i % 3
 
             card.grid(
                 row=row,
                 column=col,
-                columnspan=span,
                 sticky="ew",
                 padx=6,
                 pady=6,
@@ -299,9 +292,13 @@ class DispatchAssistantGUI(ctk.CTk):
             top,
             text=feat["icon"],
             font=(FONT_UI, 20),
-            text_color=feat["color"],
+            text_color=WHITE,
+            fg_color=feat["color"],
+            corner_radius=10,
+            width=44,
+            height=44,
         )
-        icon.pack(side="left", padx=(0, 8))
+        icon.pack(side="left", padx=(0, 10))
 
         name_col = ctk.CTkFrame(top, fg_color="transparent")
         name_col.pack(side="left", fill="x", expand=True)
@@ -325,8 +322,12 @@ class DispatchAssistantGUI(ctk.CTk):
         status_label = ctk.CTkLabel(
             top,
             text="\u25CF READY",
-            font=(FONT_UI, 12, "bold"),
-            text_color="#22C55E",
+            font=(FONT_UI, 11, "bold"),
+            text_color="#16A34A",
+            fg_color="#F3F4F6",
+            corner_radius=12,
+            padx=10,
+            pady=4,
         )
         status_label.pack(side="right", padx=(8, 0))
 
@@ -588,6 +589,15 @@ class DispatchAssistantGUI(ctk.CTk):
             text_color=TEXT_DIM,
         ).pack(side="left", padx=(8, 0), pady=(3, 0))
 
+        ctk.CTkLabel(
+            header,
+            text="  \u25CF LIVE  ",
+            font=(FONT_UI, 10, "bold"),
+            text_color=WHITE,
+            fg_color=RED_MAIN,
+            corner_radius=10,
+        ).pack(side="left", padx=(10, 0))
+
         ctk.CTkButton(
             header,
             text="Copy",
@@ -617,11 +627,11 @@ class DispatchAssistantGUI(ctk.CTk):
         self.tabs = ctk.CTkTabview(
             frame,
             corner_radius=10,
-            fg_color="#F8F9FC",
+            fg_color="#FAF3F3",
             segmented_button_selected_color=RED_MAIN,
             segmented_button_selected_hover_color=RED_HOVER,
-            segmented_button_unselected_color="#FFFFFF",
-            segmented_button_unselected_hover_color="#F3F4F6",
+            segmented_button_unselected_color=WHITE,
+            segmented_button_unselected_hover_color="#FDE8E8",
             text_color="#111827",
         )
 
