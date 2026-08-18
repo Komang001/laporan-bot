@@ -219,14 +219,14 @@ class DispatchAssistantGUI(ctk.CTk):
         )
         subtitle.pack(anchor="w", pady=(2, 0))
 
-        # Logo Garuda Mekanik di tengah (antara judul dan jam)
+# Logo: diletakkan di sisi kiri kolom tengah (geser dari titik tengah header)
         center = ctk.CTkFrame(inner, fg_color="transparent")
         center.grid(row=0, column=1)
 
         logo_label = None
         if os.path.exists(LOGO_PATH):
             try:
-                from PIL import Image, ImageEnhance
+                from PIL import Image
 
                 pil_img = Image.open(LOGO_PATH).convert("RGBA")
 
@@ -248,7 +248,7 @@ class DispatchAssistantGUI(ctk.CTk):
                 logo_img = ctk.CTkImage(
                     light_image=pil_img,
                     dark_image=pil_img,
-                    size=(100, 100),
+                    size=(200, 200),
                 )
                 logo_label = ctk.CTkLabel(
                     center,
@@ -264,7 +264,7 @@ class DispatchAssistantGUI(ctk.CTk):
                 font=(FONT_UI, 26),
                 text_color=WHITE,
             )
-        logo_label.pack()
+        logo_label.pack(side="left")
 
         right = ctk.CTkFrame(inner, fg_color="transparent")
         right.grid(row=0, column=2, sticky="e")
