@@ -226,13 +226,29 @@ class DispatchAssistantGUI(ctk.CTk):
         logo_label = None
         if os.path.exists(LOGO_PATH):
             try:
-                from PIL import Image
+                from PIL import Image, ImageEnhance
 
-                pil_img = Image.open(LOGO_PATH)
+                pil_img = Image.open(LOGO_PATH).convert("RGBA")
+
+                # Hilangkan background putih: piksel terang -> transparan,
+                # tepi transisi di-soften biar tidak kasar.
+                try:
+                    gray = pil_img.convert("L")
+                    alpha = gray.point(
+                        lambda v: 0
+                        if v >= 240
+                        else int((240 - v) * 255 / 40)
+                        if v >= 200
+                        else 255
+                    )
+                    pil_img.putalpha(alpha)
+                except Exception:
+                    pass
+
                 logo_img = ctk.CTkImage(
                     light_image=pil_img,
                     dark_image=pil_img,
-                    size=(76, 76),
+                    size=(100, 100),
                 )
                 logo_label = ctk.CTkLabel(
                     center,
