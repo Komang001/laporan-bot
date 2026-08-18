@@ -1,8 +1,9 @@
 name: Kirim Jadwal Piket Harian
 
 on:
+  # TEST: tiap 2 menit (hapus setelah terbukti) - re-register 2026-08-19
   schedule:
-    - cron: "*/2 * * * *"   # TEST: tiap 2 menit (hapus setelah terbukti)
+    - cron: "*/2 * * * *"
   workflow_dispatch:
 
 jobs:
