@@ -184,15 +184,14 @@ class DispatchAssistantGUI(ctk.CTk):
         frame = ctk.CTkFrame(
             self,
             corner_radius=14,
-            fg_color=BG_CARD,
-            border_width=1,
-            border_color=BORDER,
+            fg_color=RED_MAIN,
+            border_width=0,
         )
 
         frame.pack(fill="x", padx=20, pady=(20, 10))
 
-        # Strip merah putih
-        strip = ctk.CTkFrame(frame, height=6, corner_radius=0, fg_color=RED_MAIN)
+        # Strip putih (pita merah putih)
+        strip = ctk.CTkFrame(frame, height=6, corner_radius=0, fg_color=WHITE)
         strip.pack(fill="x", side="top")
 
         inner = ctk.CTkFrame(frame, fg_color="transparent")
@@ -205,7 +204,7 @@ class DispatchAssistantGUI(ctk.CTk):
             left,
             text="DispatchAssistant",
             font=(FONT_UI, 26, "bold"),
-            text_color=RED_MAIN,
+            text_color=WHITE,
         )
         title.pack(anchor="w")
 
@@ -213,7 +212,7 @@ class DispatchAssistantGUI(ctk.CTk):
             left,
             text="Industrial Programmer Automation System  \u2022  Multi-Chrome  \u2022  Telegram Remote",
             font=(FONT_UI, 12),
-            text_color=TEXT_DIM,
+            text_color="#FECACA",
         )
         subtitle.pack(anchor="w", pady=(2, 0))
 
@@ -224,8 +223,8 @@ class DispatchAssistantGUI(ctk.CTk):
             right,
             text="  \u25CF SYSTEM READY  ",
             font=(FONT_UI, 12, "bold"),
-            text_color=WHITE,
-            fg_color="#22C55E",
+            text_color=RED_MAIN,
+            fg_color=WHITE,
             corner_radius=14,
         )
         badge.pack(anchor="e")
@@ -235,7 +234,7 @@ class DispatchAssistantGUI(ctk.CTk):
             right,
             text="",
             font=(FONT_MONO, 13, "bold"),
-            text_color=TEXT_DARK,
+            text_color=WHITE,
         )
         clock.pack(anchor="e", pady=(4, 0))
         self._clock_label = clock
@@ -284,6 +283,14 @@ class DispatchAssistantGUI(ctk.CTk):
             border_color=feat["color"],
             fg_color=BG_CARD,
         )
+
+        card_strip = ctk.CTkFrame(
+            card,
+            height=5,
+            corner_radius=0,
+            fg_color=RED_MAIN,
+        )
+        card_strip.pack(fill="x", side="top")
 
         top = ctk.CTkFrame(card, fg_color="transparent")
         top.pack(fill="x", padx=14, pady=(12, 4))
@@ -729,9 +736,8 @@ class DispatchAssistantGUI(ctk.CTk):
         footer = ctk.CTkFrame(
             self,
             corner_radius=10,
-            fg_color=BG_CARD,
-            border_width=1,
-            border_color=BORDER,
+            fg_color=RED_MAIN,
+            border_width=0,
         )
 
         footer.pack(fill="x", padx=20, pady=(0, 14))
@@ -740,21 +746,21 @@ class DispatchAssistantGUI(ctk.CTk):
             footer,
             text="\u25CF ONLINE",
             font=(FONT_UI, 11, "bold"),
-            text_color="#22C55E",
+            text_color=WHITE,
         ).pack(side="left", padx=14, pady=8)
 
         ctk.CTkLabel(
             footer,
             text="auto-pilot aktif  \u2022  gunakan STOP saat intervensi manual",
             font=(FONT_UI, 11),
-            text_color=TEXT_DIM,
+            text_color="#FECACA",
         ).pack(side="left", padx=(10, 0), pady=8)
 
         ctk.CTkLabel(
             footer,
-            text="v3.1",
+            text="v3.2",
             font=(FONT_UI, 11, "bold"),
-            text_color="#D1D5DB",
+            text_color="#FCA5A5",
         ).pack(side="right", padx=14, pady=8)
 
     def _start_clock(self):
