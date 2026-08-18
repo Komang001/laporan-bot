@@ -19,3 +19,15 @@ playwright-report/
 
 # Temporary
 *.tmp
+
+# Data lokal (piket harian, dll)
+data/
+
+# Secrets lokal (token bot, dll) - jangan commit
+.env
+
+# Konfigurasi user dari GUI Settings
+config/user_settings.json
+
+# Aset lokal
+assets/

@@ -169,6 +169,9 @@ class DispatchAssistantGUI(ctk.CTk):
 
         self.configure(fg_color=BG_MAIN)
 
+        from app.user_settings import load as _load_user_settings
+        self.user_settings = _load_user_settings()
+
         self.create_header()
         self.create_feature_sections()
         self.create_log_section()
@@ -282,6 +285,21 @@ class DispatchAssistantGUI(ctk.CTk):
 
         right = ctk.CTkFrame(inner, fg_color="transparent")
         right.grid(row=0, column=2, sticky="e")
+
+        gear_btn = ctk.CTkButton(
+            right,
+            text="\u2699\ufe0f",
+            width=30,
+            height=30,
+            corner_radius=8,
+            fg_color="#FFFFFF",
+            hover_color="#FEE2E2",
+            text_color=RED_MAIN,
+            font=(FONT_UI, 15, "bold"),
+            command=self._open_settings,
+        )
+        gear_btn.pack(anchor="e", pady=(0, 4))
+        self._gear_btn = gear_btn
 
         badge = ctk.CTkLabel(
             right,
@@ -874,6 +892,149 @@ class DispatchAssistantGUI(ctk.CTk):
                     self.write_log(f"[telegram:{key}] gagal start bot.")
             except Exception as e:
                 self.write_log(f"[telegram:{key}] error: {e}")
+
+
+# =====================================================
+# Settings (manual configuration via GUI)
+# =====================================================
+
+    def _open_settings(self):
+        from app.user_settings import DEFAULTS
+
+        win = ctk.CTkToplevel(self)
+        win.title("Pengaturan")
+        win.geometry("520x540")
+        win.resizable(False, False)
+        win.configure(fg_color=BG_CARD)
+        win.transient(self)
+        win.grab_set()
+
+        wrap = ctk.CTkFrame(win, fg_color="transparent")
+        wrap.pack(fill="both", expand=True, padx=20, pady=16)
+
+        ctk.CTkLabel(
+            wrap,
+            text="Pengaturan Bot",
+            font=(FONT_UI, 18, "bold"),
+            text_color=RED_MAIN,
+        ).pack(anchor="w")
+
+        ctk.CTkLabel(
+            wrap,
+            text="Konfigurasi manual tanpa edit file. Simpan = langsung aktif.",
+            font=(FONT_UI, 11),
+            text_color=TEXT_DIM,
+        ).pack(anchor="w", pady=(2, 12))
+
+        cur = self.user_settings or {}
+
+        def row(label, value, hint=None):
+            box = ctk.CTkFrame(wrap, fg_color="transparent")
+            box.pack(fill="x", pady=4)
+            ctk.CTkLabel(
+                box,
+                text=label,
+                font=(FONT_UI, 12, "bold"),
+                text_color=TEXT_DARK,
+            ).pack(anchor="w")
+            entry = ctk.CTkEntry(
+                box,
+                font=(FONT_MONO, 12),
+                fg_color=BG_MAIN,
+                border_color=BORDER,
+                text_color=TEXT_DARK,
+            )
+            entry.insert(0, value)
+            entry.pack(fill="x", pady=(2, 0))
+            if hint:
+                ctk.CTkLabel(
+                    box,
+                    text=hint,
+                    font=(FONT_UI, 10),
+                    text_color=TEXT_DIM,
+                ).pack(anchor="w", pady=(1, 0))
+            return entry
+
+        e_loop = row(
+            "Loop Interval (detik)",
+            str(cur.get("loop_interval", DEFAULTS["loop_interval"])),
+            "Jeda scan ulang tiap fitur. Min 60 detik.",
+        )
+        e_skip = row(
+            "Skip Coordinator ID (pisah koma)",
+            ", ".join(cur.get("skip_coordinator_user_ids") or DEFAULTS["skip_coordinator_user_ids"]),
+            "Tiket dengan Request Coordinator ini dilewati bot. Mis: 55652 (Rizky).",
+        )
+        e_uid = row("User ID (Request Coordinator)", str(cur.get("user_id", DEFAULTS["user_id"])))
+        e_uname = row(
+            "Nama (Request Coordinator)",
+            str(cur.get("user_name", DEFAULTS["user_name"])),
+            "User ID & Nama berlaku setelah restart aplikasi.",
+        )
+
+        from app.user_settings import USER_SETTINGS_PATH
+
+        ctk.CTkLabel(
+            wrap,
+            text=f"Tersimpan di: {USER_SETTINGS_PATH}",
+            font=(FONT_UI, 10),
+            text_color="#9CA3AF",
+        ).pack(anchor="w", pady=(10, 0))
+
+        btns = ctk.CTkFrame(wrap, fg_color="transparent")
+        btns.pack(fill="x", pady=(14, 0))
+
+        def _save():
+            try:
+                loop = int(e_loop.get().strip() or DEFAULTS["loop_interval"])
+                loop = max(60, loop)
+            except ValueError:
+                loop = DEFAULTS["loop_interval"]
+            skip = [x.strip() for x in e_skip.get().replace(",", " ").split() if x.strip()]
+            data = {
+                "loop_interval": loop,
+                "skip_coordinator_user_ids": skip,
+                "user_id": e_uid.get().strip() or DEFAULTS["user_id"],
+                "user_name": e_uname.get().strip() or DEFAULTS["user_name"],
+            }
+            from app.user_settings import save as _save_settings
+            self.user_settings = _save_settings(data)
+            self.write_log(
+                f"[settings] Disimpan: loop={loop}s, skip={skip or 'none'}, "
+                f"user={data['user_name']} ({data['user_id']})",
+                channel="all",
+            )
+            self.write_log(
+                "[settings] Loop interval & skip coordinator langsung aktif. "
+                "User ID/Nama aktif setelah restart.",
+                channel="all",
+            )
+            win.destroy()
+
+        ctk.CTkButton(
+            btns,
+            text="Simpan",
+            width=110,
+            height=34,
+            corner_radius=8,
+            fg_color=RED_MAIN,
+            hover_color=RED_HOVER,
+            font=(FONT_UI, 12, "bold"),
+            command=_save,
+        ).pack(side="left")
+
+        ctk.CTkButton(
+            btns,
+            text="Batal",
+            width=90,
+            height=34,
+            corner_radius=8,
+            fg_color="#F3F4F6",
+            hover_color="#E5E7EB",
+            text_color=TEXT_DARK,
+            font=(FONT_UI, 12, "bold"),
+            command=win.destroy,
+        ).pack(side="left", padx=(8, 0))
 
 
 # =====================================================

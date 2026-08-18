@@ -1,4 +1,5 @@
 import re
+import sys
 import time
 
 from app.parser import extract_owner_group, extract_inc_number, is_bulk_og_change, extract_bulk_og_target, extract_bulk_inc_list
@@ -520,6 +521,10 @@ class SygapService:
         return None
 
     def take_ownership(self, ticket_page):
+        from config import settings as cfg
+        USER_ID = str(getattr(cfg, "USER_ID", "55654"))
+        USER_NAME = str(getattr(cfg, "USER_NAME", "I Nyoman Windu"))
+
         try:
             ticket_page.wait_for_load_state("domcontentloaded", timeout=15000)
             ticket_page.wait_for_timeout(2000)
@@ -593,15 +598,24 @@ class SygapService:
             return ""
 
     def is_my_ticket(self, ticket_page):
-        return self.read_coordinator_user_id(ticket_page) == str(USER_ID).strip()
+        from config import settings as cfg
+        return self.read_coordinator_user_id(ticket_page) == str(
+            getattr(cfg, "USER_ID", "55654")
+        ).strip()
 
     def is_coordinator_in_skip_list(self, ticket_page):
         """True jika tiket dimiliki Request Coordinator di SKIP_COORDINATOR_USER_IDS
         (mis. Rizky Senja Budiman / CRS2018192) -> bot tidak menyentuh tiket ini."""
+        from config import settings as cfg
         uid = self.read_coordinator_user_id(ticket_page)
-        return uid in [str(x).strip() for x in SKIP_COORDINATOR_USER_IDS]
+        skip_ids = getattr(cfg, "SKIP_COORDINATOR_USER_IDS", []) or []
+        return uid in [str(x).strip() for x in skip_ids]
 
     def change_coordinator_to_me(self, ticket_page):
+        from config import settings as cfg
+        USER_ID = str(getattr(cfg, "USER_ID", "55654"))
+        USER_NAME = str(getattr(cfg, "USER_NAME", "I Nyoman Windu"))
+
         try:
             ticket_page.wait_for_load_state("domcontentloaded", timeout=15000)
             ticket_page.wait_for_timeout(2000)
@@ -1082,13 +1096,14 @@ class SygapService:
                     solver_val = ""
                     if current_solver.count() > 0:
                         solver_val = current_solver.input_value().strip()
-                    log(f"    Solver: {solver_val} | My ID: {USER_ID}")
+                    my_uid = str(getattr(sys.modules["config.settings"], "USER_ID", "55654"))
+                    log(f"    Solver: {solver_val} | My ID: {my_uid}")
 
                     if self.is_coordinator_in_skip_list(ticket_page):
                         log(f"    SKIP: solver {solver_val} di daftar skip (Rizky Senja Budiman/CRS2018192)")
                         continue
 
-                    if solver_val != USER_ID:
+                    if solver_val != my_uid:
                         log(f"    Solver bukan saya -> TO dulu...")
                         btn_action = self.take_ownership(ticket_page)
                         log(f"    Button clicked: {btn_action}")
