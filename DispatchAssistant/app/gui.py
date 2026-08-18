@@ -1,6 +1,5 @@
 import sys
 import os
-import re
 
 import customtkinter as ctk
 from datetime import datetime
@@ -12,7 +11,6 @@ from config.settings import (
     INSERA_GROUP_ID,
     CHROME_PORTS,
     TELEGRAM_BOT_TOKEN,
-    REPORT_PERSONNEL,
     REPORT_CDP_PORT,
 )
 
@@ -378,62 +376,7 @@ class DispatchAssistantGUI(ctk.CTk):
         setattr(self, f"{key}_btn", start_btn)
         setattr(self, f"{key}_status", status_label)
 
-        if key == "report":
-            self._create_piket_input(card, key)
-
         return card
-
-    def _create_piket_input(self, card, key):
-        from app.services.report_service import get_piket
-
-        piket_row = ctk.CTkFrame(card, fg_color="transparent")
-        piket_row.pack(fill="x", padx=14, pady=(0, 12))
-
-        entry = ctk.CTkEntry(
-            piket_row,
-            placeholder_text="Nama piket, mis: windu dika rizky (atau @tag)",
-            font=(FONT_MONO, 11),
-            fg_color=BG_MAIN,
-            border_color=BORDER,
-            text_color=TEXT_DARK,
-        )
-        current = get_piket() or REPORT_PERSONNEL
-        entry.insert(0, " ".join(current))
-        entry.pack(side="left", fill="x", expand=True)
-
-        save_btn = ctk.CTkButton(
-            piket_row,
-            text="Simpan Piket",
-            width=110,
-            height=28,
-            corner_radius=8,
-            fg_color="#3D3563",
-            hover_color="#4F46E5",
-            font=(FONT_UI, 11, "bold"),
-            command=lambda k=key: self._save_piket_gui(k),
-        )
-        save_btn.pack(side="right", padx=(6, 0))
-
-        setattr(self, f"{key}_piket_entry", entry)
-
-    def _save_piket_gui(self, key):
-
-        from app.services.report_service import save_piket
-
-        entry = getattr(self, f"{key}_piket_entry", None)
-        if entry is None:
-            return
-        raw = entry.get().strip()
-        names = [n for n in re.split(r"[\s,;]+", raw) if n.strip()]
-        if not names:
-            self.write_log("[report] Nama piket kosong - tidak disimpan.", channel="report")
-            return
-        saved = save_piket(names)
-        self.write_log(
-            f"[report] Piket hari ini disimpan ({len(saved)} orang): "
-            + ", ".join(saved),
-            channel="report",
-        )
 
     # =================================================
     # Start / Stop Feature
