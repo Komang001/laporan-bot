@@ -5,7 +5,7 @@ import threading
 import time
 from datetime import datetime, timedelta
 
-from telegram import Update
+from telegram import Update, BotCommand
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -281,6 +281,7 @@ class TelegramRemote:
         self.app.add_handler(CommandHandler("help", self._cmd_help))
         self.app.add_handler(CommandHandler("report", self._cmd_report))
         self.app.add_handler(CommandHandler("piket", self._cmd_piket))
+        self.app.add_handler(CommandHandler("cekpiket", self._cmd_cekpiket))
         self.app.add_handler(CommandHandler("to_insera", self._cmd_start_to_insera))
         self.app.add_handler(CommandHandler("to_bima", self._cmd_start_to_bima))
         self.app.add_handler(CommandHandler("canclwork", self._cmd_start_canclwork))
@@ -296,6 +297,32 @@ class TelegramRemote:
 
         logger.info("Telegram bot started.")
         return True
+
+    # ------------------------------------------
+    # Command suggestion (muncul di atas keyboard Telegram)
+    # ------------------------------------------
+
+    async def _post_init(self, application):
+        commands = [
+            BotCommand("start", "Tampilkan menu & daftar perintah"),
+            BotCommand("help", "Tampilkan semua perintah"),
+            BotCommand("status", "Cek status semua fitur"),
+            BotCommand("logs", "Lihat log terakhir"),
+            BotCommand("report", "Kirim laporan harian sekarang"),
+            BotCommand("piket", "Set/lihat piket (@nama1 @nama2 ...)"),
+            BotCommand("cekpiket", "Cek piket shift aktif & PIC hari ini"),
+            BotCommand("to_insera", "Start TO MO-INSERA"),
+            BotCommand("to_bima", "Start TO MO-BIMA"),
+            BotCommand("canclwork", "Start CANCLWORK WO"),
+            BotCommand("dispatch", "Start DISPATCH"),
+            BotCommand("gamas", "Start GAMAS RELATIONS"),
+            BotCommand("stop", "Stop semua fitur"),
+        ]
+        try:
+            await application.bot.set_my_commands(commands)
+            logger.info("Command suggestion Telegram terdaftar (%d perintah).", len(commands))
+        except Exception as e:
+            logger.error(f"Gagal set_my_commands: {e}")
 
     def _run(self):
         try:
@@ -452,6 +479,73 @@ class TelegramRemote:
             + "\n".join(saved)
         )
 
+    async def _cmd_cekpiket(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        """Tampilkan piket shift aktif dan PIC hari ini dari jadwal sheet."""
+        if not self._is_authorized(update):
+            await update.message.reply_text("Akses ditolak.")
+            return
+        await update.message.reply_text("Menyusun info piket... 🔄")
+        try:
+            text = await asyncio.to_thread(self._cekpiket_sync)
+        except Exception as e:
+            logger.error(f"Cekpiket error: {e}")
+            text = f"⚠️ Gagal membaca jadwal: {e}"
+        await update.message.reply_text(text, disable_web_page_preview=True)
+
+    def _cekpiket_sync(self):
+        from app.services.report_service import (
+            DAY_NAMES,
+            MONTH_NAMES,
+            _current_shift,
+            _shift_people_tags,
+            _sheet_pic_map,
+        )
+        from config.settings import REPORT_SHIFTS, TELEGRAM_USERNAMES
+
+        now = datetime.now()
+        shift = _current_shift(now)
+        name_by_tag = {v.strip().lower(): k for k, v in TELEGRAM_USERNAMES.items()}
+
+        def line(tag):
+            name = name_by_tag.get(str(tag).strip().lower())
+            if name:
+                return f"{name.title()} ({tag})"
+            return str(tag)
+
+        shift_label = f"{shift['label']} ({shift['start']} - {shift['end']})" if shift else "-"
+
+        tags_now = _shift_people_tags(now)
+        people_lines = [f"• {line(t)}" for t in tags_now] if tags_now else ["• (tidak ada)"]
+
+        pic_map = _sheet_pic_map(now)
+        pic_lines = []
+        if pic_map:
+            for s in REPORT_SHIFTS:
+                sh, sm = (int(x) for x in s["start"].split(":"))
+                tag = pic_map.get(sh * 60 + sm)
+                if tag:
+                    pic_lines.append(f"• {s['label']} ({s['start']} - {s['end']}): {line(tag)}")
+            if not pic_lines:
+                pic_lines.append("• (tidak ada PIC hijau hari ini)")
+        else:
+            pic_lines.append("• (tidak terbaca / tanggal di luar jadwal sheet)")
+
+        lines = [
+            "📋 Cek Piket",
+            f"Hari/Tanggal: {DAY_NAMES[now.weekday()]}, {now.day} {MONTH_NAMES[now.month - 1]} {now.year}",
+            "",
+            f"🕐 Shift aktif: {shift_label}",
+            "",
+            "👥 Piket di jam ini:",
+        ]
+        lines += people_lines
+        lines += [
+            "",
+            "✅ PIC hari ini (hijau di jadwal):",
+        ]
+        lines += pic_lines
+        return "\n".join(lines)
+
     async def _build_report_async(self):
         loop = asyncio.get_running_loop()
         fut = loop.create_future()
@@ -529,6 +623,7 @@ class TelegramRemote:
             "/logs     - Lihat log terakhir",
             "/report   - Kirim laporan harian sekarang",
             "/piket    - Set/lihat piket hari ini (@user1 @user2 ...)",
+            "/cekpiket - Cek piket shift aktif & PIC hari ini",
             "/help     - Lihat semua perintah",
             "",
             "Mulai fitur:",

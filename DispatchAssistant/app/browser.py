@@ -75,6 +75,15 @@ class BrowserManager:
             "--disable-extensions",
         ]
 
+        # Buka langsung halaman kerja supaya window tidak about:blank
+        # (dan sesi login mudah dicek/diisi manual).
+        try:
+            from config.settings import DASHBOARD_URL
+
+            args.append(DASHBOARD_URL)
+        except Exception:
+            pass
+
         try:
             self.chrome_process = subprocess.Popen(
                 args,

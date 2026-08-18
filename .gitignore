@@ -1,5 +1,8 @@
 # Chrome Profile
 ChromeProfile/
+ChromeCDP/
+ChromeDebug/
+ChromeDebug_*/
 
 # Virtual Environment
 .venv/

@@ -15,6 +15,7 @@ class DispatchController:
         self.cdp_port = cdp_port
         self.running = False
         self.on_complete = None
+        self.on_report = None
         self.browser_manager = BrowserManager(cdp_port=cdp_port)
 
     # ==========================================
@@ -515,6 +516,66 @@ class DispatchController:
             if self.on_complete:
 
                 self.on_complete()
+
+    # ==========================================
+    # Start REPORT Harian
+    # ==========================================
+
+    def start_report(self):
+        if self.running:
+            self.gui.write_log("Report already running.")
+            return
+
+        self.running = True
+        self.gui.update_status("STARTING")
+        self.gui.write_log("=" * 40)
+        self.gui.write_log("Starting REPORT HARIAN...")
+        self.gui.write_log("=" * 40)
+
+        thread = threading.Thread(
+            target=self._run_report,
+            daemon=True,
+        )
+        thread.start()
+
+    # ==========================================
+    # Run REPORT - Background Thread
+    # ==========================================
+
+    def _run_report(self):
+        from app.services.report_service import generate_report
+
+        try:
+            self.gui.write_log(
+                "Mengumpulkan data laporan (Chrome report diluncurkan otomatis)..."
+            )
+            self.gui.update_status("SCANNING")
+
+            text = generate_report(log_callback=self.gui.write_log)
+
+            self.gui.write_log("")
+            self.gui.write_log("=" * 40)
+            self.gui.write_log("LAPORAN HARIAN:")
+            self.gui.write_log("=" * 40)
+            for line in text.splitlines():
+                self.gui.write_log(line)
+            self.gui.write_log("=" * 40)
+
+            if self.on_report:
+                self.on_report(text)
+
+        except Exception as e:
+            self.gui.write_log(f"ERROR: {e}")
+            self.gui.update_status("ERROR")
+            return
+        finally:
+            self.running = False
+            if self.on_complete:
+                self.on_complete()
+
+    # ==========================================
+    # Start GAMAS RELATIONS
+    # ==========================================
 
     def start_gamas_relations(self):
 
