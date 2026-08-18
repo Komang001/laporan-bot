@@ -1468,15 +1468,18 @@ class SygapService:
                         log(f"    SKIP: koordinator di daftar skip (Rizky Senja Budiman/CRS2018192)")
                         continue
 
-                    log(f"    Taking ownership...")
-                    btn_action = self.take_ownership(ticket_page)
-                    log(f"    Button clicked: {btn_action}")
+                    if self.is_my_ticket(ticket_page):
+                        log(f"    Sudah tiket saya, lanjut tanpa TO...")
+                    else:
+                        log(f"    Taking ownership...")
+                        btn_action = self.take_ownership(ticket_page)
+                        log(f"    Button clicked: {btn_action}")
 
-                    confirmed = self.wait_for_in_progress(ticket_page)
-                    if not confirmed:
-                        log(f"    TO FAILED: {code}")
-                        continue
-                    log(f"    TO CONFIRMED: {code}")
+                        confirmed = self.wait_for_in_progress(ticket_page)
+                        if not confirmed:
+                            log(f"    TO FAILED: {code}")
+                            continue
+                        log(f"    TO CONFIRMED: {code}")
 
                     note = self.read_ticket_note(ticket_page)
                     if note:
@@ -1784,15 +1787,18 @@ class SygapService:
                                     continue
                                 log(f"    Coordinator changed to me, saved")
                         else:
-                            log(f"    Status: {status} -> TO ke saya dulu...")
-                            btn_action = self.take_ownership(ticket_page)
-                            log(f"    Button clicked: {btn_action}")
+                            if self.is_my_ticket(ticket_page):
+                                log(f"    Sudah tiket saya, lanjut tanpa TO...")
+                            else:
+                                log(f"    Status: {status} -> TO ke saya dulu...")
+                                btn_action = self.take_ownership(ticket_page)
+                                log(f"    Button clicked: {btn_action}")
 
-                            confirmed = self.wait_for_in_progress(ticket_page)
-                            if not confirmed:
-                                log(f"    TO FAILED: {code}")
-                                continue
-                            log(f"    TO CONFIRMED: {code}")
+                                confirmed = self.wait_for_in_progress(ticket_page)
+                                if not confirmed:
+                                    log(f"    TO FAILED: {code}")
+                                    continue
+                                log(f"    TO CONFIRMED: {code}")
 
                         biscuit = BiscuitService(browser_manager=self.browser_manager)
                         if not biscuit.open():
