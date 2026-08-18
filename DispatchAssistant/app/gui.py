@@ -24,16 +24,16 @@ from config.settings import (
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-BG_MAIN = "#0B0F1A"
-BG_CARD = "#141A2E"
-BG_CARD_HOVER = "#182040"
-BORDER = "#232B45"
-BORDER_LIGHT = "#2E3A5F"
-TEXT_DIM = "#8A93AD"
-TEXT_MUTED = "#5C6380"
-ACCENT = "#7C3AED"
-ACCENT2 = "#0EA5E9"
-ACCENT3 = "#EC4899"
+BG_MAIN = "#F5F6FA"
+BG_CARD = "#FFFFFF"
+BORDER = "#E5E7EB"
+BORDER_RED = "#FECACA"
+RED_MAIN = "#DC2626"
+RED_DARK = "#991B1B"
+RED_HOVER = "#B91C1C"
+TEXT_DARK = "#111827"
+TEXT_DIM = "#6B7280"
+WHITE = "#FFFFFF"
 
 FONT_UI = "Segoe UI"
 FONT_MONO = "Consolas"
@@ -160,9 +160,9 @@ class DispatchAssistantGUI(ctk.CTk):
 
         self.title("Industrial Programmer - DispatchAssistant")
 
-        self.geometry("1120x800")
+        self.geometry("1280x840")
 
-        self.minsize(1000, 720)
+        self.minsize(1080, 740)
 
         self.resizable(True, True)
 
@@ -184,15 +184,15 @@ class DispatchAssistantGUI(ctk.CTk):
         frame = ctk.CTkFrame(
             self,
             corner_radius=14,
-            fg_color="#12172A",
+            fg_color=BG_CARD,
             border_width=1,
-            border_color=BORDER_LIGHT,
+            border_color=BORDER,
         )
 
         frame.pack(fill="x", padx=20, pady=(20, 10))
 
-        # Gradient strip atas (ungu -> biru -> pink)
-        strip = ctk.CTkFrame(frame, height=5, corner_radius=0, fg_color=ACCENT)
+        # Strip merah putih
+        strip = ctk.CTkFrame(frame, height=6, corner_radius=0, fg_color=RED_MAIN)
         strip.pack(fill="x", side="top")
 
         inner = ctk.CTkFrame(frame, fg_color="transparent")
@@ -205,7 +205,7 @@ class DispatchAssistantGUI(ctk.CTk):
             left,
             text="DispatchAssistant",
             font=(FONT_UI, 26, "bold"),
-            text_color="#FFFFFF",
+            text_color=RED_MAIN,
         )
         title.pack(anchor="w")
 
@@ -224,8 +224,8 @@ class DispatchAssistantGUI(ctk.CTk):
             right,
             text="  \u25CF SYSTEM READY  ",
             font=(FONT_UI, 12, "bold"),
-            text_color="#22C55E",
-            fg_color="#12241C",
+            text_color=WHITE,
+            fg_color="#22C55E",
             corner_radius=14,
         )
         badge.pack(anchor="e")
@@ -235,7 +235,7 @@ class DispatchAssistantGUI(ctk.CTk):
             right,
             text="",
             font=(FONT_MONO, 13, "bold"),
-            text_color="#E2E8F0",
+            text_color=TEXT_DARK,
         )
         clock.pack(anchor="e", pady=(4, 0))
         self._clock_label = clock
@@ -303,7 +303,7 @@ class DispatchAssistantGUI(ctk.CTk):
             name_col,
             text=feat["label"],
             font=(FONT_UI, 15, "bold"),
-            text_color="#FFFFFF",
+            text_color=TEXT_DARK,
         )
         name.pack(anchor="w")
 
@@ -331,7 +331,7 @@ class DispatchAssistantGUI(ctk.CTk):
             text=f"port {port}",
             font=(FONT_MONO, 11, "bold"),
             text_color=feat["color"],
-            fg_color="#1B2136",
+            fg_color="#F3F4F6",
             corner_radius=10,
             padx=10,
             pady=2,
@@ -344,11 +344,11 @@ class DispatchAssistantGUI(ctk.CTk):
             width=72,
             height=30,
             corner_radius=8,
-            fg_color="#3B1520",
-            hover_color="#5B1E2F",
+            fg_color=BG_CARD,
+            hover_color="#FEE2E2",
             border_width=1,
-            border_color="#7F1D1D",
-            text_color="#FCA5A5",
+            border_color=RED_MAIN,
+            text_color=RED_MAIN,
             font=(FONT_UI, 12, "bold"),
             command=lambda k=key: self._stop_feature(k),
         )
@@ -385,8 +385,9 @@ class DispatchAssistantGUI(ctk.CTk):
             piket_row,
             placeholder_text="Nama piket, mis: windu dika rizky (atau @tag)",
             font=(FONT_MONO, 11),
-            fg_color="#0E1322",
+            fg_color=BG_MAIN,
             border_color=BORDER,
+            text_color=TEXT_DARK,
         )
         current = get_piket() or REPORT_PERSONNEL
         entry.insert(0, " ".join(current))
@@ -522,7 +523,7 @@ class DispatchAssistantGUI(ctk.CTk):
             return
 
         color = STATUS_COLORS.get(status.upper(), "#22C55E")
-        dim = "#2E3A5F"
+        dim = "#D1D5DB"
         state = {"on": True}
 
         def tick():
@@ -551,7 +552,7 @@ class DispatchAssistantGUI(ctk.CTk):
         frame = ctk.CTkFrame(
             self,
             corner_radius=12,
-            fg_color="#10142A",
+            fg_color=BG_CARD,
             border_width=1,
             border_color=BORDER,
         )
@@ -570,7 +571,7 @@ class DispatchAssistantGUI(ctk.CTk):
             header,
             text="Activity Log",
             font=(FONT_UI, 14, "bold"),
-            text_color="#FFFFFF",
+            text_color=TEXT_DARK,
         ).pack(side="left")
 
         ctk.CTkLabel(
@@ -586,8 +587,9 @@ class DispatchAssistantGUI(ctk.CTk):
             width=64,
             height=26,
             corner_radius=8,
-            fg_color="#2A3356",
-            hover_color="#39436E",
+            fg_color="#F3F4F6",
+            hover_color="#E5E7EB",
+            text_color=TEXT_DARK,
             font=(FONT_UI, 11, "bold"),
             command=self._copy_log,
         ).pack(side="right", padx=(6, 0))
@@ -598,8 +600,9 @@ class DispatchAssistantGUI(ctk.CTk):
             width=64,
             height=26,
             corner_radius=8,
-            fg_color="#2A3356",
-            hover_color="#39436E",
+            fg_color="#F3F4F6",
+            hover_color="#E5E7EB",
+            text_color=TEXT_DARK,
             font=(FONT_UI, 11, "bold"),
             command=self._clear_log,
         ).pack(side="right")
@@ -607,12 +610,12 @@ class DispatchAssistantGUI(ctk.CTk):
         self.tabs = ctk.CTkTabview(
             frame,
             corner_radius=10,
-            fg_color="#0D1124",
-            segmented_button_selected_color=ACCENT,
-            segmented_button_selected_hover_color="#6D28D9",
-            segmented_button_unselected_color="#1A2138",
-            segmented_button_unselected_hover_color="#232C4C",
-            text_color="#E2E8F0",
+            fg_color="#F8F9FC",
+            segmented_button_selected_color=RED_MAIN,
+            segmented_button_selected_hover_color=RED_HOVER,
+            segmented_button_unselected_color="#FFFFFF",
+            segmented_button_unselected_hover_color="#F3F4F6",
+            text_color="#111827",
         )
 
         self.tabs.pack(fill="both", expand=True, padx=14, pady=(6, 14))
@@ -621,13 +624,13 @@ class DispatchAssistantGUI(ctk.CTk):
             tab = self.tabs.add(name)
             box = ctk.CTkTextbox(
                 tab,
-                font=(FONT_MONO, 11),
+                font=(FONT_MONO, 12),
                 wrap="word",
-                fg_color="#0B0F1E",
+                fg_color=WHITE,
                 border_color=BORDER,
                 border_width=1,
                 corner_radius=8,
-                text_color="#D3DAEE",
+                text_color="#1F2937",
             )
             box.pack(fill="both", expand=True, padx=4, pady=4)
             self.log_boxes[name] = box
@@ -648,15 +651,15 @@ class DispatchAssistantGUI(ctk.CTk):
     def _setup_tags(self, box):
 
         try:
-            box.tag_config("err", foreground="#F87171")
-            box.tag_config("ok", foreground="#4ADE80")
-            box.tag_config("warn", foreground="#FBBF24")
+            box.tag_config("err", foreground="#DC2626")
+            box.tag_config("ok", foreground="#16A34A")
+            box.tag_config("warn", foreground="#D97706")
             box.tag_config("dim", foreground="#9CA3AF")
         except Exception:
             try:
-                box._textbox.tag_config("err", foreground="#F87171")
-                box._textbox.tag_config("ok", foreground="#4ADE80")
-                box._textbox.tag_config("warn", foreground="#FBBF24")
+                box._textbox.tag_config("err", foreground="#DC2626")
+                box._textbox.tag_config("ok", foreground="#16A34A")
+                box._textbox.tag_config("warn", foreground="#D97706")
                 box._textbox.tag_config("dim", foreground="#9CA3AF")
             except Exception:
                 pass
@@ -726,7 +729,7 @@ class DispatchAssistantGUI(ctk.CTk):
         footer = ctk.CTkFrame(
             self,
             corner_radius=10,
-            fg_color="#12172A",
+            fg_color=BG_CARD,
             border_width=1,
             border_color=BORDER,
         )
@@ -749,9 +752,9 @@ class DispatchAssistantGUI(ctk.CTk):
 
         ctk.CTkLabel(
             footer,
-            text="v3.0",
+            text="v3.1",
             font=(FONT_UI, 11, "bold"),
-            text_color="#4C5470",
+            text_color="#D1D5DB",
         ).pack(side="right", padx=14, pady=8)
 
     def _start_clock(self):
