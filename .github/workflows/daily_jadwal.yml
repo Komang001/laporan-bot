@@ -1,9 +1,11 @@
 name: Kirim Jadwal Piket Harian
 
 on:
-  # TEST: tiap 2 menit (hapus setelah terbukti) - re-register 2026-08-19
   schedule:
-    - cron: "*/2 * * * *"
+    # 00:01 WIB, 08:00 WIB, 16:00 WIB (UTC = 17:01, 01:00, 09:00)
+    - cron: "1 17 * * *"
+    - cron: "0 1 * * *"
+    - cron: "0 9 * * *"
   workflow_dispatch:
 
 jobs:
