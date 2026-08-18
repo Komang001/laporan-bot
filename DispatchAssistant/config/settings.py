@@ -89,7 +89,11 @@ TELEGRAM_CHAT_IDS = {
     "gamas_relations": [],
 }
 
-TELEGRAM_ALLOWED_USER_IDS = [903566652]  # chat ID admin/pemilik bot; kosongkan = semua boleh akses
+TELEGRAM_ALLOWED_USER_IDS = []  # chat ID admin/pemilik bot; kosongkan = semua boleh akses
+
+# Request Coordinator (solver) yang tiketnya TIDAK boleh disentuh bot (skip semua fitur).
+# Rizky Senja Budiman (CRS2018192) = 55652.
+SKIP_COORDINATOR_USER_IDS = ["55652"]
 
 # ==================================================
 # Report Harian Helpdesk Operasional

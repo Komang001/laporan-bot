@@ -2,7 +2,7 @@ import re
 import time
 
 from app.parser import extract_owner_group, extract_inc_number, is_bulk_og_change, extract_bulk_og_target, extract_bulk_inc_list
-from config.settings import USER_ID, USER_NAME
+from config.settings import USER_ID, USER_NAME, SKIP_COORDINATOR_USER_IDS
 
 LOOP_INTERVAL = 180
 
@@ -578,7 +578,8 @@ class SygapService:
             print(f"take_ownership JS error: {e}")
             return None
 
-    def is_my_ticket(self, ticket_page):
+    def read_coordinator_user_id(self, ticket_page):
+        """Return user ID Request Coordinator saat ini dari #id_coordinator."""
         try:
             val = ticket_page.evaluate("""
                 (function() {
@@ -587,9 +588,18 @@ class SygapService:
                     return el.value || '';
                 })();
             """)
-            return str(val).strip() == str(USER_ID).strip()
+            return str(val).strip()
         except Exception:
-            return False
+            return ""
+
+    def is_my_ticket(self, ticket_page):
+        return self.read_coordinator_user_id(ticket_page) == str(USER_ID).strip()
+
+    def is_coordinator_in_skip_list(self, ticket_page):
+        """True jika tiket dimiliki Request Coordinator di SKIP_COORDINATOR_USER_IDS
+        (mis. Rizky Senja Budiman / CRS2018192) -> bot tidak menyentuh tiket ini."""
+        uid = self.read_coordinator_user_id(ticket_page)
+        return uid in [str(x).strip() for x in SKIP_COORDINATOR_USER_IDS]
 
     def change_coordinator_to_me(self, ticket_page):
         try:
@@ -818,6 +828,10 @@ class SygapService:
                     quick_status = self.read_ticket_status(ticket_page)
                     if quick_status and "COMPLETED" in quick_status:
                         log(f"    SKIP: tiket sudah COMPLETED di form")
+                        continue
+
+                    if self.is_coordinator_in_skip_list(ticket_page):
+                        log(f"    SKIP: koordinator di daftar skip (Rizky Senja Budiman/CRS2018192)")
                         continue
 
                     note = self.read_ticket_note(ticket_page)
@@ -1069,6 +1083,10 @@ class SygapService:
                     if current_solver.count() > 0:
                         solver_val = current_solver.input_value().strip()
                     log(f"    Solver: {solver_val} | My ID: {USER_ID}")
+
+                    if self.is_coordinator_in_skip_list(ticket_page):
+                        log(f"    SKIP: solver {solver_val} di daftar skip (Rizky Senja Budiman/CRS2018192)")
+                        continue
 
                     if solver_val != USER_ID:
                         log(f"    Solver bukan saya -> TO dulu...")
@@ -1446,6 +1464,10 @@ class SygapService:
                         log(f"    SKIP: tiket sudah COMPLETED di form")
                         continue
 
+                    if self.is_coordinator_in_skip_list(ticket_page):
+                        log(f"    SKIP: koordinator di daftar skip (Rizky Senja Budiman/CRS2018192)")
+                        continue
+
                     log(f"    Taking ownership...")
                     btn_action = self.take_ownership(ticket_page)
                     log(f"    Button clicked: {btn_action}")
@@ -1670,6 +1692,10 @@ class SygapService:
                     quick_status = self.read_ticket_status(ticket_page)
                     if quick_status and "COMPLETED" in quick_status:
                         log(f"    SKIP: tiket sudah COMPLETED di form")
+                        continue
+
+                    if self.is_coordinator_in_skip_list(ticket_page):
+                        log(f"    SKIP: koordinator di daftar skip (Rizky Senja Budiman/CRS2018192)")
                         continue
 
                     note = self.read_ticket_note(ticket_page)
