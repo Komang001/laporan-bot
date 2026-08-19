@@ -4,6 +4,63 @@ import re
 from app.models.response import Response
 
 
+def clean_error_message(message):
+    """Bersihkan pesan error: buang judul, tanggal, dan code error;
+    sisakan alasan saja. Contoh:
+    'INC51578241: Status RESOLVED invalid for dispatch (code: 403)'
+      -> 'INC51578241: Status RESOLVED invalid for dispatch'
+    'BISCUIT BOT - dispatchticket GAGAL (28-07-2026 13:21:31). Alasan: ...'
+      -> alasan saja.
+    '{"errors":{"child_ticket":"Missing required value"}}'
+      -> 'Missing required value'
+    """
+    msg = (message or "").replace("&quot;", '"').strip()
+    if not msg:
+        return msg
+
+    # JSON validasi Joget/INSERA: {"errors":{field:"alasan",...}}
+    m = re.search(r'"errors"\s*:\s*\{([^}]*)\}', msg)
+    if m:
+        pairs = re.findall(r'"([^"]+)":"([^"]*)"', m.group(1))
+        reasons = [v for k, v in pairs if v]
+        if reasons:
+            return "; ".join(reasons)[:200]
+
+    # tanggal (28-07-2026 13:21:31) atau (2026-07-28)
+    msg = re.sub(r'\(\d{1,2}-\d{1,2}-\d{4}[^)]*\)', "", msg)
+    # code error (code: 403) / (status: 403) / (HTTP 403)
+    msg = re.sub(r'\(code:\s*[^)]*\)', "", msg, flags=re.I)
+    msg = re.sub(r'\(status:\s*\d+\)', "", msg, flags=re.I)
+    msg = re.sub(r'\(http\s*\d+\)', "", msg, flags=re.I)
+
+    # buang baris judul: 'BISCUIT BOT', 'dispatchticket GAGAL (..)', 'Alasan:'
+    lines = [l.strip() for l in msg.split("\n") if l.strip()]
+    kept = []
+    for line in lines:
+        lower = line.lower()
+        if lower.startswith("biscuit bot"):
+            continue
+        if re.match(r"^\d{1,2}:\d{2}\s*(AM|PM)?$", line, re.IGNORECASE):
+            continue
+        if re.search(r"gagal|berhasil|failed|successfully", lower) and \
+           re.search(r"dispatch|pushmass|canclwork|compwork|ticket", lower):
+            continue
+        if lower in ("alasan:", "alasan"):
+            continue
+        line = re.sub(r"^\d+\.\s*", "", line).strip()
+        kept.append(line)
+    msg = " ".join(kept) if kept else msg
+
+    # jika masih ada 'Alasan:', ambil bagian setelahnya
+    idx = msg.lower().find("alasan:")
+    if idx >= 0:
+        msg = msg[idx + len("alasan:"):]
+
+    msg = re.sub(r"^\d+\.\s*", "", msg.strip())
+    msg = re.sub(r"\s+", " ", msg).strip()
+    return msg[:200]
+
+
 class ResponseService:
 
     def __init__(self, page, old_count):
@@ -42,14 +99,14 @@ class ResponseService:
         for line in cleaned:
             line_clean = re.sub(r'^\d+\.\s*', '', line).strip()
             if re.match(r'INC\d+', line_clean, re.IGNORECASE):
-                return line_clean[:200]
-        
+                return clean_error_message(line_clean)
+
         for line in cleaned:
             line_clean = re.sub(r'^\d+\.\s*', '', line).strip()
             if line_clean:
-                return line_clean[:200]
-        
-        return content[:200]
+                return clean_error_message(line_clean)
+
+        return clean_error_message(content)
 
     # ==================================================
     # Read Dispatch Result

@@ -251,9 +251,10 @@ class InseraGamasService:
         m = re.search(r'&quot;errors&quot;\s*:\s*\{[^}]*\}', content) or \
             re.search(r'"errors"\s*:\s*\{[^}]*\}', content)
         if m:
+            from app.services.response_service import clean_error_message
             return Response(
                 status="FAILED",
-                message=m.group(0).replace("&quot;", '"')[:200],
+                message=clean_error_message(m.group(0)),
             )
         return Response(status="SUCCESS", message="Relasi GAMAS tersimpan via API")
 
