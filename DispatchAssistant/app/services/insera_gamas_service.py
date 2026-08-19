@@ -1,6 +1,8 @@
 from config.settings import GAMAS_RELATIONS_URL
 import time
 
+from app.models.response import Response
+
 
 class InseraGamasService:
 
@@ -8,6 +10,11 @@ class InseraGamasService:
         self.page = None
         self.browser_manager = browser_manager
         self.log = log_callback or (lambda msg: None)
+
+    GAMAS_FORM_URL = (
+        "https://oss-incident.telkom.co.id"
+        "/jw/web/userview/ticketIncidentService/ticketIncidentService/_/gamasRelations"
+    )
 
     def open(self):
         self.page = self.browser_manager.get_insera_gamas_page()
@@ -143,3 +150,126 @@ class InseraGamasService:
 
     def get_page(self):
         return self.page
+
+    # ==================================================
+    # API Langsung (HTTP multipart) + Fallback UI
+    # ==================================================
+
+    def _get_cookie_header(self):
+        try:
+            cookies = self.page.context.cookies()
+            return "; ".join(
+                f"{c['name']}={c['value']}"
+                for c in cookies
+                if "oss-incident" in c.get("domain", "")
+            )
+        except Exception:
+            return ""
+
+    def _get_form_tokens(self, cookie_header):
+        """GET halaman form -> ambil OWASP_CSRFTOKEN & _NONCE_TOKEN_REQUEST_HASH terbaru."""
+        import re
+        import urllib.request
+
+        tokens = {"csrf": "", "nonce": ""}
+        try:
+            req = urllib.request.Request(
+                self.GAMAS_FORM_URL,
+                headers={"Cookie": cookie_header, "User-Agent": "Mozilla/5.0"},
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                html = resp.read().decode("utf-8", errors="replace")
+            m = (
+                re.search(r'name="OWASP_CSRFTOKEN"[^>]*value="([^"]*)"', html)
+                or re.search(r'value="([^"]*)"[^>]*name="OWASP_CSRFTOKEN"', html)
+                or re.search(r'ConnectionManager\.tokenValue\s*=\s*"([^"]*)"', html)
+            )
+            if m:
+                tokens["csrf"] = m.group(1)
+            m = (
+                re.search(r'name="_NONCE_TOKEN_REQUEST_HASH"[^>]*value="([^"]*)"', html)
+                or re.search(r'value="([^"]*)"[^>]*name="_NONCE_TOKEN_REQUEST_HASH"', html)
+            )
+            if m:
+                tokens["nonce"] = m.group(1)
+        except Exception as e:
+            print(f"get form tokens error: {e}")
+        return tokens
+
+    def submit_via_api(self, parent_inc, child_str):
+        """Submit relasi GAMAS langsung via HTTP (multipart POST form Joget).
+
+        Return Response, atau None jika gagal (untuk fallback ke UI).
+        """
+        import re
+        import uuid
+        import urllib.request
+
+        cookie_header = self._get_cookie_header()
+        if not cookie_header:
+            return None
+        tokens = self._get_form_tokens(cookie_header)
+
+        boundary = "----WebKitFormBoundary" + uuid.uuid4().hex[:16]
+
+        def field(name, value):
+            return (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
+                f"{value}\r\n"
+            )
+
+        body = "".join([
+            field("_NONCE_TOKEN_REQUEST_HASH", tokens["nonce"]),
+            field("massGamasRelations_SUBMITTED", "true"),
+            field("_FORM_META_ORIGINAL_ID", ""),
+            field("OWASP_CSRFTOKEN", tokens["csrf"]),
+            field("parent_ticket", parent_inc),
+            field("child_ticket", child_str),
+            field("submit", "Save"),
+            f"--{boundary}--\r\n",
+        ]).encode()
+
+        req = urllib.request.Request(
+            self.GAMAS_FORM_URL + "?_action=submit",
+            data=body,
+            method="POST",
+            headers={
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+                "Cookie": cookie_header,
+                "User-Agent": "Mozilla/5.0",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                content = resp.read().decode("utf-8", errors="replace")
+        except Exception as e:
+            print(f"GAMAS API error: {e}")
+            return None
+
+        # Validasi server: hidden field _FORM_ERRORS berisi {"errors":{...}}
+        m = re.search(r'&quot;errors&quot;\s*:\s*\{[^}]*\}', content) or \
+            re.search(r'"errors"\s*:\s*\{[^}]*\}', content)
+        if m:
+            return Response(
+                status="FAILED",
+                message=m.group(0).replace("&quot;", '"')[:200],
+            )
+        return Response(status="SUCCESS", message="Relasi GAMAS tersimpan via API")
+
+    def submit_relation(self, parent_inc, child_str):
+        """Kirim relasi: coba API langsung (HTTP), fallback ke UI lama jika gagal."""
+        response = self.submit_via_api(parent_inc, child_str)
+        if response is not None:
+            return response
+
+        self.log("API GAMAS gagal, fallback ke UI...")
+        if not self.wait_for_fields(timeout=30):
+            return Response(status="FAILED", message="INSERA fields not visible")
+        if not self.fill_parent(parent_inc):
+            return Response(status="FAILED", message="Failed fill parent field")
+        if not self.fill_child(child_str):
+            return Response(status="FAILED", message="Failed fill child field")
+        if not self.click_save():
+            return Response(status="FAILED", message="Failed save on INSERA")
+        return Response(status="SUCCESS", message="Relasi GAMAS tersimpan via UI")

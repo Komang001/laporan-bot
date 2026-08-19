@@ -1591,24 +1591,14 @@ class SygapService:
                         log(f"    INSERA GAMAS not accessible, SKIP")
                         continue
 
-                    log(f"    Waiting for INSERA fields to load...")
-                    if not insera.wait_for_fields(timeout=30):
-                        log(f"    INSERA fields not visible, SKIP")
-                        continue
-
-                    if not insera.fill_parent(parent_inc):
-                        log(f"    Failed fill parent field")
-                        continue
-
-                    if not insera.fill_child(child_str):
-                        log(f"    Failed fill child field")
-                        continue
-
                     log(f"    Parent: {parent_inc}")
                     log(f"    Child: {child_str[:100]}...")
 
-                    if not insera.click_save():
-                        log(f"    Failed save on INSERA")
+                    log(f"    Submitting relasi GAMAS...")
+                    response = insera.submit_relation(parent_inc, child_str)
+                    log(f"    INSERA response: {response.status} - {response.message}")
+                    if response.status != "SUCCESS":
+                        log(f"    INSERA FAILED, SKIP complete")
                         continue
 
                     log(f"    INSERA save OK, completing ticket...")
