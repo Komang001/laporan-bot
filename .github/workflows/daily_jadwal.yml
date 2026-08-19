@@ -1,11 +1,8 @@
 name: Kirim Jadwal Piket Harian
 
 on:
-  schedule:
-    # 00:01 WIB, 09:00 WIB, 16:00 WIB (UTC = 17:01, 02:00, 09:00)
-    - cron: "1 17 * * *"
-    - cron: "0 2 * * *"
-    - cron: "0 9 * * *"
+  # Trigger dari cron-job.org (dispatch API) — schedule GitHub dihapus karena
+  # delay tak tentu dan bisa dobel dengan trigger cloud.
   workflow_dispatch:
 
 jobs:

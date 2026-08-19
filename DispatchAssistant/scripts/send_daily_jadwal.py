@@ -36,8 +36,8 @@ THREAD_ID = os.environ.get("TELEGRAM_MESSAGE_THREAD_ID", "").strip()
 
 SHIFTS = [
     ("Shift 1", "00:00", "09:00"),
-    ("Shift 2", "08:00", "15:00"),
-    ("Shift 3", "15:00", "24:00"),
+    ("Shift 2", "09:00", "16:30"),
+    ("Shift 3", "16:30", "23:59"),
 ]
 SHIFT_START_M = {
     int(st.split(":")[0]) * 60 + int(st.split(":")[1]): (label, st, en)
@@ -87,6 +87,21 @@ def _slot_start_min(slot):
         return sh * 60 + sm
     except Exception:
         return None
+
+
+def match_shift_slot(sheet_map, start_m):
+    """Pilih key slot sheet untuk jam mulai shift config.
+
+    Exact match dulu; jika sheet memakai label jam berbeda (mis. slot
+    '08:00-17:00' untuk shift 09:00-16:30), ambil slot yang jam mulainya
+    <= jam mulai shift (slot terakhir yang sudah mulai).
+    """
+    if not sheet_map:
+        return None
+    if start_m in sheet_map:
+        return start_m
+    starts = sorted(k for k in sheet_map if k <= start_m)
+    return starts[-1] if starts else None
 
 
 def parse_piket_csv(raw, day):
@@ -191,11 +206,12 @@ def build_message(now):
     for start_m in sorted(SHIFT_START_M):
         label, start, end = SHIFT_START_M[start_m]
         lines.append(f"👥 {label} ({start} - {end}):")
-        tags = piket.get(start_m) or []
+        key = match_shift_slot(piket, start_m)
+        tags = piket.get(key) if key is not None else None
         if not tags:
             lines.append("• (tidak ada)")
         for t in tags:
-            pic_mark = " — ⭐ PIC" if pic and pic.get(start_m) == t else ""
+            pic_mark = " — ⭐ PIC" if pic and key is not None and pic.get(key) == t else ""
             lines.append(f"• {t}{pic_mark}")
         lines.append("")
     lines.append("Sumber: Google Sheet jadwal")
