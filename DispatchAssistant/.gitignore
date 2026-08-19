@@ -29,5 +29,8 @@ data/
 # Konfigurasi user dari GUI Settings
 config/user_settings.json
 
+# Token BISCUIT (JWT dari localStorage) - jangan commit
+config/biscuit_token.txt
+
 # Aset lokal
 assets/

@@ -3,6 +3,31 @@ from playwright.sync_api import TimeoutError
 from config.settings import AUTO_ENTER
 from app.models.response import Response
 
+import os
+
+BISCUIT_TOKEN_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "config",
+    "biscuit_token.txt",
+)
+
+
+def _load_cached_token():
+    try:
+        with open(BISCUIT_TOKEN_PATH, "r", encoding="utf-8") as f:
+            token = f.read().strip()
+        return token or None
+    except Exception:
+        return None
+
+
+def _save_cached_token(token):
+    try:
+        with open(BISCUIT_TOKEN_PATH, "w", encoding="utf-8") as f:
+            f.write(token)
+    except Exception:
+        pass
+
 
 class BiscuitService:
 
@@ -173,15 +198,25 @@ class BiscuitService:
     BISCUIT_BASE = "https://biscuit-dashboard-dev-playground.apps.mypaas.telkom.co.id"
 
     def _get_token(self):
-        """Bearer token dari localStorage tab BISCUIT (JWT)."""
+        """Bearer token dari localStorage tab BISCUIT, atau cache file.
+
+        Bekerja dari browser mana pun: fitur GAMAS (9225) tidak punya tab
+        BISCUIT, tapi token tersedia di cache yang di-refresh tiap kali
+        API BISCUIT berhasil digunakan (DISPATCH/CANCLWORK di 9224).
+        """
         if self.page is None:
             self.open()
-        try:
-            return self.page.evaluate(
-                "localStorage.getItem('biscuit_token')"
-            )
-        except Exception:
-            return None
+        if self.page is not None:
+            try:
+                token = self.page.evaluate(
+                    "localStorage.getItem('biscuit_token')"
+                )
+                if token:
+                    _save_cached_token(token)
+                    return token
+            except Exception:
+                pass
+        return _load_cached_token()
 
     def _api_execute_raw(self, command, page_scope):
         """POST /api/execute. Return dict respons mentah, atau None jika gagal."""
