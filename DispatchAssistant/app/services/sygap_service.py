@@ -1169,24 +1169,14 @@ class SygapService:
                         log(f"    BISCUIT tab not found!")
                         continue
 
-                    if not biscuit.focus_command():
-                        log(f"    BISCUIT command box not found!")
-                        continue
-
                     command = f"/pushmasscanclwork {wo_number}"
                     log(f"    Sending: {command}")
 
                     max_retries = 2
                     response = None
                     for attempt in range(1, max_retries + 1):
-                        biscuit.send(command)
                         log(f"    Command sent (attempt {attempt})")
-
-                        from app.services.response_service import ResponseService
-                        response = ResponseService(
-                            biscuit.get_page(),
-                            biscuit.get_response_count_before()
-                        ).read()
+                        response = biscuit.execute(command, "BIMA")
                         log(f"    BISCUIT response: {response.status} - {response.message}")
 
                         if response.status != "UNKNOWN":
@@ -1194,7 +1184,6 @@ class SygapService:
 
                         if attempt < max_retries:
                             log(f"    BISCUIT timeout, retrying...")
-                            biscuit.focus_command()
                             biscuit.wait_for_ready()
 
                     if response.status == "SUCCESS":
@@ -1848,9 +1837,6 @@ class SygapService:
                         if not biscuit.open():
                             log(f"    BISCUIT tab not found!")
                             continue
-                        if not biscuit.focus_command():
-                            log(f"    BISCUIT command box not found!")
-                            continue
 
                         all_success = True
                         failed_incs = []
@@ -1861,14 +1847,8 @@ class SygapService:
                             max_retries = 2
                             response = None
                             for attempt in range(1, max_retries + 1):
-                                biscuit.send(command)
                                 log(f"    Command sent (attempt {attempt})")
-
-                                from app.services.response_service import ResponseService
-                                response = ResponseService(
-                                    biscuit.get_page(),
-                                    biscuit.get_response_count_before()
-                                ).read()
+                                response = biscuit.execute(command, "INSERA")
                                 log(f"    BISCUIT response: {response.status} - {response.message}")
 
                                 if response.status != "UNKNOWN":
@@ -1876,7 +1856,6 @@ class SygapService:
 
                                 if attempt < max_retries:
                                     log(f"    BISCUIT timeout, retrying...")
-                                    biscuit.focus_command()
                                     biscuit.wait_for_ready()
 
                             if response.status == "SUCCESS":
@@ -1887,7 +1866,6 @@ class SygapService:
                                 failed_incs.append(f"{inc}: {response.message}")
 
                             if idx < len(bulk_incs) - 1:
-                                biscuit.focus_command()
                                 biscuit.wait_for_ready()
 
                         if all_success:
@@ -2007,9 +1985,6 @@ class SygapService:
                         if not biscuit.open():
                             log(f"    BISCUIT tab not found!")
                             continue
-                        if not biscuit.focus_command():
-                            log(f"    BISCUIT command box not found!")
-                            continue
 
                         command = f"/dispatchticket {inc_number} {owner_group}"
                         log(f"    Sending: {command}")
@@ -2017,14 +1992,8 @@ class SygapService:
                         max_retries = 2
                         response = None
                         for attempt in range(1, max_retries + 1):
-                            biscuit.send(command)
                             log(f"    Command sent (attempt {attempt})")
-
-                            from app.services.response_service import ResponseService
-                            response = ResponseService(
-                                biscuit.get_page(),
-                                biscuit.get_response_count_before()
-                            ).read()
+                            response = biscuit.execute(command, "INSERA")
                             log(f"    BISCUIT response: {response.status} - {response.message}")
 
                             if response.status != "UNKNOWN":
@@ -2032,7 +2001,6 @@ class SygapService:
 
                             if attempt < max_retries:
                                 log(f"    BISCUIT timeout, retrying...")
-                                biscuit.focus_command()
                                 biscuit.wait_for_ready()
 
                         if response.status == "SUCCESS":
