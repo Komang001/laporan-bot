@@ -183,8 +183,8 @@ class BiscuitService:
         except Exception:
             return None
 
-    def _api_execute(self, command, page_scope):
-        """Kirim command via POST /api/execute. Return Response atau None jika gagal."""
+    def _api_execute_raw(self, command, page_scope):
+        """POST /api/execute. Return dict respons mentah, atau None jika gagal."""
         import json
         import urllib.request
         import urllib.error
@@ -208,9 +208,15 @@ class BiscuitService:
         )
         try:
             with urllib.request.urlopen(req, timeout=185) as resp:
-                data = json.loads(resp.read().decode())
+                return json.loads(resp.read().decode())
         except Exception as e:
             print(f"BISCUIT API error: {e}")
+            return None
+
+    def _api_execute(self, command, page_scope):
+        """Kirim command via POST /api/execute. Return Response atau None jika gagal."""
+        data = self._api_execute_raw(command, page_scope)
+        if data is None:
             return None
 
         msg = str(data.get("message") or "")
@@ -241,3 +247,71 @@ class BiscuitService:
             self.get_page(),
             self.get_response_count_before()
         ).read()
+
+    def check_ticket(self, ticket_id):
+        """Cek tiket (mis. induk GAMAS) via /cekticket.
+
+        Return dict: {"found": bool, "detail": str, "status": str}.
+        API langsung memberi detail (status tiket, owner group) dari
+        data.success[]/failed[]. Jika API gagal, fallback ke UI.
+        """
+        import json
+
+        from app.services.response_service import clean_error_message
+
+        data = self._api_execute_raw(f"/cekticket {ticket_id}", "INSERA")
+        if data is not None:
+            detail = str(data.get("message") or "")
+            try:
+                payload = data.get("data")
+                if isinstance(payload, str):
+                    payload = json.loads(payload)
+                inner = (payload or {}).get("data", {}) if isinstance(payload, dict) else {}
+                success = inner.get("success") or []
+                failed = inner.get("failed") or []
+                for item in failed:
+                    if str(item.get("ticketId", "")) == ticket_id:
+                        return {
+                            "found": False,
+                            "detail": clean_error_message(str(item.get("message", detail)))[:200],
+                            "status": "FAILED",
+                        }
+                for item in success:
+                    if str(item.get("ticketId", "")) == ticket_id:
+                        d = item.get("data") or {}
+                        bits = [
+                            str(item.get("message", "")),
+                            f"status={d.get('ticket_status')}",
+                            f"og={d.get('owner_group')}",
+                        ]
+                        return {
+                            "found": True,
+                            "detail": " | ".join(b for b in bits if b)[:200],
+                            "status": "SUCCESS",
+                        }
+                if not success and not failed:
+                    return {
+                        "found": data.get("smartStatus") == "SUCCESS",
+                        "detail": detail[:200],
+                        "status": str(data.get("smartStatus", "UNKNOWN")),
+                    }
+            except Exception as e:
+                return {"found": False, "detail": f"Parse error: {e}", "status": "UNKNOWN"}
+            return {
+                "found": False,
+                "detail": detail[:200],
+                "status": str(data.get("smartStatus", "UNKNOWN")),
+            }
+
+        response = self.execute(f"/cekticket {ticket_id}", "INSERA")
+        if response is None:
+            return {
+                "found": False,
+                "detail": "Gagal cek induk (BISCUIT tidak tersedia)",
+                "status": "UNKNOWN",
+            }
+        return {
+            "found": response.status == "SUCCESS",
+            "detail": response.message,
+            "status": response.status,
+        }

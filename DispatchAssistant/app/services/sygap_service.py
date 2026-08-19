@@ -1546,6 +1546,19 @@ class SygapService:
 
                     child_str = ",".join(child_incs)
 
+                    from app.services.biscuit_service import BiscuitService
+                    biscuit = BiscuitService(browser_manager=self.browser_manager)
+                    if not biscuit.open():
+                        log(f"    BISCUIT tab not found! Tidak bisa cek induk, SKIP")
+                        continue
+
+                    log(f"    Checking induk {parent_inc} via /cekticket...")
+                    check = biscuit.check_ticket(parent_inc)
+                    log(f"    Cek induk {parent_inc}: {check['detail']}")
+                    if not check["found"]:
+                        log(f"    Induk {parent_inc} tidak sesuai, SKIP relasi")
+                        continue
+
                     from app.services.insera_gamas_service import InseraGamasService
                     insera = InseraGamasService(browser_manager=self.browser_manager, log_callback=log)
                     if not insera.open():
