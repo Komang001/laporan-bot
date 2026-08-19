@@ -151,10 +151,7 @@ class SygapService:
                 continue
             try:
                 if not p.is_closed():
-                    try:
-                        url = p.evaluate("window.location.href").lower()
-                    except Exception:
-                        url = p.url.lower()
+                    url = p.url.lower()
                     if "biscuit-dashboard" in url:
                         log(f"  [close_tab] SKIP biscuit-dashboard: {url[:60]}")
                         continue
@@ -1388,7 +1385,7 @@ class SygapService:
         pages = page.context.pages
         for p in pages:
             try:
-                real_url = p.evaluate("window.location.href").lower()
+                real_url = p.url.lower()
                 if "oss-incident" in real_url and "login" not in real_url:
                     logged_in = True
                     log(f"INSERA sudah login! ({real_url[:60]})")
@@ -1412,16 +1409,13 @@ class SygapService:
                     log(f"  Tabs detected: {len(pages)}")
                     for idx, p in enumerate(pages):
                         try:
-                            real_url = p.evaluate("window.location.href")
+                            real_url = p.url
                             log(f"    Tab {idx+1}: {real_url[:80]}")
                         except Exception:
-                            try:
-                                log(f"    Tab {idx+1}: {p.url[:80]}")
-                            except Exception:
-                                log(f"    Tab {idx+1}: (error)")
+                            log(f"    Tab {idx+1}: (error)")
                 for p in pages:
                     try:
-                        real_url = p.evaluate("window.location.href").lower()
+                        real_url = p.url.lower()
                         if "oss-incident" in real_url and "login" not in real_url:
                             logged_in = True
                             break
