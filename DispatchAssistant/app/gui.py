@@ -927,88 +927,276 @@ class DispatchAssistantGUI(ctk.CTk):
 
         win = ctk.CTkToplevel(self)
         win.title("Pengaturan Bot")
-        win.geometry("540x560")
+        win.geometry("620x680")
         win.resizable(False, False)
         win.configure(fg_color=BG_HEADER)
         win.transient(self)
         win.grab_set()
 
-        wrap = ctk.CTkFrame(win, fg_color="transparent")
-        wrap.pack(fill="both", expand=True, padx=24, pady=20)
+        cur = self.user_settings or dict(DEFAULTS)
 
+        # Header
+        hdr = ctk.CTkFrame(win, fg_color="transparent")
+        hdr.pack(fill="x", padx=24, pady=(20, 0))
         ctk.CTkLabel(
-            wrap,
-            text="Pengaturan Bot",
-            font=(FONT_UI, 20, "bold"),
-            text_color=RED_MAIN,
-        ).pack(anchor="w")
-
+            hdr, text="⚙  Pengaturan Bot",
+            font=(FONT_UI, 20, "bold"), text_color=RED_MAIN,
+        ).pack(side="left")
         ctk.CTkLabel(
-            wrap,
-            text="Konfigurasi runtime tanpa edit file. Simpan = langsung aktif.",
-            font=(FONT_UI, 11),
-            text_color=TEXT_DIM,
-        ).pack(anchor="w", pady=(2, 14))
+            hdr, text="Simpan = langsung aktif",
+            font=(FONT_UI, 11), text_color=TEXT_DIM,
+        ).pack(side="left", padx=(12, 0), pady=(4, 0))
 
-        cur = self.user_settings or {}
+        # Tab View
+        tabs = ctk.CTkTabview(
+            win, corner_radius=10, fg_color=BG_HEADER,
+            segmented_button_selected_color=RED_MAIN,
+            segmented_button_selected_hover_color=RED_HOVER,
+            segmented_button_unselected_color=BG_INPUT,
+            segmented_button_unselected_hover_color="#E2E8F0",
+            text_color=TEXT_MAIN,
+        )
+        tabs.pack(fill="both", expand=True, padx=20, pady=(4, 6))
 
-        def row(label, value, hint=None):
-            box = ctk.CTkFrame(wrap, fg_color="transparent")
+        tab_general = tabs.add("Umum")
+        tab_tampilan = tabs.add("Tampilan")
+        tab_advanced = tabs.add("Advanced")
+
+        # ── Helper builders ──────────────────────────
+        def _entry_row(parent, label, value, hint=None):
+            box = ctk.CTkFrame(parent, fg_color="transparent")
             box.pack(fill="x", pady=5)
-            ctk.CTkLabel(
-                box,
-                text=label,
-                font=(FONT_UI, 12, "bold"),
-                text_color=TEXT_MAIN,
-            ).pack(anchor="w")
-            entry = ctk.CTkEntry(
-                box,
-                font=(FONT_MONO, 12),
-                fg_color=BG_INPUT,
-                border_color=BORDER_SUBTLE,
-                text_color=TEXT_MAIN,
-                corner_radius=8,
-                height=34,
-            )
-            entry.insert(0, value)
+            ctk.CTkLabel(box, text=label, font=(FONT_UI, 12, "bold"),
+                         text_color=TEXT_MAIN).pack(anchor="w")
+            entry = ctk.CTkEntry(box, font=(FONT_MONO, 12), fg_color=BG_INPUT,
+                                 border_color=BORDER_SUBTLE, text_color=TEXT_MAIN,
+                                 corner_radius=8, height=34)
+            entry.insert(0, str(value))
             entry.pack(fill="x", pady=(3, 0))
             if hint:
-                ctk.CTkLabel(
-                    box,
-                    text=hint,
-                    font=(FONT_UI, 10),
-                    text_color=TEXT_DIM,
-                ).pack(anchor="w", pady=(2, 0))
+                ctk.CTkLabel(box, text=hint, font=(FONT_UI, 10),
+                             text_color=TEXT_DIM).pack(anchor="w", pady=(2, 0))
             return entry
 
-        e_loop = row(
+        def _switch_row(parent, label, value, hint=None):
+            box = ctk.CTkFrame(parent, fg_color="transparent")
+            box.pack(fill="x", pady=5)
+            row = ctk.CTkFrame(box, fg_color="transparent")
+            row.pack(fill="x")
+            ctk.CTkLabel(row, text=label, font=(FONT_UI, 12, "bold"),
+                         text_color=TEXT_MAIN).pack(side="left")
+            sw = ctk.CTkSwitch(row, text="", width=46,
+                               fg_color="#CBD5E1", progress_color=RED_MAIN,
+                               button_color=WHITE, button_hover_color="#F1F5F9")
+            if value:
+                sw.select()
+            else:
+                sw.deselect()
+            sw.pack(side="right")
+            if hint:
+                ctk.CTkLabel(box, text=hint, font=(FONT_UI, 10),
+                             text_color=TEXT_DIM).pack(anchor="w", pady=(2, 0))
+            return sw
+
+        def _dropdown_row(parent, label, values, current, hint=None):
+            box = ctk.CTkFrame(parent, fg_color="transparent")
+            box.pack(fill="x", pady=5)
+            ctk.CTkLabel(box, text=label, font=(FONT_UI, 12, "bold"),
+                         text_color=TEXT_MAIN).pack(anchor="w")
+            dd = ctk.CTkOptionMenu(box, values=values, fg_color=BG_INPUT,
+                                   button_color="#CBD5E1", button_hover_color="#94A3B8",
+                                   dropdown_fg_color=WHITE, dropdown_hover_color="#F1F5F9",
+                                   text_color=TEXT_MAIN, font=(FONT_UI, 12),
+                                   corner_radius=8, height=34)
+            dd.set(current)
+            dd.pack(fill="x", pady=(3, 0))
+            if hint:
+                ctk.CTkLabel(box, text=hint, font=(FONT_UI, 10),
+                             text_color=TEXT_DIM).pack(anchor="w", pady=(2, 0))
+            return dd
+
+        def _slider_row(parent, label, value, from_, to_, hint=None):
+            box = ctk.CTkFrame(parent, fg_color="transparent")
+            box.pack(fill="x", pady=5)
+            top_r = ctk.CTkFrame(box, fg_color="transparent")
+            top_r.pack(fill="x")
+            ctk.CTkLabel(top_r, text=label, font=(FONT_UI, 12, "bold"),
+                         text_color=TEXT_MAIN).pack(side="left")
+            val_lbl = ctk.CTkLabel(top_r, text=str(int(value)),
+                                   font=(FONT_MONO, 12, "bold"),
+                                   text_color=RED_MAIN)
+            val_lbl.pack(side="right")
+            sl = ctk.CTkSlider(box, from_=from_, to=to_, number_of_steps=to_ - from_,
+                               fg_color="#CBD5E1", progress_color=RED_MAIN,
+                               button_color=RED_MAIN, button_hover_color=RED_HOVER)
+            sl.set(value)
+            sl.configure(command=lambda v, l=val_lbl: l.configure(text=str(int(v))))
+            sl.pack(fill="x", pady=(3, 0))
+            if hint:
+                ctk.CTkLabel(box, text=hint, font=(FONT_UI, 10),
+                             text_color=TEXT_DIM).pack(anchor="w", pady=(2, 0))
+            return sl
+
+        def _section_label(parent, text):
+            ctk.CTkLabel(parent, text=text, font=(FONT_UI, 13, "bold"),
+                         text_color="#0284C7").pack(anchor="w", pady=(10, 4))
+
+        # ── TAB 1: UMUM ─────────────────────────────
+        scroll_gen = ctk.CTkScrollableFrame(tab_general, fg_color="transparent")
+        scroll_gen.pack(fill="both", expand=True, padx=4, pady=4)
+
+        _section_label(scroll_gen, "🔄  Loop & Scan")
+        e_loop = _entry_row(scroll_gen,
             "Loop Interval (detik)",
-            str(cur.get("loop_interval", DEFAULTS["loop_interval"])),
+            cur.get("loop_interval", DEFAULTS["loop_interval"]),
             "Jeda scan ulang tiap fitur. Minimum 60 detik.",
         )
-        e_skip = row(
-            "Skip Coordinator (ID atau Nama, pisah koma)",
+
+        _section_label(scroll_gen, "👤  Koordinator")
+        e_skip = _entry_row(scroll_gen,
+            "Skip Coordinator (ID/Nama, pisah koma)",
             ", ".join(cur.get("skip_coordinator_user_ids") or DEFAULTS["skip_coordinator_user_ids"]),
-            "Angka = ID (mis. 55652). Teks = nama/username di SYGAP (mis. Rizky Senja Budiman).",
+            "Angka = ID. Teks = nama/username di SYGAP.",
         )
-        e_uid = row("User ID (Request Coordinator)", str(cur.get("user_id", DEFAULTS["user_id"])))
-        e_uname = row(
+        e_uid = _entry_row(scroll_gen,
+            "User ID (Request Coordinator)",
+            cur.get("user_id", DEFAULTS["user_id"]),
+        )
+        e_uname = _entry_row(scroll_gen,
             "Nama (Request Coordinator)",
-            str(cur.get("user_name", DEFAULTS["user_name"])),
-            "User ID & Nama berlaku setelah restart aplikasi.",
+            cur.get("user_name", DEFAULTS["user_name"]),
+            "User ID & Nama berlaku setelah restart.",
         )
 
+        # ── TAB 2: TAMPILAN ──────────────────────────
+        scroll_vis = ctk.CTkScrollableFrame(tab_tampilan, fg_color="transparent")
+        scroll_vis.pack(fill="both", expand=True, padx=4, pady=4)
+
+        _section_label(scroll_vis, "🎨  Tema & Warna")
+        dd_theme = _dropdown_row(scroll_vis,
+            "Tema Aplikasi", ["light", "dark"],
+            cur.get("theme", DEFAULTS["theme"]),
+            "Berlaku setelah restart.",
+        )
+
+        # Accent Color Picker
+        _ACCENT_PRESETS = {
+            "Merah (Telkom)": "#DC2626",
+            "Biru Langit": "#0284C7",
+            "Ungu": "#7C3AED",
+            "Hijau Emerald": "#059669",
+            "Oranye Sunset": "#EA580C",
+            "Pink Fuchsia": "#DB2777",
+            "Indigo": "#4F46E5",
+            "Teal": "#0D9488",
+        }
+        dd_accent = _dropdown_row(scroll_vis,
+            "Warna Aksen",
+            list(_ACCENT_PRESETS.keys()),
+            next((k for k, v in _ACCENT_PRESETS.items()
+                  if v == cur.get("accent_color", DEFAULTS["accent_color"])),
+                 "Merah (Telkom)"),
+            "Warna utama tombol, header strip, dan status badge.",
+        )
+
+        # Live color preview swatch
+        preview_box = ctk.CTkFrame(scroll_vis, fg_color="transparent")
+        preview_box.pack(fill="x", pady=(0, 4))
+        ctk.CTkLabel(preview_box, text="Preview:", font=(FONT_UI, 10),
+                     text_color=TEXT_DIM).pack(side="left")
+        _preview_swatch = ctk.CTkLabel(
+            preview_box, text="  ████████  ",
+            font=(FONT_MONO, 14, "bold"),
+            text_color=cur.get("accent_color", DEFAULTS["accent_color"]),
+            fg_color=BG_INPUT, corner_radius=6, padx=6, pady=2,
+        )
+        _preview_swatch.pack(side="left", padx=(6, 0))
+
+        def _on_accent_change(choice):
+            color = _ACCENT_PRESETS.get(choice, "#DC2626")
+            _preview_swatch.configure(text_color=color)
+
+        dd_accent.configure(command=_on_accent_change)
+
+        _section_label(scroll_vis, "🔤  Font & Log")
+        sl_fontsize = _slider_row(scroll_vis,
+            "Ukuran Font Log", cur.get("log_font_size", DEFAULTS["log_font_size"]),
+            8, 22, "Font terminal log (8 – 22 pt).",
+        )
+        e_maxlog = _entry_row(scroll_vis,
+            "Maks Baris Log per Tab",
+            cur.get("max_log_lines", DEFAULTS["max_log_lines"]),
+            "0 = tidak dibatasi. Rekomendasi 1000 – 5000.",
+        )
+
+        # ── TAB 3: ADVANCED ──────────────────────────
+        scroll_adv = ctk.CTkScrollableFrame(tab_advanced, fg_color="transparent")
+        scroll_adv.pack(fill="both", expand=True, padx=4, pady=4)
+
+        _section_label(scroll_adv, "📜  Perilaku Log")
+        sw_autoscroll = _switch_row(scroll_adv,
+            "Auto-Scroll Log", cur.get("auto_scroll_log", DEFAULTS["auto_scroll_log"]),
+            "Otomatis scroll ke baris terbaru.",
+        )
+        sw_timestamp = _switch_row(scroll_adv,
+            "Tampilkan Timestamp", cur.get("show_timestamp", DEFAULTS["show_timestamp"]),
+            "Tampilkan [HH:MM:SS] di awal setiap baris log.",
+        )
+
+        _section_label(scroll_adv, "🛡  Safety")
+        sw_confirm_stop = _switch_row(scroll_adv,
+            "Konfirmasi Sebelum STOP", cur.get("confirm_before_stop", DEFAULTS["confirm_before_stop"]),
+            "Tampilkan dialog konfirmasi saat menekan tombol STOP.",
+        )
+
+        _section_label(scroll_adv, "🔌  BISCUIT API")
+        e_biscuit_timeout = _entry_row(scroll_adv,
+            "API Timeout (detik)",
+            cur.get("biscuit_api_timeout", DEFAULTS["biscuit_api_timeout"]),
+            "Timeout request ke BISCUIT API. Min 30 detik.",
+        )
+
+        _section_label(scroll_adv, "🚀  Auto-Start saat Launch")
+        _FEATURE_KEYS = [
+            ("to_insera", "TO MO-INSERA"),
+            ("to_bima", "TO MO-BIMA"),
+            ("canclwork", "CANCLWORK WO"),
+            ("dispatch", "DISPATCH"),
+            ("gamas_relations", "GAMAS RELATIONS"),
+            ("report", "REPORT HARIAN"),
+        ]
+        auto_start_cur = cur.get("auto_start_features") or []
+        auto_start_cbs = {}
+        for fkey, flabel in _FEATURE_KEYS:
+            cb_box = ctk.CTkFrame(scroll_adv, fg_color="transparent")
+            cb_box.pack(fill="x", pady=2)
+            cb = ctk.CTkCheckBox(cb_box, text=flabel, font=(FONT_UI, 12),
+                                 text_color=TEXT_MAIN,
+                                 fg_color=RED_MAIN, hover_color=RED_HOVER,
+                                 border_color=BORDER_SUBTLE,
+                                 checkmark_color=WHITE, corner_radius=6)
+            if fkey in auto_start_cur:
+                cb.select()
+            cb.pack(anchor="w")
+            auto_start_cbs[fkey] = cb
+
+        ctk.CTkLabel(scroll_adv, text="Fitur yang dicentang akan otomatis START saat aplikasi dibuka (setelah restart).",
+                     font=(FONT_UI, 10), text_color=TEXT_DIM, wraplength=480
+                     ).pack(anchor="w", pady=(2, 0))
+
+        # ── Bottom Bar ───────────────────────────────
         from app.user_settings import USER_SETTINGS_PATH
 
-        ctk.CTkLabel(
-            wrap,
-            text=f"Tersimpan di: {USER_SETTINGS_PATH}",
-            font=(FONT_UI, 10),
-            text_color=TEXT_DIM,
-        ).pack(anchor="w", pady=(10, 0))
+        bot_bar = ctk.CTkFrame(win, fg_color="transparent")
+        bot_bar.pack(fill="x", padx=24, pady=(0, 16))
 
-        btns = ctk.CTkFrame(wrap, fg_color="transparent")
-        btns.pack(fill="x", pady=(16, 0))
+        ctk.CTkLabel(
+            bot_bar, text=f"📁 {USER_SETTINGS_PATH}",
+            font=(FONT_UI, 10), text_color=TEXT_DIM,
+        ).pack(anchor="w", pady=(0, 8))
+
+        btns = ctk.CTkFrame(bot_bar, fg_color="transparent")
+        btns.pack(fill="x")
 
         def _save():
             try:
@@ -1016,52 +1204,112 @@ class DispatchAssistantGUI(ctk.CTk):
                 loop = max(60, loop)
             except ValueError:
                 loop = DEFAULTS["loop_interval"]
+
             skip = [x.strip() for x in e_skip.get().replace(",", " ").split() if x.strip()]
+
+            accent_name = dd_accent.get()
+            accent_hex = _ACCENT_PRESETS.get(accent_name, DEFAULTS["accent_color"])
+
+            auto_start_list = [k for k, cb in auto_start_cbs.items() if cb.get()]
+
+            try:
+                maxlog = int(e_maxlog.get().strip() or DEFAULTS["max_log_lines"])
+            except ValueError:
+                maxlog = DEFAULTS["max_log_lines"]
+
+            try:
+                biscuit_t = int(e_biscuit_timeout.get().strip() or DEFAULTS["biscuit_api_timeout"])
+            except ValueError:
+                biscuit_t = DEFAULTS["biscuit_api_timeout"]
+
             data = {
                 "loop_interval": loop,
                 "skip_coordinator_user_ids": skip,
                 "user_id": e_uid.get().strip() or DEFAULTS["user_id"],
                 "user_name": e_uname.get().strip() or DEFAULTS["user_name"],
+                "theme": dd_theme.get(),
+                "accent_color": accent_hex,
+                "log_font_size": int(sl_fontsize.get()),
+                "max_log_lines": maxlog,
+                "auto_scroll_log": bool(sw_autoscroll.get()),
+                "show_timestamp": bool(sw_timestamp.get()),
+                "confirm_before_stop": bool(sw_confirm_stop.get()),
+                "auto_start_features": auto_start_list,
+                "biscuit_api_timeout": biscuit_t,
             }
+
             from app.user_settings import save as _save_settings
             self.user_settings = _save_settings(data)
+
+            # Live-apply visual settings
+            self._apply_visual_settings(data)
+
             self.write_log(
                 f"[settings] Disimpan: loop={loop}s, skip={skip or 'none'}, "
-                f"user={data['user_name']} ({data['user_id']})",
+                f"user={data['user_name']} ({data['user_id']}), "
+                f"theme={data['theme']}, accent={accent_hex}, "
+                f"font={data['log_font_size']}pt",
                 channel="all",
             )
             self.write_log(
-                "[settings] Loop interval & skip coordinator langsung aktif. "
-                "User ID/Nama aktif setelah restart.",
+                "[settings] Perubahan tampilan & perilaku langsung aktif. "
+                "Tema, User ID/Nama, Auto-Start aktif setelah restart.",
                 channel="all",
             )
             win.destroy()
 
         ctk.CTkButton(
-            btns,
-            text="Simpan",
-            width=110,
-            height=34,
-            corner_radius=8,
-            fg_color=RED_MAIN,
-            hover_color=RED_HOVER,
-            text_color=WHITE,
-            font=(FONT_UI, 12, "bold"),
+            btns, text="💾  Simpan", width=120, height=36,
+            corner_radius=8, fg_color=RED_MAIN, hover_color=RED_HOVER,
+            text_color=WHITE, font=(FONT_UI, 12, "bold"),
             command=_save,
         ).pack(side="left")
 
         ctk.CTkButton(
-            btns,
-            text="Batal",
-            width=90,
-            height=34,
-            corner_radius=8,
-            fg_color="#F1F5F9",
-            hover_color="#E2E8F0",
-            text_color=TEXT_MAIN,
-            font=(FONT_UI, 12, "bold"),
+            btns, text="Batal", width=90, height=36,
+            corner_radius=8, fg_color="#F1F5F9", hover_color="#E2E8F0",
+            text_color=TEXT_MAIN, font=(FONT_UI, 12, "bold"),
             command=win.destroy,
         ).pack(side="left", padx=(10, 0))
+
+        # Reset defaults button
+        def _reset():
+            if hasattr(ctk, "CTkInputDialog"):
+                pass  # no modal needed, just reset
+            from app.user_settings import save as _save_settings
+            self.user_settings = _save_settings(dict(DEFAULTS))
+            self._apply_visual_settings(DEFAULTS)
+            self.write_log("[settings] Reset ke default!", channel="all")
+            win.destroy()
+
+        ctk.CTkButton(
+            btns, text="🔄  Reset Default", width=130, height=36,
+            corner_radius=8, fg_color="#FEF2F2", hover_color="#FEE2E2",
+            text_color=RED_MAIN, font=(FONT_UI, 11, "bold"),
+            command=_reset,
+        ).pack(side="right")
+
+    def _apply_visual_settings(self, data):
+        """Terapkan pengaturan visual secara live (tanpa restart)."""
+        # Font size log
+        font_size = data.get("log_font_size", 12)
+        for name, box in self.log_boxes.items():
+            try:
+                box.configure(font=(FONT_MONO, font_size))
+            except Exception:
+                pass
+
+        # Max log lines trimming
+        max_lines = data.get("max_log_lines", 2000)
+        if max_lines > 0:
+            for name, box in self.log_boxes.items():
+                try:
+                    content = box.get("1.0", "end")
+                    lines = content.split("\n")
+                    if len(lines) > max_lines:
+                        box.delete("1.0", f"{len(lines) - max_lines}.0")
+                except Exception:
+                    pass
 
 
 # =====================================================
