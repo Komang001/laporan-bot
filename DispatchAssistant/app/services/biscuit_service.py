@@ -287,7 +287,7 @@ class BiscuitService:
         """Cek tiket (mis. induk GAMAS) via /cekticket.
 
         Return dict: {"found": bool, "detail": str, "status": str}.
-        found = tiket ditemukan DAN source_ticket di ('GAMAS', 'PROACTIVE')
+        found = tiket ditemukan DAN source_ticket == 'GAMAS'
         (induk GAMAS asli). Jika API gagal, fallback ke UI (tanpa cek source).
         """
         import json
@@ -315,7 +315,7 @@ class BiscuitService:
                     if str(item.get("ticketId", "")) == ticket_id:
                         d = item.get("data") or {}
                         source = str(d.get("source_ticket") or "").upper()
-                        is_parent = source in ("GAMAS", "PROACTIVE")
+                        is_parent = source == "GAMAS"
                         bits = [
                             str(item.get("message", "")),
                             f"status={d.get('ticket_status')}",
@@ -359,7 +359,7 @@ class BiscuitService:
 
         Semua anak dicek dalam SATU panggilan API (dipisah koma).
         Hanya anak dengan source_ticket == 'CUSTOMER' yang valid untuk di-input.
-        Anak dengan source GAMAS/PROACTIVE/lain, tidak ditemukan, atau tidak
+        Anak dengan source selain CUSTOMER (GAMAS/PROACTIVE/lain), tidak ditemukan, atau tidak
         terverifikasi (API gagal) -> dibuang (jangan di-input).
 
         Return: {"valid": [INC...], "excluded": [{"inc", "source", "detail"}]}
