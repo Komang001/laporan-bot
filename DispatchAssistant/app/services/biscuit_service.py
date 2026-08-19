@@ -221,7 +221,8 @@ class BiscuitService:
             status = "SUCCESS"
         else:
             status = "UNKNOWN"
-        return Response(status=status, message=msg[:200])
+        from app.services.response_service import clean_error_message
+        return Response(status=status, message=clean_error_message(msg))
 
     def execute(self, command, page_scope):
         """Kirim command: coba API langsung (HTTP), fallback ke UI lama jika gagal."""
