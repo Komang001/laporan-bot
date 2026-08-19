@@ -1549,8 +1549,7 @@ class SygapService:
                     from app.services.biscuit_service import BiscuitService
                     biscuit = BiscuitService(browser_manager=self.browser_manager)
                     if not biscuit.open():
-                        log(f"    BISCUIT tab not found! Tidak bisa cek induk, SKIP")
-                        continue
+                        log(f"    Tab BISCUIT tidak ada di browser ini, pakai token cache...")
 
                     log(f"    Checking induk {parent_inc} via /cekticket...")
                     check = biscuit.check_ticket(parent_inc)
