@@ -2,9 +2,9 @@ name: Kirim Jadwal Piket Harian
 
 on:
   schedule:
-    # 00:01 WIB, 08:00 WIB, 16:00 WIB (UTC = 17:01, 01:00, 09:00)
+    # 00:01 WIB, 09:00 WIB, 16:00 WIB (UTC = 17:01, 02:00, 09:00)
     - cron: "1 17 * * *"
-    - cron: "0 1 * * *"
+    - cron: "0 2 * * *"
     - cron: "0 9 * * *"
   workflow_dispatch:
 
