@@ -338,20 +338,21 @@ class DispatchAssistantGUI(ctk.CTk):
         center.grid(row=0, column=1)
 
         logo_label = None
+        logo_sz = self.user_settings.get("logo_size", 115) if self.user_settings else 115
         if os.path.exists(LOGO_PATH):
             try:
                 from PIL import Image
 
                 pil_img = Image.open(LOGO_PATH).convert("RGBA")
-                logo_img = ctk.CTkImage(
+                self._logo_img = ctk.CTkImage(
                     light_image=pil_img,
                     dark_image=pil_img,
-                    size=(115, 115),
+                    size=(logo_sz, logo_sz),
                 )
                 logo_label = ctk.CTkLabel(
                     center,
                     text="",
-                    image=logo_img,
+                    image=self._logo_img,
                 )
             except Exception:
                 logo_label = None
@@ -364,6 +365,7 @@ class DispatchAssistantGUI(ctk.CTk):
                 text_color=TEXT_MAIN,
             )
         logo_label.pack(side="left")
+        self._logo_label = logo_label
 
         # ── RIGHT: Settings, System Status, Clock ──────
         right = ctk.CTkFrame(inner, fg_color="transparent")
@@ -1132,7 +1134,7 @@ class DispatchAssistantGUI(ctk.CTk):
                              text_color=TEXT_DIM).pack(anchor="w", pady=(1, 0))
             return dd
 
-        def _slider_row(parent, label, value, from_, to_, hint=None, unit=""):
+        def _slider_row(parent, label, value, from_, to_, hint=None, unit="", on_change=None):
             box = ctk.CTkFrame(parent, fg_color="transparent")
             box.pack(fill="x", pady=4)
             top_r = ctk.CTkFrame(box, fg_color="transparent")
@@ -1144,10 +1146,14 @@ class DispatchAssistantGUI(ctk.CTk):
                                    text_color=RED_MAIN)
             val_lbl.pack(side="right")
             sl = ctk.CTkSlider(box, from_=from_, to=to_, number_of_steps=to_ - from_,
-                               fg_color="#CBD5E1", progress_color=RED_MAIN,
+                               fg_color=("#CBD5E1", "#334155"), progress_color=RED_MAIN,
                                button_color=RED_MAIN, button_hover_color=RED_HOVER)
             sl.set(value)
-            sl.configure(command=lambda v, l=val_lbl, u=unit: l.configure(text=f"{int(v)}{u}"))
+            def _handler(v):
+                val_lbl.configure(text=f"{int(v)}{unit}")
+                if on_change:
+                    on_change(v)
+            sl.configure(command=_handler)
             sl.pack(fill="x", pady=(2, 0))
             if hint:
                 ctk.CTkLabel(box, text=hint, font=(FONT_UI, 10),
@@ -1269,6 +1275,20 @@ class DispatchAssistantGUI(ctk.CTk):
             )
             btn_chip.pack(side="left", padx=2)
 
+        def _live_resize_logo(v):
+            if hasattr(self, "_logo_label") and self._logo_label and os.path.exists(LOGO_PATH):
+                try:
+                    from PIL import Image
+                    pil_img = Image.open(LOGO_PATH).convert("RGBA")
+                    self._logo_img = ctk.CTkImage(
+                        light_image=pil_img,
+                        dark_image=pil_img,
+                        size=(int(v), int(v)),
+                    )
+                    self._logo_label.configure(image=self._logo_img, text="")
+                except Exception:
+                    pass
+
         _section_label(scroll_stu, "🐱  Logo Maskot & Header")
         sw_logo = _switch_row(scroll_stu,
             "Tampilkan Logo Maskot", cur.get("show_logo", DEFAULTS.get("show_logo", True)),
@@ -1277,6 +1297,7 @@ class DispatchAssistantGUI(ctk.CTk):
         sl_logosize = _slider_row(scroll_stu,
             "Ukuran Logo di Header", cur.get("logo_size", DEFAULTS.get("logo_size", 115)),
             60, 160, "Dimensi tampilan logo (60px – 160px).", unit="px",
+            on_change=_live_resize_logo,
         )
         sw_clock = _switch_row(scroll_stu,
             "Tampilkan Jam Digital", cur.get("show_clock", DEFAULTS.get("show_clock", True)),
@@ -1545,7 +1566,7 @@ class DispatchAssistantGUI(ctk.CTk):
 
         # ── 4. Logo Visibility & Size ──
         show_logo = data.get("show_logo", True)
-        logo_sz = data.get("logo_size", 115)
+        logo_sz = int(data.get("logo_size", 115))
         if hasattr(self, "_logo_label") and self._logo_label:
             try:
                 if not show_logo:
@@ -1555,12 +1576,12 @@ class DispatchAssistantGUI(ctk.CTk):
                     if os.path.exists(LOGO_PATH):
                         from PIL import Image
                         pil_img = Image.open(LOGO_PATH).convert("RGBA")
-                        new_img = ctk.CTkImage(
+                        self._logo_img = ctk.CTkImage(
                             light_image=pil_img,
                             dark_image=pil_img,
                             size=(logo_sz, logo_sz),
                         )
-                        self._logo_label.configure(image=new_img, text="")
+                        self._logo_label.configure(image=self._logo_img, text="")
             except Exception:
                 pass
 
