@@ -22,7 +22,19 @@ LOGO_PATH = os.path.join(BASE_DIR, "assets", "logo.png")
 # Appearance & Clean Light Theme Palette
 # =====================================================
 
-ctk.set_appearance_mode("light")
+# Muat tema dari saved settings (jika ada)
+def _load_saved_theme():
+    import json
+    _settings_path = os.path.join(BASE_DIR, "config", "user_settings.json")
+    try:
+        if os.path.exists(_settings_path):
+            with open(_settings_path, "r", encoding="utf-8") as f:
+                return json.load(f).get("theme", "light")
+    except Exception:
+        pass
+    return "light"
+
+ctk.set_appearance_mode(_load_saved_theme())
 ctk.set_default_color_theme("blue")
 
 # Theme Palette (Crisp Clean Modern Light)
@@ -37,9 +49,27 @@ BORDER_SUBTLE = "#E2E8F0"    # Crisp slate-200 1px borders
 BORDER_CARD = "#E2E8F0"      # Card contour border
 BORDER_FOCUS = "#3B82F6"     # Focused / active border
 
-RED_MAIN = "#DC2626"         # Vibrant Telkom/Action Red
-RED_DARK = "#991B1B"         # Dark Red
-RED_HOVER = "#B91C1C"        # Hover Red
+# Load saved accent color (if any)
+def _load_saved_accent():
+    import json
+    _settings_path = os.path.join(BASE_DIR, "config", "user_settings.json")
+    try:
+        if os.path.exists(_settings_path):
+            with open(_settings_path, "r", encoding="utf-8") as f:
+                return json.load(f).get("accent_color", "#DC2626")
+    except Exception:
+        pass
+    return "#DC2626"
+
+def _darken_hex(hex_color, factor=0.8):
+    hex_color = hex_color.lstrip("#")
+    r, g, b = int(hex_color[:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    r, g, b = int(r * factor), int(g * factor), int(b * factor)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+RED_MAIN = _load_saved_accent()             # Vibrant accent (default: Telkom Red)
+RED_DARK = _darken_hex(RED_MAIN, 0.6)       # Dark accent
+RED_HOVER = _darken_hex(RED_MAIN, 0.82)     # Hover accent
 RED_LIGHT = "#FEF2F2"        # Pastel Red Background
 
 TEXT_MAIN = "#0F172A"        # Deep slate-900 for sharp primary text
@@ -182,6 +212,7 @@ class DispatchAssistantGUI(ctk.CTk):
         self.log_boxes = {}
         self._blink_jobs = {}
         self._clock_job = None
+        self._accent_widgets = []  # [(widget, property, value_type), ...]
 
         self.title("Industrial Programmer - DispatchAssistant")
 
@@ -199,6 +230,11 @@ class DispatchAssistantGUI(ctk.CTk):
         self.create_log_section()
         self.create_footer()
         self._start_clock()
+
+        # Terapkan warna & tema dari saved settings (jika ada)
+        if self.user_settings:
+            self._apply_visual_settings(self.user_settings)
+
         self._start_telegram_bot()
 
     # =================================================
@@ -219,6 +255,8 @@ class DispatchAssistantGUI(ctk.CTk):
         # Accent top bar (Red Stripe)
         strip = ctk.CTkFrame(frame, height=4, corner_radius=0, fg_color=RED_MAIN)
         strip.pack(fill="x", side="top")
+        self._header_strip = strip
+        self._accent_widgets.append((strip, "fg_color", "accent"))
 
         inner = ctk.CTkFrame(frame, fg_color="transparent")
         inner.pack(fill="x", padx=20, pady=(12, 12))
@@ -458,6 +496,7 @@ class DispatchAssistantGUI(ctk.CTk):
             command=lambda k=key: self._stop_feature(k),
         )
         stop_btn.pack(side="right", padx=(6, 0))
+        setattr(self, f"{key}_stop_btn", stop_btn)
 
         start_btn = ctk.CTkButton(
             bottom,
@@ -637,7 +676,7 @@ class DispatchAssistantGUI(ctk.CTk):
             text_color=TEXT_DIM,
         ).pack(side="left", padx=(8, 0), pady=(2, 0))
 
-        ctk.CTkLabel(
+        self._live_badge = ctk.CTkLabel(
             header,
             text="  \u25CF LIVE STREAM  ",
             font=(FONT_UI, 10, "bold"),
@@ -646,7 +685,9 @@ class DispatchAssistantGUI(ctk.CTk):
             corner_radius=8,
             padx=6,
             pady=1,
-        ).pack(side="left", padx=(10, 0))
+        )
+        self._live_badge.pack(side="left", padx=(10, 0))
+        self._accent_widgets.append((self._live_badge, "fg_color", "accent"))
 
         ctk.CTkButton(
             header,
@@ -684,6 +725,7 @@ class DispatchAssistantGUI(ctk.CTk):
             segmented_button_unselected_hover_color="#FEE2E2",
             text_color=TEXT_MAIN,
         )
+        self._log_tabs = self.tabs
 
         self.tabs.pack(fill="both", expand=True, padx=14, pady=(4, 12))
 
@@ -1291,7 +1333,48 @@ class DispatchAssistantGUI(ctk.CTk):
 
     def _apply_visual_settings(self, data):
         """Terapkan pengaturan visual secara live (tanpa restart)."""
-        # Font size log
+        accent = data.get("accent_color", RED_MAIN)
+
+        # ── Darken helper for hover color ──
+        def _darken(hex_color, factor=0.8):
+            hex_color = hex_color.lstrip("#")
+            r, g, b = int(hex_color[:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+            r, g, b = int(r * factor), int(g * factor), int(b * factor)
+            return f"#{r:02x}{g:02x}{b:02x}"
+
+        accent_hover = _darken(accent, 0.82)
+
+        # ── 1. Update semua accent widgets ──
+        for widget, prop, val_type in self._accent_widgets:
+            try:
+                if val_type == "accent":
+                    widget.configure(**{prop: accent})
+            except Exception:
+                pass
+
+        # ── 2. Update log tab segmented button colors ──
+        try:
+            self._log_tabs.configure(
+                segmented_button_selected_color=accent,
+                segmented_button_selected_hover_color=accent_hover,
+            )
+        except Exception:
+            pass
+
+        # ── 3. Update header title label color ──
+        # (Settings gear title uses RED_MAIN, but title text stays TEXT_MAIN)
+
+        # ── 4. Update STOP button text colors on all feature cards ──
+        for feat in FEATURES:
+            key = feat["key"]
+            stop_btn = getattr(self, f"{key}_stop_btn", None)
+            if stop_btn:
+                try:
+                    stop_btn.configure(text_color=accent)
+                except Exception:
+                    pass
+
+        # ── 5. Font size log ──
         font_size = data.get("log_font_size", 12)
         for name, box in self.log_boxes.items():
             try:
@@ -1299,7 +1382,7 @@ class DispatchAssistantGUI(ctk.CTk):
             except Exception:
                 pass
 
-        # Max log lines trimming
+        # ── 6. Max log lines trimming ──
         max_lines = data.get("max_log_lines", 2000)
         if max_lines > 0:
             for name, box in self.log_boxes.items():
@@ -1310,6 +1393,15 @@ class DispatchAssistantGUI(ctk.CTk):
                         box.delete("1.0", f"{len(lines) - max_lines}.0")
                 except Exception:
                     pass
+
+        # ── 7. Theme mode (light/dark) ──
+        theme = data.get("theme", "light")
+        try:
+            ctk.set_appearance_mode(theme)
+        except Exception:
+            pass
+
+        self.write_log(f"[settings] Visual diterapkan: aksen={accent}, tema={theme}, font={font_size}pt", channel="all")
 
 
 # =====================================================
