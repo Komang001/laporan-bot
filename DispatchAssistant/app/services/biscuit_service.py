@@ -358,8 +358,8 @@ class BiscuitService:
         """Verifikasi anak gamas via /cekticket.
 
         Semua anak dicek dalam SATU panggilan API (dipisah koma).
-        Hanya anak dengan source_ticket == 'CUSTOMER' yang valid untuk di-input.
-        Anak dengan source selain CUSTOMER (GAMAS/PROACTIVE/lain), tidak ditemukan, atau tidak
+        Hanya anak dengan source_ticket 'CUSTOMER' atau 'PROACTIVE' yang valid.
+        Anak dengan source selain itu (GAMAS/lain), tidak ditemukan, atau tidak
         terverifikasi (API gagal) -> dibuang (jangan di-input).
 
         Return: {"valid": [INC...], "excluded": [{"inc", "source", "detail"}]}
@@ -414,7 +414,7 @@ class BiscuitService:
         valid, excluded = [], []
         for inc in child_incs:
             info = results.get(inc)
-            if info and info.get("source") == "CUSTOMER":
+            if info and info.get("source") in ("CUSTOMER", "PROACTIVE"):
                 valid.append(inc)
             else:
                 excluded.append({
