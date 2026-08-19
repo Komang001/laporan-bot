@@ -37,17 +37,24 @@ def _load_saved_theme():
 ctk.set_appearance_mode(_load_saved_theme())
 ctk.set_default_color_theme("blue")
 
-# Theme Palette (Crisp Clean Modern Light)
-BG_MAIN = "#F1F5F9"          # Soft slate-100 workspace background
-BG_HEADER = "#FFFFFF"        # Elevated white header card
-BG_CARD = "#FFFFFF"          # Elevated white feature cards
-BG_CARD_HOVER = "#F8FAFC"    # Soft hover state
-BG_INPUT = "#F8FAFC"         # Soft slate-50 for inputs and chips
-BG_TERMINAL = "#0F172A"      # High-contrast slate-900 terminal
+# Theme Palette (Adaptive Light / Dark 2-Tuples for CustomTkinter)
+BG_MAIN = ("#F1F5F9", "#0B0F19")          # Main window bg (Light: slate-100, Dark: deep obsidian #0B0F19)
+BG_HEADER = ("#FFFFFF", "#161F30")        # Header card (Light: pure white, Dark: slate-800 #161F30)
+BG_CARD = ("#FFFFFF", "#161F30")          # Feature card (Light: pure white, Dark: slate-800 #161F30)
+BG_CARD_HOVER = ("#F8FAFC", "#1E293B")    # Card hover (Light: slate-50, Dark: slate-700)
+BG_INPUT = ("#F8FAFC", "#0F172A")         # Input/chip bg (Light: slate-50, Dark: slate-900)
+BG_BTN_SECONDARY = ("#F1F5F9", "#1E293B") # Secondary button bg
+BG_BTN_SECONDARY_HOVER = ("#E2E8F0", "#334155")
+BG_TERMINAL = ("#0F172A", "#030712")      # Terminal log bg
 
-BORDER_SUBTLE = "#E2E8F0"    # Crisp slate-200 1px borders
-BORDER_CARD = "#E2E8F0"      # Card contour border
-BORDER_FOCUS = "#3B82F6"     # Focused / active border
+BORDER_SUBTLE = ("#E2E8F0", "#2A374A")    # Border lines (Light: slate-200, Dark: slate-700)
+BORDER_CARD = ("#E2E8F0", "#2A374A")      # Card borders
+BORDER_FOCUS = "#3B82F6"
+
+TEXT_MAIN = ("#0F172A", "#F8FAFC")        # Primary text (Light: slate-900, Dark: slate-50 white)
+TEXT_SECONDARY = ("#475569", "#94A3B8")   # Secondary text (Light: slate-600, Dark: slate-400)
+TEXT_DIM = ("#64748B", "#64748B")         # Muted info text
+WHITE = "#FFFFFF"
 
 # Load saved accent color (if any)
 def _load_saved_accent():
@@ -62,20 +69,39 @@ def _load_saved_accent():
     return "#DC2626"
 
 def _darken_hex(hex_color, factor=0.8):
-    hex_color = hex_color.lstrip("#")
-    r, g, b = int(hex_color[:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
-    r, g, b = int(r * factor), int(g * factor), int(b * factor)
-    return f"#{r:02x}{g:02x}{b:02x}"
+    try:
+        hex_color = hex_color.lstrip("#")
+        if len(hex_color) == 3:
+            hex_color = "".join(c * 2 for c in hex_color)
+        r, g, b = int(hex_color[:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+        r, g, b = int(r * factor), int(g * factor), int(b * factor)
+        return f"#{r:02x}{g:02x}{b:02x}"
+    except Exception:
+        return hex_color
 
 RED_MAIN = _load_saved_accent()             # Vibrant accent (default: Telkom Red)
 RED_DARK = _darken_hex(RED_MAIN, 0.6)       # Dark accent
 RED_HOVER = _darken_hex(RED_MAIN, 0.82)     # Hover accent
-RED_LIGHT = "#FEF2F2"        # Pastel Red Background
 
-TEXT_MAIN = "#0F172A"        # Deep slate-900 for sharp primary text
-TEXT_SECONDARY = "#475569"   # Slate-600 for descriptions
-TEXT_DIM = "#64748B"         # Slate-500 for secondary info
-WHITE = "#FFFFFF"
+RED_LIGHT = ("#FEF2F2", "#380D0D")        # Light: pastel red, Dark: deep dark red
+RED_LIGHT_BORDER = ("#FCA5A5", "#7F1D1D")
+RED_LIGHT_HOVER = ("#FEE2E2", "#4C1D1D")
+
+BADGE_READY_BG = ("#ECFDF5", "#064E3B")
+BADGE_READY_TEXT = ("#059669", "#34D399")
+
+BADGE_VER_BG = ("#E0F2FE", "#075985")
+BADGE_VER_TEXT = ("#0284C7", "#38BDF8")
+
+CLOCK_BG = ("#F1F5F9", "#1E293B")
+CLOCK_TEXT = ("#0284C7", "#38BDF8")
+
+TAB_UNSELECTED_BG = ("#FFFFFF", "#161F30")
+TAB_UNSELECTED_HOVER = ("#F1F5F9", "#1E293B")
+
+TAG_BG = ("#F8FAFC", "#0F172A")
+TAG_BORDER = ("#E2E8F0", "#2A374A")
+TAG_TEXT = ("#64748B", "#94A3B8")
 
 FONT_UI = "Segoe UI"
 FONT_MONO = "Consolas"
@@ -156,29 +182,29 @@ CHANNEL_TAB_MAP = {
 LOG_TABS = ["SEMUA", "TO", "CANCLWORK", "DISPATCH", "GAMAS", "REPORT"]
 
 STATUS_COLORS = {
-    "READY": "#059669",
-    "STARTING": "#D97706",
-    "LAUNCHING": "#D97706",
-    "CONNECTING": "#D97706",
-    "SCANNING": "#2563EB",
-    "RUNNING": "#2563EB",
-    "WAITING": "#64748B",
-    "STOPPING": "#EA580C",
-    "STOPPED": "#DC2626",
-    "ERROR": "#DC2626",
+    "READY": ("#059669", "#34D399"),
+    "STARTING": ("#D97706", "#FBBF24"),
+    "LAUNCHING": ("#D97706", "#FBBF24"),
+    "CONNECTING": ("#D97706", "#FBBF24"),
+    "SCANNING": ("#2563EB", "#60A5FA"),
+    "RUNNING": ("#2563EB", "#60A5FA"),
+    "WAITING": ("#64748B", "#94A3B8"),
+    "STOPPING": ("#EA580C", "#FB923C"),
+    "STOPPED": ("#DC2626", "#F87171"),
+    "ERROR": ("#DC2626", "#F87171"),
 }
 
 STATUS_BG_COLORS = {
-    "READY": "#ECFDF5",
-    "STARTING": "#FFFBEB",
-    "LAUNCHING": "#FFFBEB",
-    "CONNECTING": "#FFFBEB",
-    "SCANNING": "#EFF6FF",
-    "RUNNING": "#EFF6FF",
-    "WAITING": "#F1F5F9",
-    "STOPPING": "#FFF7ED",
-    "STOPPED": "#FEF2F2",
-    "ERROR": "#FEF2F2",
+    "READY": ("#ECFDF5", "#064E3B"),
+    "STARTING": ("#FFFBEB", "#451A03"),
+    "LAUNCHING": ("#FFFBEB", "#451A03"),
+    "CONNECTING": ("#FFFBEB", "#451A03"),
+    "SCANNING": ("#EFF6FF", "#172554"),
+    "RUNNING": ("#EFF6FF", "#172554"),
+    "WAITING": ("#F1F5F9", "#1E293B"),
+    "STOPPING": ("#FFF7ED", "#431407"),
+    "STOPPED": ("#FEF2F2", "#450A0A"),
+    "ERROR": ("#FEF2F2", "#450A0A"),
 }
 
 # Status yang dot-nya berkedip
@@ -291,8 +317,8 @@ class DispatchAssistantGUI(ctk.CTk):
             title_box,
             text=" v3.2 ",
             font=(FONT_MONO, 10, "bold"),
-            text_color="#0284C7",
-            fg_color="#E0F2FE",
+            text_color=BADGE_VER_TEXT,
+            fg_color=BADGE_VER_BG,
             corner_radius=8,
             padx=6,
             pady=2,
@@ -352,8 +378,8 @@ class DispatchAssistantGUI(ctk.CTk):
             width=92,
             height=28,
             corner_radius=7,
-            fg_color="#F1F5F9",
-            hover_color="#E2E8F0",
+            fg_color=BG_BTN_SECONDARY,
+            hover_color=BG_BTN_SECONDARY_HOVER,
             text_color=TEXT_MAIN,
             font=(FONT_UI, 11, "bold"),
             command=self._open_settings,
@@ -365,8 +391,8 @@ class DispatchAssistantGUI(ctk.CTk):
             right,
             text="  \u25CF SYSTEM READY  ",
             font=(FONT_UI, 10, "bold"),
-            text_color="#059669",
-            fg_color="#ECFDF5",
+            text_color=BADGE_READY_TEXT,
+            fg_color=BADGE_READY_BG,
             corner_radius=12,
             padx=8,
             pady=3,
@@ -378,7 +404,7 @@ class DispatchAssistantGUI(ctk.CTk):
             right,
             text="",
             font=(FONT_MONO, 12, "bold"),
-            text_color="#0284C7",
+            text_color=CLOCK_TEXT,
         )
         clock.pack(anchor="e", pady=(2, 0))
         self._clock_label = clock
@@ -485,8 +511,8 @@ class DispatchAssistantGUI(ctk.CTk):
             top,
             text="  \u25CF READY  ",
             font=(FONT_UI, 10, "bold"),
-            text_color="#059669",
-            fg_color="#ECFDF5",
+            text_color=BADGE_READY_TEXT,
+            fg_color=BADGE_READY_BG,
             corner_radius=12,
             padx=8,
             pady=3,
@@ -501,7 +527,7 @@ class DispatchAssistantGUI(ctk.CTk):
             text=f"\U0001F50C Port {port}",
             font=(FONT_MONO, 10, "bold"),
             text_color=feat["color"],
-            fg_color=BG_MAIN,
+            fg_color=BG_INPUT,
             corner_radius=6,
             padx=7,
             pady=2,
@@ -514,10 +540,10 @@ class DispatchAssistantGUI(ctk.CTk):
                 bottom,
                 text=tag_text,
                 font=(FONT_UI, 10, "bold"),
-                text_color=TEXT_DIM,
-                fg_color="#F8FAFC",
+                text_color=TAG_TEXT,
+                fg_color=TAG_BG,
                 border_width=1,
-                border_color=BORDER_SUBTLE,
+                border_color=TAG_BORDER,
                 corner_radius=6,
                 padx=6,
                 pady=2,
@@ -532,9 +558,9 @@ class DispatchAssistantGUI(ctk.CTk):
             height=28,
             corner_radius=7,
             fg_color=RED_LIGHT,
-            hover_color="#FEE2E2",
+            hover_color=RED_LIGHT_HOVER,
             border_width=1.2,
-            border_color="#FCA5A5",
+            border_color=RED_LIGHT_BORDER,
             text_color=RED_MAIN,
             font=(FONT_UI, 10, "bold"),
             command=lambda k=key: self._stop_feature(k),
@@ -739,8 +765,8 @@ class DispatchAssistantGUI(ctk.CTk):
             width=68,
             height=26,
             corner_radius=8,
-            fg_color="#F1F5F9",
-            hover_color="#E2E8F0",
+            fg_color=BG_BTN_SECONDARY,
+            hover_color=BG_BTN_SECONDARY_HOVER,
             text_color=TEXT_MAIN,
             font=(FONT_UI, 11, "bold"),
             command=self._copy_log,
@@ -752,8 +778,8 @@ class DispatchAssistantGUI(ctk.CTk):
             width=80,
             height=26,
             corner_radius=8,
-            fg_color="#F1F5F9",
-            hover_color="#E2E8F0",
+            fg_color=BG_BTN_SECONDARY,
+            hover_color=BG_BTN_SECONDARY_HOVER,
             text_color=TEXT_MAIN,
             font=(FONT_UI, 11, "bold"),
             command=self._clear_log,
@@ -765,8 +791,8 @@ class DispatchAssistantGUI(ctk.CTk):
             fg_color=BG_MAIN,
             segmented_button_selected_color=RED_MAIN,
             segmented_button_selected_hover_color=RED_HOVER,
-            segmented_button_unselected_color=WHITE,
-            segmented_button_unselected_hover_color="#FEE2E2",
+            segmented_button_unselected_color=TAB_UNSELECTED_BG,
+            segmented_button_unselected_hover_color=TAB_UNSELECTED_HOVER,
             text_color=TEXT_MAIN,
         )
         self._log_tabs = self.tabs
@@ -780,7 +806,7 @@ class DispatchAssistantGUI(ctk.CTk):
                 font=(FONT_MONO, 12),
                 wrap="word",
                 fg_color=BG_TERMINAL,
-                border_color="#1E293B",
+                border_color=BORDER_SUBTLE,
                 border_width=1,
                 corner_radius=8,
                 text_color="#E2E8F0",
@@ -893,7 +919,7 @@ class DispatchAssistantGUI(ctk.CTk):
             footer,
             text="\u25CF ONLINE",
             font=(FONT_UI, 11, "bold"),
-            text_color="#059669",
+            text_color=BADGE_READY_TEXT,
         ).pack(side="left", padx=14, pady=8)
 
         ctk.CTkLabel(
@@ -1043,7 +1069,7 @@ class DispatchAssistantGUI(ctk.CTk):
             segmented_button_selected_color=RED_MAIN,
             segmented_button_selected_hover_color=RED_HOVER,
             segmented_button_unselected_color=BG_INPUT,
-            segmented_button_unselected_hover_color="#E2E8F0",
+            segmented_button_unselected_hover_color=BG_BTN_SECONDARY_HOVER,
             text_color=TEXT_MAIN,
         )
         tabs.pack(fill="both", expand=True, padx=20, pady=(6, 6))
@@ -1077,7 +1103,7 @@ class DispatchAssistantGUI(ctk.CTk):
             ctk.CTkLabel(row, text=label, font=(FONT_UI, 12, "bold"),
                          text_color=TEXT_MAIN).pack(side="left")
             sw = ctk.CTkSwitch(row, text="", width=46,
-                               fg_color="#CBD5E1", progress_color=RED_MAIN,
+                               fg_color=("#CBD5E1", "#334155"), progress_color=RED_MAIN,
                                button_color=WHITE, button_hover_color="#F1F5F9")
             if value:
                 sw.select()
@@ -1095,8 +1121,8 @@ class DispatchAssistantGUI(ctk.CTk):
             ctk.CTkLabel(box, text=label, font=(FONT_UI, 12, "bold"),
                          text_color=TEXT_MAIN).pack(anchor="w")
             dd = ctk.CTkOptionMenu(box, values=values, fg_color=BG_INPUT,
-                                   button_color="#CBD5E1", button_hover_color="#94A3B8",
-                                   dropdown_fg_color=WHITE, dropdown_hover_color="#F1F5F9",
+                                   button_color=("#CBD5E1", "#334155"), button_hover_color=("#94A3B8", "#475569"),
+                                   dropdown_fg_color=BG_HEADER, dropdown_hover_color=BG_CARD_HOVER,
                                    text_color=TEXT_MAIN, font=(FONT_UI, 12),
                                    corner_radius=8, height=32)
             dd.set(current)
@@ -1448,7 +1474,7 @@ class DispatchAssistantGUI(ctk.CTk):
 
         ctk.CTkButton(
             btns, text="Batal", width=80, height=34,
-            corner_radius=8, fg_color="#F1F5F9", hover_color="#E2E8F0",
+            corner_radius=8, fg_color=BG_BTN_SECONDARY, hover_color=BG_BTN_SECONDARY_HOVER,
             text_color=TEXT_MAIN, font=(FONT_UI, 12, "bold"),
             command=win.destroy,
         ).pack(side="left", padx=(10, 0))
@@ -1463,8 +1489,8 @@ class DispatchAssistantGUI(ctk.CTk):
 
         ctk.CTkButton(
             btns, text="🔄  Reset Default", width=125, height=34,
-            corner_radius=8, fg_color="#FEF2F2", hover_color="#FEE2E2",
-            border_width=1, border_color="#FCA5A5",
+            corner_radius=8, fg_color=RED_LIGHT, hover_color=RED_LIGHT_HOVER,
+            border_width=1, border_color=RED_LIGHT_BORDER,
             text_color=RED_MAIN, font=(FONT_UI, 11, "bold"),
             command=_reset,
         ).pack(side="right")
