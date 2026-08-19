@@ -19,32 +19,32 @@ LOGO_PATH = os.path.join(BASE_DIR, "assets", "logo.png")
 
 
 # =====================================================
-# Appearance & Modern Theme Palette
+# Appearance & Clean Light Theme Palette
 # =====================================================
 
-ctk.set_appearance_mode("dark")
+ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
 
-# Theme Palette (Cyber-Slate & Vibrant Modern Accents)
-BG_MAIN = "#0B0F19"          # Deep cosmic slate background
-BG_HEADER = "#111827"        # Sleek top header frame
-BG_CARD = "#111827"          # Elevated dark card
-BG_CARD_HOVER = "#1E293B"    # Interactive hover background
-BG_INPUT = "#1E293B"         # Dark input and chip backgrounds
-BG_TERMINAL = "#030712"      # Ultra-clean terminal black
+# Theme Palette (Crisp Clean Modern Light)
+BG_MAIN = "#F1F5F9"          # Soft slate-100 workspace background
+BG_HEADER = "#FFFFFF"        # Elevated white header card
+BG_CARD = "#FFFFFF"          # Elevated white feature cards
+BG_CARD_HOVER = "#F8FAFC"    # Soft hover state
+BG_INPUT = "#F8FAFC"         # Soft slate-50 for inputs and chips
+BG_TERMINAL = "#0F172A"      # High-contrast slate-900 terminal
 
-BORDER_SUBTLE = "#1F2937"    # Subtle 1px borders
-BORDER_CARD = "#1F2937"      # Card contour border
+BORDER_SUBTLE = "#E2E8F0"    # Crisp slate-200 1px borders
+BORDER_CARD = "#E2E8F0"      # Card contour border
 BORDER_FOCUS = "#3B82F6"     # Focused / active border
 
-RED_MAIN = "#EF4444"         # Vibrant Telkom/Action Red
+RED_MAIN = "#DC2626"         # Vibrant Telkom/Action Red
 RED_DARK = "#991B1B"         # Dark Red
-RED_HOVER = "#DC2626"        # Hover Red
-RED_MUTED = "#450A0A"        # Soft Red Tint Background
+RED_HOVER = "#B91C1C"        # Hover Red
+RED_LIGHT = "#FEF2F2"        # Pastel Red Background
 
-TEXT_MAIN = "#F9FAFB"        # Pure crisp white for primary text
-TEXT_SECONDARY = "#94A3B8"   # Slate gray for descriptions
-TEXT_DIM = "#64748B"         # Muted gray for secondary info
+TEXT_MAIN = "#0F172A"        # Deep slate-900 for sharp primary text
+TEXT_SECONDARY = "#475569"   # Slate-600 for descriptions
+TEXT_DIM = "#64748B"         # Slate-500 for secondary info
 WHITE = "#FFFFFF"
 
 FONT_UI = "Segoe UI"
@@ -56,8 +56,8 @@ FEATURES = [
         "label": "TO MO-INSERA",
         "icon": "\U0001F916",
         "desc": "Take Ownership tiket group MO-INSERA",
-        "color": "#8B5CF6",
-        "hover": "#7C3AED",
+        "color": "#7C3AED",
+        "hover": "#6D28D9",
         "port_key": "TO",
     },
     {
@@ -65,8 +65,8 @@ FEATURES = [
         "label": "TO MO-BIMA",
         "icon": "\U0001F3ED",
         "desc": "Take Ownership tiket group MO-BIMA",
-        "color": "#06B6D4",
-        "hover": "#0891B2",
+        "color": "#0284C7",
+        "hover": "#0369A1",
         "port_key": "TO",
     },
     {
@@ -74,8 +74,8 @@ FEATURES = [
         "label": "CANCLWORK WO",
         "icon": "\U0001F527",
         "desc": "Cancel work order via BISCUIT",
-        "color": "#F97316",
-        "hover": "#EA580C",
+        "color": "#EA580C",
+        "hover": "#C2410C",
         "port_key": "CANCLWORK",
     },
     {
@@ -83,8 +83,8 @@ FEATURES = [
         "label": "DISPATCH",
         "icon": "\U0001F680",
         "desc": "Dispatch tiket via BISCUIT",
-        "color": "#10B981",
-        "hover": "#059669",
+        "color": "#059669",
+        "hover": "#047857",
         "port_key": "DISPATCH",
     },
     {
@@ -92,8 +92,8 @@ FEATURES = [
         "label": "GAMAS RELATIONS",
         "icon": "\U0001F517",
         "desc": "Relasi induk & anak GAMAS di INSERA",
-        "color": "#EC4899",
-        "hover": "#DB2777",
+        "color": "#DB2777",
+        "hover": "#BE185D",
         "port_key": "GAMAS",
     },
     {
@@ -101,8 +101,8 @@ FEATURES = [
         "label": "REPORT HARIAN",
         "icon": "\U0001F4CA",
         "desc": "Laporan harian helpdesk operasional",
-        "color": "#6366F1",
-        "hover": "#4F46E5",
+        "color": "#4F46E5",
+        "hover": "#4338CA",
         "port_key": "REPORT",
     },
 ]
@@ -120,29 +120,29 @@ CHANNEL_TAB_MAP = {
 LOG_TABS = ["SEMUA", "TO", "CANCLWORK", "DISPATCH", "GAMAS", "REPORT"]
 
 STATUS_COLORS = {
-    "READY": "#34D399",
-    "STARTING": "#FBBF24",
-    "LAUNCHING": "#FBBF24",
-    "CONNECTING": "#FBBF24",
-    "SCANNING": "#60A5FA",
-    "RUNNING": "#60A5FA",
-    "WAITING": "#94A3B8",
-    "STOPPING": "#FB923C",
-    "STOPPED": "#F87171",
-    "ERROR": "#F87171",
+    "READY": "#059669",
+    "STARTING": "#D97706",
+    "LAUNCHING": "#D97706",
+    "CONNECTING": "#D97706",
+    "SCANNING": "#2563EB",
+    "RUNNING": "#2563EB",
+    "WAITING": "#64748B",
+    "STOPPING": "#EA580C",
+    "STOPPED": "#DC2626",
+    "ERROR": "#DC2626",
 }
 
 STATUS_BG_COLORS = {
-    "READY": "#064E3B",
-    "STARTING": "#451A03",
-    "LAUNCHING": "#451A03",
-    "CONNECTING": "#451A03",
-    "SCANNING": "#1E3A8A",
-    "RUNNING": "#1E3A8A",
-    "WAITING": "#1E293B",
-    "STOPPING": "#431407",
-    "STOPPED": "#450A0A",
-    "ERROR": "#450A0A",
+    "READY": "#ECFDF5",
+    "STARTING": "#FFFBEB",
+    "LAUNCHING": "#FFFBEB",
+    "CONNECTING": "#FFFBEB",
+    "SCANNING": "#EFF6FF",
+    "RUNNING": "#EFF6FF",
+    "WAITING": "#F1F5F9",
+    "STOPPING": "#FFF7ED",
+    "STOPPED": "#FEF2F2",
+    "ERROR": "#FEF2F2",
 }
 
 # Status yang dot-nya berkedip
@@ -216,7 +216,7 @@ class DispatchAssistantGUI(ctk.CTk):
         )
         frame.pack(fill="x", padx=20, pady=(16, 12))
 
-        # Accent top bar
+        # Accent top bar (Red Stripe)
         strip = ctk.CTkFrame(frame, height=4, corner_radius=0, fg_color=RED_MAIN)
         strip.pack(fill="x", side="top")
 
@@ -243,8 +243,8 @@ class DispatchAssistantGUI(ctk.CTk):
             title_box,
             text=" v3.2 ",
             font=(FONT_MONO, 11, "bold"),
-            text_color="#38BDF8",
-            fg_color=BG_INPUT,
+            text_color="#0284C7",
+            fg_color="#E0F2FE",
             corner_radius=8,
             padx=6,
             pady=2,
@@ -255,11 +255,11 @@ class DispatchAssistantGUI(ctk.CTk):
             left,
             text="Industrial Programmer Automation Suite  \u2022  Multi-Chrome CDP  \u2022  Telegram Remote",
             font=(FONT_UI, 11),
-            text_color=TEXT_SECONDARY,
+            text_color=TEXT_DIM,
         )
         subtitle.pack(anchor="w", pady=(3, 0))
 
-        # Center Logo with transparent processing
+        # Center Logo (Cyber Mascot Cat)
         center = ctk.CTkFrame(inner, fg_color="transparent")
         center.grid(row=0, column=1)
 
@@ -285,7 +285,7 @@ class DispatchAssistantGUI(ctk.CTk):
         if logo_label is None:
             logo_label = ctk.CTkLabel(
                 center,
-                text="\U0001F989",
+                text="\U0001F431",
                 font=(FONT_UI, 28),
                 text_color=TEXT_MAIN,
             )
@@ -304,8 +304,8 @@ class DispatchAssistantGUI(ctk.CTk):
             width=96,
             height=30,
             corner_radius=8,
-            fg_color=BG_INPUT,
-            hover_color="#334155",
+            fg_color="#F1F5F9",
+            hover_color="#E2E8F0",
             text_color=TEXT_MAIN,
             font=(FONT_UI, 11, "bold"),
             command=self._open_settings,
@@ -317,8 +317,8 @@ class DispatchAssistantGUI(ctk.CTk):
             right,
             text="  \u25CF SYSTEM READY  ",
             font=(FONT_UI, 11, "bold"),
-            text_color="#34D399",
-            fg_color="#064E3B",
+            text_color="#059669",
+            fg_color="#ECFDF5",
             corner_radius=12,
             padx=8,
             pady=3,
@@ -330,7 +330,7 @@ class DispatchAssistantGUI(ctk.CTk):
             right,
             text="",
             font=(FONT_MONO, 13, "bold"),
-            text_color="#38BDF8",
+            text_color="#0284C7",
         )
         clock.pack(anchor="e", pady=(2, 0))
         self._clock_label = clock
@@ -375,7 +375,7 @@ class DispatchAssistantGUI(ctk.CTk):
         # Card top accent line matching feature signature color
         card_strip = ctk.CTkFrame(
             card,
-            height=3,
+            height=3.5,
             corner_radius=0,
             fg_color=feat["color"],
         )
@@ -420,8 +420,8 @@ class DispatchAssistantGUI(ctk.CTk):
             top,
             text="\u25CF READY",
             font=(FONT_UI, 11, "bold"),
-            text_color="#34D399",
-            fg_color="#064E3B",
+            text_color="#059669",
+            fg_color="#ECFDF5",
             corner_radius=12,
             padx=10,
             pady=3,
@@ -436,7 +436,7 @@ class DispatchAssistantGUI(ctk.CTk):
             text=f"🔌 Port {port}",
             font=(FONT_MONO, 11, "bold"),
             text_color=feat["color"],
-            fg_color=BG_INPUT,
+            fg_color=BG_MAIN,
             corner_radius=8,
             padx=8,
             pady=3,
@@ -449,11 +449,11 @@ class DispatchAssistantGUI(ctk.CTk):
             width=70,
             height=30,
             corner_radius=8,
-            fg_color=BG_INPUT,
-            hover_color=RED_MUTED,
+            fg_color=RED_LIGHT,
+            hover_color="#FEE2E2",
             border_width=1.5,
-            border_color=RED_MAIN,
-            text_color="#F87171",
+            border_color="#FCA5A5",
+            text_color=RED_MAIN,
             font=(FONT_UI, 11, "bold"),
             command=lambda k=key: self._stop_feature(k),
         )
@@ -498,7 +498,7 @@ class DispatchAssistantGUI(ctk.CTk):
         ctrl.on_complete = lambda k=key: self._on_feature_complete(k)
         self.controllers[key] = ctrl
 
-        self._update_feature_status(key, "STARTING", "#FBBF24")
+        self._update_feature_status(key, "STARTING", "#D97706")
         getattr(self, f"{key}_btn").configure(state="disabled")
 
         if key == "report":
@@ -529,7 +529,7 @@ class DispatchAssistantGUI(ctk.CTk):
 
         if key in self.controllers:
             self.controllers[key].stop()
-            self._update_feature_status(key, "STOPPING", "#FB923C")
+            self._update_feature_status(key, "STOPPING", "#EA580C")
         else:
             self.write_log(f"[{key}] Not running.")
 
@@ -539,7 +539,7 @@ class DispatchAssistantGUI(ctk.CTk):
 
     def _finish_feature(self, key):
 
-        self._update_feature_status(key, "READY", "#34D399")
+        self._update_feature_status(key, "READY", "#059669")
         getattr(self, f"{key}_btn").configure(state="normal")
 
         if key in self.controllers:
@@ -549,7 +549,7 @@ class DispatchAssistantGUI(ctk.CTk):
 
         lbl = getattr(self, f"{key}_status", None)
         if lbl:
-            bg_col = STATUS_BG_COLORS.get(status.upper(), "#1E293B")
+            bg_col = STATUS_BG_COLORS.get(status.upper(), "#F1F5F9")
             self.after(0, lambda: lbl.configure(
                 text=f"\u25CF {status}",
                 text_color=color,
@@ -575,8 +575,8 @@ class DispatchAssistantGUI(ctk.CTk):
         if lbl is None:
             return
 
-        color = STATUS_COLORS.get(status.upper(), "#34D399")
-        dim = "#475569"
+        color = STATUS_COLORS.get(status.upper(), "#059669")
+        dim = "#94A3B8"
         state = {"on": True}
 
         def tick():
@@ -592,7 +592,7 @@ class DispatchAssistantGUI(ctk.CTk):
     def _update_feature_status_from_controller(self, key, status):
 
         status = str(status).upper()
-        color = STATUS_COLORS.get(status, "#34D399")
+        color = STATUS_COLORS.get(status, "#059669")
         self._update_feature_status(key, status, color)
 
     def _make_feature_adapter(self, key):
@@ -634,7 +634,7 @@ class DispatchAssistantGUI(ctk.CTk):
             header,
             text="live console feed",
             font=(FONT_UI, 11),
-            text_color=TEXT_SECONDARY,
+            text_color=TEXT_DIM,
         ).pack(side="left", padx=(8, 0), pady=(2, 0))
 
         ctk.CTkLabel(
@@ -654,8 +654,8 @@ class DispatchAssistantGUI(ctk.CTk):
             width=68,
             height=26,
             corner_radius=8,
-            fg_color=BG_INPUT,
-            hover_color="#334155",
+            fg_color="#F1F5F9",
+            hover_color="#E2E8F0",
             text_color=TEXT_MAIN,
             font=(FONT_UI, 11, "bold"),
             command=self._copy_log,
@@ -667,8 +667,8 @@ class DispatchAssistantGUI(ctk.CTk):
             width=80,
             height=26,
             corner_radius=8,
-            fg_color=BG_INPUT,
-            hover_color="#334155",
+            fg_color="#F1F5F9",
+            hover_color="#E2E8F0",
             text_color=TEXT_MAIN,
             font=(FONT_UI, 11, "bold"),
             command=self._clear_log,
@@ -680,8 +680,8 @@ class DispatchAssistantGUI(ctk.CTk):
             fg_color=BG_MAIN,
             segmented_button_selected_color=RED_MAIN,
             segmented_button_selected_hover_color=RED_HOVER,
-            segmented_button_unselected_color=BG_INPUT,
-            segmented_button_unselected_hover_color="#334155",
+            segmented_button_unselected_color=WHITE,
+            segmented_button_unselected_hover_color="#FEE2E2",
             text_color=TEXT_MAIN,
         )
 
@@ -694,7 +694,7 @@ class DispatchAssistantGUI(ctk.CTk):
                 font=(FONT_MONO, 12),
                 wrap="word",
                 fg_color=BG_TERMINAL,
-                border_color=BORDER_SUBTLE,
+                border_color="#1E293B",
                 border_width=1,
                 corner_radius=8,
                 text_color="#E2E8F0",
@@ -721,13 +721,13 @@ class DispatchAssistantGUI(ctk.CTk):
             box.tag_config("err", foreground="#F87171")
             box.tag_config("ok", foreground="#4ADE80")
             box.tag_config("warn", foreground="#FBBF24")
-            box.tag_config("dim", foreground="#64748B")
+            box.tag_config("dim", foreground="#94A3B8")
         except Exception:
             try:
                 box._textbox.tag_config("err", foreground="#F87171")
                 box._textbox.tag_config("ok", foreground="#4ADE80")
                 box._textbox.tag_config("warn", foreground="#FBBF24")
-                box._textbox.tag_config("dim", foreground="#64748B")
+                box._textbox.tag_config("dim", foreground="#94A3B8")
             except Exception:
                 pass
 
@@ -807,7 +807,7 @@ class DispatchAssistantGUI(ctk.CTk):
             footer,
             text="\u25CF ONLINE",
             font=(FONT_UI, 11, "bold"),
-            text_color="#34D399",
+            text_color="#059669",
         ).pack(side="left", padx=14, pady=8)
 
         ctk.CTkLabel(
@@ -947,7 +947,7 @@ class DispatchAssistantGUI(ctk.CTk):
             wrap,
             text="Konfigurasi runtime tanpa edit file. Simpan = langsung aktif.",
             font=(FONT_UI, 11),
-            text_color=TEXT_SECONDARY,
+            text_color=TEXT_DIM,
         ).pack(anchor="w", pady=(2, 14))
 
         cur = self.user_settings or {}
@@ -1056,8 +1056,8 @@ class DispatchAssistantGUI(ctk.CTk):
             width=90,
             height=34,
             corner_radius=8,
-            fg_color=BG_INPUT,
-            hover_color="#334155",
+            fg_color="#F1F5F9",
+            hover_color="#E2E8F0",
             text_color=TEXT_MAIN,
             font=(FONT_UI, 12, "bold"),
             command=win.destroy,
