@@ -310,7 +310,7 @@ class DispatchAssistantGUI(ctk.CTk):
                 logo_img = ctk.CTkImage(
                     light_image=pil_img,
                     dark_image=pil_img,
-                    size=(160, 160),
+                    size=(220, 220),
                 )
                 logo_label = ctk.CTkLabel(
                     center,
