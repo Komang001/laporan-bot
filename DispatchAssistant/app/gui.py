@@ -310,7 +310,7 @@ class DispatchAssistantGUI(ctk.CTk):
                 logo_img = ctk.CTkImage(
                     light_image=pil_img,
                     dark_image=pil_img,
-                    size=(120, 120),
+                    size=(160, 160),
                 )
                 logo_label = ctk.CTkLabel(
                     center,
@@ -324,7 +324,7 @@ class DispatchAssistantGUI(ctk.CTk):
             logo_label = ctk.CTkLabel(
                 center,
                 text="\U0001F431",
-                font=(FONT_UI, 28),
+                font=(FONT_UI, 36),
                 text_color=TEXT_MAIN,
             )
         logo_label.pack(side="left")
