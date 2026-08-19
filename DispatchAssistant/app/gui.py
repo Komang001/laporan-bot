@@ -269,32 +269,6 @@ class DispatchAssistantGUI(ctk.CTk):
                 from PIL import Image
 
                 pil_img = Image.open(LOGO_PATH).convert("RGBA")
-
-                try:
-                    gray = pil_img.convert("L")
-                    alpha = gray.point(
-                        lambda v: 0
-                        if v >= 240
-                        else int((240 - v) * 255 / 40)
-                        if v >= 200
-                        else 255
-                    )
-                    pil_img.putalpha(alpha)
-                except Exception:
-                    pass
-
-                try:
-                    bbox = alpha.getbbox()
-                    if bbox and bbox != (0, 0, pil_img.size[0], pil_img.size[1]):
-                        pad = 12
-                        x0 = max(0, bbox[0] - pad)
-                        y0 = max(0, bbox[1] - pad)
-                        x1 = min(pil_img.size[0], bbox[2] + pad)
-                        y1 = min(pil_img.size[1], bbox[3] + pad)
-                        pil_img = pil_img.crop((x0, y0, x1, y1))
-                except Exception:
-                    pass
-
                 logo_img = ctk.CTkImage(
                     light_image=pil_img,
                     dark_image=pil_img,
