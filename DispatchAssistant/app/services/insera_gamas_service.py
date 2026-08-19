@@ -156,8 +156,23 @@ class InseraGamasService:
     # ==================================================
 
     def _get_cookie_header(self):
+        """Cookie session dari konteks browser (oss-incident).
+
+        Bekerja meski tab INSERA ditutup: cookie disimpan di profil Chrome,
+        dibaca dari konteks halaman mana pun di browser yang sama.
+        """
+        ctx = None
         try:
-            cookies = self.page.context.cookies()
+            if self.page is not None:
+                ctx = self.page.context
+            elif self.browser_manager is not None:
+                for pg in self.browser_manager.get_all_pages():
+                    if pg.context is not None:
+                        ctx = pg.context
+                        break
+            if ctx is None:
+                return ""
+            cookies = ctx.cookies()
             return "; ".join(
                 f"{c['name']}={c['value']}"
                 for c in cookies

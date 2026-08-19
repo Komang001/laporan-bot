@@ -1570,47 +1570,45 @@ class SygapService:
                     from app.services.insera_gamas_service import InseraGamasService
                     insera = InseraGamasService(browser_manager=self.browser_manager, log_callback=log)
                     if not insera.open():
-                        log(f"    INSERA tab not found! Buka tab INSERA lalu login.")
-                        continue
+                        log(f"    Tab INSERA tidak ditemukan, coba API langsung (cookie profil)...")
+                    else:
+                        max_nav_retries = 3
+                        nav_ok = False
+                        for nav_attempt in range(1, max_nav_retries + 1):
+                            if not insera.navigate_to_relations():
+                                log(f"    Failed navigate to Gamas Relations (attempt {nav_attempt})")
+                                if nav_attempt < max_nav_retries:
+                                    insera.get_page().wait_for_timeout(5000)
+                                continue
 
-                    max_nav_retries = 3
-                    nav_ok = False
-                    for nav_attempt in range(1, max_nav_retries + 1):
-                        if not insera.navigate_to_relations():
-                            log(f"    Failed navigate to Gamas Relations (attempt {nav_attempt})")
-                            if nav_attempt < max_nav_retries:
-                                insera.get_page().wait_for_timeout(5000)
-                            continue
+                            page_url = insera.get_page().url.lower()
+                            page_content = ""
+                            try:
+                                page_content = insera.get_page().content().lower()
+                            except Exception:
+                                pass
 
-                        page_url = insera.get_page().url.lower()
-                        page_content = ""
-                        try:
-                            page_content = insera.get_page().content().lower()
-                        except Exception:
-                            pass
+                            if "login" in page_url:
+                                log(f"    INSERA belum login! Login manual dulu.")
+                                break
 
-                        if "login" in page_url:
-                            log(f"    INSERA belum login! Login manual dulu.")
-                            break
+                            is_error = "system error" in page_content or (
+                                "unintended error" in page_content
+                            )
+                            if is_error:
+                                log(f"    Joget error at: {page_url[:60]}")
+                                if nav_attempt < max_nav_retries:
+                                    log(f"    Retrying in 10s... (attempt {nav_attempt}/{max_nav_retries})")
+                                    insera.get_page().wait_for_timeout(10000)
+                                    insera.navigate_to_relations()
+                                continue
 
-                        is_error = "system error" in page_content or (
-                            "unintended error" in page_content
-                        )
-                        if is_error:
-                            log(f"    Joget error at: {page_url[:60]}")
-                            if nav_attempt < max_nav_retries:
-                                log(f"    Retrying in 10s... (attempt {nav_attempt}/{max_nav_retries})")
-                                insera.get_page().wait_for_timeout(10000)
-                                insera.navigate_to_relations()
-                            continue
+                            if "gamasrelations" in page_url:
+                                nav_ok = True
+                                break
 
-                        if "gamasrelations" in page_url:
-                            nav_ok = True
-                            break
-
-                    if not nav_ok:
-                        log(f"    INSERA GAMAS not accessible, SKIP")
-                        continue
+                        if not nav_ok:
+                            log(f"    Navigasi INSERA gagal, tetap coba API langsung...")
 
                     log(f"    Parent: {parent_inc}")
                     log(f"    Child: {child_str[:100]}...")
