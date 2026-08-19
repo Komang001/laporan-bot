@@ -287,8 +287,8 @@ class BiscuitService:
         """Cek tiket (mis. induk GAMAS) via /cekticket.
 
         Return dict: {"found": bool, "detail": str, "status": str}.
-        found = tiket ditemukan DAN source_ticket == 'GAMAS' (induk GAMAS asli).
-        Jika API gagal, fallback ke UI (tanpa cek source).
+        found = tiket ditemukan DAN source_ticket di ('GAMAS', 'PROACTIVE')
+        (induk GAMAS asli). Jika API gagal, fallback ke UI (tanpa cek source).
         """
         import json
 
@@ -315,6 +315,7 @@ class BiscuitService:
                     if str(item.get("ticketId", "")) == ticket_id:
                         d = item.get("data") or {}
                         source = str(d.get("source_ticket") or "").upper()
+                        is_parent = source in ("GAMAS", "PROACTIVE")
                         bits = [
                             str(item.get("message", "")),
                             f"status={d.get('ticket_status')}",
@@ -322,9 +323,9 @@ class BiscuitService:
                             f"source={d.get('source_ticket')}",
                         ]
                         return {
-                            "found": source == "GAMAS",
+                            "found": is_parent,
                             "detail": " | ".join(b for b in bits if b)[:200],
-                            "status": "SUCCESS" if source == "GAMAS" else "UNKNOWN",
+                            "status": "SUCCESS" if is_parent else "UNKNOWN",
                         }
                 if not success and not failed:
                     return {
@@ -352,3 +353,68 @@ class BiscuitService:
             "detail": response.message,
             "status": response.status,
         }
+
+    def check_children(self, child_incs):
+        """Verifikasi anak gamas via /cekticket (per INC).
+
+        Hanya anak dengan source_ticket == 'CUSTOMER' yang valid untuk di-input.
+        Anak dengan source GAMAS/PROACTIVE/lain, tidak ditemukan, atau tidak
+        terverifikasi (API gagal) -> dibuang (jangan di-input).
+
+        Return: {"valid": [INC...], "excluded": [{"inc", "source", "detail"}]}
+        """
+        import json
+
+        from app.services.response_service import clean_error_message
+
+        valid, excluded = [], []
+        for inc in child_incs:
+            data = self._api_execute_raw(f"/cekticket {inc}", "INSERA")
+            if data is None:
+                excluded.append({
+                    "inc": inc,
+                    "source": "UNVERIFIED",
+                    "detail": "API BISCUIT gagal",
+                })
+                continue
+
+            source = ""
+            detail = str(data.get("message") or "")
+            try:
+                payload = data.get("data")
+                if isinstance(payload, str):
+                    payload = json.loads(payload)
+                inner = (payload or {}).get("data", {}) if isinstance(payload, dict) else {}
+                found_item = None
+                for item in inner.get("success") or []:
+                    if str(item.get("ticketId", "")) == inc:
+                        found_item = item
+                        break
+                if found_item is not None:
+                    d = found_item.get("data") or {}
+                    source = str(d.get("source_ticket") or "").upper()
+                    detail = (
+                        f"status={d.get('ticket_status')} | "
+                        f"og={d.get('owner_group')} | "
+                        f"source={d.get('source_ticket')}"
+                    )
+                else:
+                    for item in inner.get("failed") or []:
+                        if str(item.get("ticketId", "")) == inc:
+                            detail = clean_error_message(str(item.get("message", detail)))
+                            break
+                    source = "NOT_FOUND"
+            except Exception as e:
+                source = "PARSE_ERROR"
+                detail = str(e)
+
+            if source == "CUSTOMER":
+                valid.append(inc)
+            else:
+                excluded.append({
+                    "inc": inc,
+                    "source": source or "UNKNOWN",
+                    "detail": detail,
+                })
+
+        return {"valid": valid, "excluded": excluded}

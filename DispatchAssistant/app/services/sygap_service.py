@@ -1544,8 +1544,6 @@ class SygapService:
                         continue
                     log(f"    Child INCs ({len(child_incs)}): {','.join(child_incs[:5])}...")
 
-                    child_str = ",".join(child_incs)
-
                     from app.services.biscuit_service import BiscuitService
                     biscuit = BiscuitService(browser_manager=self.browser_manager)
                     if not biscuit.open():
@@ -1557,6 +1555,17 @@ class SygapService:
                     if not check["found"]:
                         log(f"    Induk {parent_inc} tidak sesuai, SKIP relasi")
                         continue
+
+                    log(f"    Checking {len(child_incs)} anak via /cekticket...")
+                    child_check = biscuit.check_children(child_incs)
+                    for ex in child_check["excluded"]:
+                        log(f"    Anak {ex['inc']} source={ex['source']} -> jangan di-input ({ex['detail'][:90]})")
+                    child_incs = child_check["valid"]
+                    if not child_incs:
+                        log(f"    Semua anak tidak valid (bukan CUSTOMER), SKIP relasi")
+                        continue
+                    child_str = ",".join(child_incs)
+                    log(f"    Child INCs valid ({len(child_incs)}): {child_str[:100]}...")
 
                     from app.services.insera_gamas_service import InseraGamasService
                     insera = InseraGamasService(browser_manager=self.browser_manager, log_callback=log)
