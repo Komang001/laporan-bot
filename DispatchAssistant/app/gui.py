@@ -256,7 +256,7 @@ class DispatchAssistantGUI(ctk.CTk):
             border_width=1,
             border_color=BORDER_SUBTLE,
         )
-        frame.pack(fill="x", padx=20, pady=(12, 8))
+        frame.pack(fill="x", padx=20, pady=(12, 10))
 
         # Accent top bar (Red / Accent Stripe)
         strip = ctk.CTkFrame(frame, height=3.5, corner_radius=0, fg_color=RED_MAIN)
@@ -265,37 +265,20 @@ class DispatchAssistantGUI(ctk.CTk):
         self._accent_widgets.append((strip, "fg_color", "accent"))
 
         inner = ctk.CTkFrame(frame, fg_color="transparent")
-        inner.pack(fill="x", padx=16, pady=8)
+        inner.pack(fill="x", padx=20, pady=(6, 6))
+        inner.grid_columnconfigure(1, weight=1)
 
-        # ── LEFT: Mascot Logo + App Title ─────────────
+        # ── LEFT: Branding ────────────────────────────
         left = ctk.CTkFrame(inner, fg_color="transparent")
-        left.pack(side="left", fill="y")
+        left.grid(row=0, column=0, sticky="w")
 
-        # Cat Mascot Logo (Crisp 56x56)
-        if os.path.exists(LOGO_PATH):
-            try:
-                from PIL import Image
-                pil_img = Image.open(LOGO_PATH).convert("RGBA")
-                logo_img = ctk.CTkImage(
-                    light_image=pil_img,
-                    dark_image=pil_img,
-                    size=(56, 56),
-                )
-                logo_label = ctk.CTkLabel(left, text="", image=logo_img)
-                logo_label.pack(side="left", padx=(0, 10))
-            except Exception:
-                pass
-
-        brand_text = ctk.CTkFrame(left, fg_color="transparent")
-        brand_text.pack(side="left")
-
-        title_box = ctk.CTkFrame(brand_text, fg_color="transparent")
+        title_box = ctk.CTkFrame(left, fg_color="transparent")
         title_box.pack(anchor="w")
 
         title = ctk.CTkLabel(
             title_box,
             text="DispatchAssistant",
-            font=(FONT_UI, 20, "bold"),
+            font=(FONT_UI, 22, "bold"),
             text_color=TEXT_MAIN,
         )
         title.pack(side="left")
@@ -313,58 +296,56 @@ class DispatchAssistantGUI(ctk.CTk):
         ver_badge.pack(side="left", padx=(8, 0))
 
         subtitle = ctk.CTkLabel(
-            brand_text,
+            left,
             text="Industrial Programmer Automation Suite  \u2022  Multi-Chrome CDP  \u2022  Telegram Remote",
             font=(FONT_UI, 11),
             text_color=TEXT_DIM,
         )
-        subtitle.pack(anchor="w", pady=(2, 0))
+        subtitle.pack(anchor="w", pady=(3, 0))
 
-        # ── RIGHT: Master Control & Quick Stats ───────
+        # ── CENTER: Logo Mascot Cyber Cat ─────────────
+        center = ctk.CTkFrame(inner, fg_color="transparent")
+        center.grid(row=0, column=1)
+
+        logo_label = None
+        if os.path.exists(LOGO_PATH):
+            try:
+                from PIL import Image
+
+                pil_img = Image.open(LOGO_PATH).convert("RGBA")
+                logo_img = ctk.CTkImage(
+                    light_image=pil_img,
+                    dark_image=pil_img,
+                    size=(115, 115),
+                )
+                logo_label = ctk.CTkLabel(
+                    center,
+                    text="",
+                    image=logo_img,
+                )
+            except Exception:
+                logo_label = None
+
+        if logo_label is None:
+            logo_label = ctk.CTkLabel(
+                center,
+                text="\U0001F431",
+                font=(FONT_UI, 32),
+                text_color=TEXT_MAIN,
+            )
+        logo_label.pack(side="left")
+
+        # ── RIGHT: Settings, System Status, Clock ──────
         right = ctk.CTkFrame(inner, fg_color="transparent")
-        right.pack(side="right", fill="y")
+        right.grid(row=0, column=2, sticky="e")
 
-        # Top row: START ALL, STOP ALL, Settings, System Status, Clock
-        top_row = ctk.CTkFrame(right, fg_color="transparent")
-        top_row.pack(anchor="e", pady=(0, 4))
+        top_ctrl = ctk.CTkFrame(right, fg_color="transparent")
+        top_ctrl.pack(anchor="e", pady=(0, 4))
 
-        # Start All Button
-        start_all_btn = ctk.CTkButton(
-            top_row,
-            text="\u25b6  START ALL",
-            width=105,
-            height=28,
-            corner_radius=7,
-            fg_color="#059669",
-            hover_color="#047857",
-            text_color=WHITE,
-            font=(FONT_UI, 11, "bold"),
-            command=self._start_all,
-        )
-        start_all_btn.pack(side="left", padx=(0, 6))
-
-        # Stop All Button
-        stop_all_btn = ctk.CTkButton(
-            top_row,
-            text="\u23f9  STOP ALL",
-            width=96,
-            height=28,
-            corner_radius=7,
-            fg_color="#FEF2F2",
-            hover_color="#FEE2E2",
-            border_width=1,
-            border_color="#FCA5A5",
-            text_color="#DC2626",
-            font=(FONT_UI, 11, "bold"),
-            command=self._stop_all,
-        )
-        stop_all_btn.pack(side="left", padx=(0, 8))
-
-        # Settings Button
         gear_btn = ctk.CTkButton(
-            top_row,
+            top_ctrl,
             text="\u2699\ufe0f  Settings",
-            width=88,
+            width=92,
             height=28,
             corner_radius=7,
             fg_color="#F1F5F9",
@@ -373,65 +354,30 @@ class DispatchAssistantGUI(ctk.CTk):
             font=(FONT_UI, 11, "bold"),
             command=self._open_settings,
         )
-        gear_btn.pack(side="left", padx=(0, 8))
+        gear_btn.pack(side="right")
         self._gear_btn = gear_btn
 
-        # Clock
-        clock = ctk.CTkLabel(
-            top_row,
-            text="",
-            font=(FONT_MONO, 12, "bold"),
-            text_color="#0284C7",
-            fg_color="#F1F5F9",
-            corner_radius=7,
-            padx=8,
-            pady=3,
-        )
-        clock.pack(side="left")
-        self._clock_label = clock
-
-        # Bottom row: Quick KPI status badges
-        stats_row = ctk.CTkFrame(right, fg_color="transparent")
-        stats_row.pack(anchor="e")
-
-        loop_val = self.user_settings.get("loop_interval", 180) if self.user_settings else 180
-        self._kpi_loop = ctk.CTkLabel(
-            stats_row,
-            text=f"\u23f1 Loop: {loop_val}s",
-            font=(FONT_MONO, 10, "bold"),
-            text_color="#475569",
-            fg_color="#F1F5F9",
-            corner_radius=6,
-            padx=6,
-            pady=1,
-        )
-        self._kpi_loop.pack(side="left", padx=(0, 6))
-
-        skip_val = self.user_settings.get("skip_coordinator_user_ids", ["55652"]) if self.user_settings else ["55652"]
-        skip_str = ", ".join(skip_val) if skip_val else "None"
-        self._kpi_skip = ctk.CTkLabel(
-            stats_row,
-            text=f"\U0001F6E1 Skip: {skip_str}",
-            font=(FONT_MONO, 10, "bold"),
-            text_color="#475569",
-            fg_color="#F1F5F9",
-            corner_radius=6,
-            padx=6,
-            pady=1,
-        )
-        self._kpi_skip.pack(side="left", padx=(0, 6))
-
-        self._badge_ready = ctk.CTkLabel(
-            stats_row,
+        badge = ctk.CTkLabel(
+            right,
             text="  \u25CF SYSTEM READY  ",
             font=(FONT_UI, 10, "bold"),
             text_color="#059669",
             fg_color="#ECFDF5",
-            corner_radius=6,
-            padx=6,
-            pady=1,
+            corner_radius=12,
+            padx=8,
+            pady=3,
         )
-        self._badge_ready.pack(side="left")
+        badge.pack(anchor="e", pady=(2, 2))
+        self._badge_ready = badge
+
+        clock = ctk.CTkLabel(
+            right,
+            text="",
+            font=(FONT_MONO, 12, "bold"),
+            text_color="#0284C7",
+        )
+        clock.pack(anchor="e", pady=(2, 0))
+        self._clock_label = clock
 
     def _start_all(self):
         """Mulai semua fitur sekaligus."""
