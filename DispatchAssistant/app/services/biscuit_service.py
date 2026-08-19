@@ -355,8 +355,9 @@ class BiscuitService:
         }
 
     def check_children(self, child_incs):
-        """Verifikasi anak gamas via /cekticket (per INC).
+        """Verifikasi anak gamas via /cekticket.
 
+        Semua anak dicek dalam SATU panggilan API (dipisah koma).
         Hanya anak dengan source_ticket == 'CUSTOMER' yang valid untuk di-input.
         Anak dengan source GAMAS/PROACTIVE/lain, tidak ditemukan, atau tidak
         terverifikasi (API gagal) -> dibuang (jangan di-input).
@@ -367,54 +368,59 @@ class BiscuitService:
 
         from app.services.response_service import clean_error_message
 
-        valid, excluded = [], []
-        for inc in child_incs:
-            data = self._api_execute_raw(f"/cekticket {inc}", "INSERA")
-            if data is None:
-                excluded.append({
-                    "inc": inc,
-                    "source": "UNVERIFIED",
-                    "detail": "API BISCUIT gagal",
-                })
-                continue
+        if not child_incs:
+            return {"valid": [], "excluded": []}
 
-            source = ""
-            detail = str(data.get("message") or "")
+        results = {}
+
+        def _parse_batch(data):
             try:
                 payload = data.get("data")
                 if isinstance(payload, str):
                     payload = json.loads(payload)
                 inner = (payload or {}).get("data", {}) if isinstance(payload, dict) else {}
-                found_item = None
                 for item in inner.get("success") or []:
-                    if str(item.get("ticketId", "")) == inc:
-                        found_item = item
-                        break
-                if found_item is not None:
-                    d = found_item.get("data") or {}
-                    source = str(d.get("source_ticket") or "").upper()
-                    detail = (
-                        f"status={d.get('ticket_status')} | "
-                        f"og={d.get('owner_group')} | "
-                        f"source={d.get('source_ticket')}"
-                    )
-                else:
-                    for item in inner.get("failed") or []:
-                        if str(item.get("ticketId", "")) == inc:
-                            detail = clean_error_message(str(item.get("message", detail)))
-                            break
-                    source = "NOT_FOUND"
+                    tid = str(item.get("ticketId", "")).strip()
+                    d = item.get("data") or {}
+                    results[tid] = {
+                        "source": str(d.get("source_ticket") or "").upper(),
+                        "detail": (
+                            f"status={d.get('ticket_status')} | "
+                            f"og={d.get('owner_group')} | "
+                            f"source={d.get('source_ticket')}"
+                        ),
+                    }
+                for item in inner.get("failed") or []:
+                    tid = str(item.get("ticketId", "")).strip()
+                    results[tid] = {
+                        "source": "NOT_FOUND",
+                        "detail": clean_error_message(str(item.get("message", ""))),
+                    }
+                return True
             except Exception as e:
-                source = "PARSE_ERROR"
-                detail = str(e)
+                return e
 
-            if source == "CUSTOMER":
+        cmd = f"/cekticket {','.join(child_incs)}"
+        data = self._api_execute_raw(cmd, "INSERA")
+        if data is None or _parse_batch(data) is not True:
+            # API batch gagal -> cek per anak (masing-masing 1 panggilan)
+            for inc in child_incs:
+                data = self._api_execute_raw(f"/cekticket {inc}", "INSERA")
+                if data is None:
+                    results[inc] = {"source": "UNVERIFIED", "detail": "API BISCUIT gagal"}
+                elif _parse_batch(data) is not True:
+                    results[inc] = {"source": "PARSE_ERROR", "detail": "Gagal parse respons"}
+
+        valid, excluded = [], []
+        for inc in child_incs:
+            info = results.get(inc)
+            if info and info.get("source") == "CUSTOMER":
                 valid.append(inc)
             else:
                 excluded.append({
                     "inc": inc,
-                    "source": source or "UNKNOWN",
-                    "detail": detail,
+                    "source": (info or {}).get("source", "UNKNOWN"),
+                    "detail": (info or {}).get("detail", ""),
                 })
 
         return {"valid": valid, "excluded": excluded}
