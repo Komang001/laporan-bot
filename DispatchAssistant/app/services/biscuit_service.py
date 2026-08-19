@@ -252,8 +252,8 @@ class BiscuitService:
         """Cek tiket (mis. induk GAMAS) via /cekticket.
 
         Return dict: {"found": bool, "detail": str, "status": str}.
-        API langsung memberi detail (status tiket, owner group) dari
-        data.success[]/failed[]. Jika API gagal, fallback ke UI.
+        found = tiket ditemukan DAN source_ticket == 'GAMAS' (induk GAMAS asli).
+        Jika API gagal, fallback ke UI (tanpa cek source).
         """
         import json
 
@@ -279,15 +279,17 @@ class BiscuitService:
                 for item in success:
                     if str(item.get("ticketId", "")) == ticket_id:
                         d = item.get("data") or {}
+                        source = str(d.get("source_ticket") or "").upper()
                         bits = [
                             str(item.get("message", "")),
                             f"status={d.get('ticket_status')}",
                             f"og={d.get('owner_group')}",
+                            f"source={d.get('source_ticket')}",
                         ]
                         return {
-                            "found": True,
+                            "found": source == "GAMAS",
                             "detail": " | ".join(b for b in bits if b)[:200],
-                            "status": "SUCCESS",
+                            "status": "SUCCESS" if source == "GAMAS" else "UNKNOWN",
                         }
                 if not success and not failed:
                     return {
