@@ -219,6 +219,10 @@ class DispatchAssistantGUI(ctk.CTk):
         self._blink_jobs = {}
         self._clock_job = None
         self._accent_widgets = []  # [(widget, property, value_type), ...]
+        self._feature_desc_labels = {}
+        self._feature_tag_labels = {}
+        self._logo_label = None
+        self._clock_label = None
 
         self.title("Industrial Programmer - DispatchAssistant")
 
@@ -475,6 +479,7 @@ class DispatchAssistantGUI(ctk.CTk):
             text_color=TEXT_SECONDARY,
         )
         desc.pack(anchor="w")
+        self._feature_desc_labels[key] = desc
 
         status_label = ctk.CTkLabel(
             top,
@@ -518,6 +523,7 @@ class DispatchAssistantGUI(ctk.CTk):
                 pady=2,
             )
             chip_tag.pack(side="left")
+            self._feature_tag_labels[key] = chip_tag
 
         stop_btn = ctk.CTkButton(
             bottom,
@@ -1002,12 +1008,16 @@ class DispatchAssistantGUI(ctk.CTk):
 # Settings Modal (CTkToplevel)
 # =====================================================
 
+# =====================================================
+# Settings Modal (CTkToplevel) - UI & Settings Studio
+# =====================================================
+
     def _open_settings(self):
-        from app.user_settings import DEFAULTS
+        from app.user_settings import DEFAULTS, USER_SETTINGS_PATH
 
         win = ctk.CTkToplevel(self)
-        win.title("Pengaturan Bot")
-        win.geometry("620x680")
+        win.title("Pengaturan Bot & UI Studio")
+        win.geometry("660x720")
         win.resizable(False, False)
         win.configure(fg_color=BG_HEADER)
         win.transient(self)
@@ -1017,17 +1027,17 @@ class DispatchAssistantGUI(ctk.CTk):
 
         # Header
         hdr = ctk.CTkFrame(win, fg_color="transparent")
-        hdr.pack(fill="x", padx=24, pady=(20, 0))
+        hdr.pack(fill="x", padx=24, pady=(16, 0))
         ctk.CTkLabel(
-            hdr, text="⚙  Pengaturan Bot",
+            hdr, text="⚙  Pengaturan & UI Studio",
             font=(FONT_UI, 20, "bold"), text_color=RED_MAIN,
         ).pack(side="left")
         ctk.CTkLabel(
-            hdr, text="Simpan = langsung aktif",
+            hdr, text="Simpan = langsung aktif di dashboard",
             font=(FONT_UI, 11), text_color=TEXT_DIM,
         ).pack(side="left", padx=(12, 0), pady=(4, 0))
 
-        # Tab View
+        # Tab View (4 Tabs)
         tabs = ctk.CTkTabview(
             win, corner_radius=10, fg_color=BG_HEADER,
             segmented_button_selected_color=RED_MAIN,
@@ -1036,31 +1046,32 @@ class DispatchAssistantGUI(ctk.CTk):
             segmented_button_unselected_hover_color="#E2E8F0",
             text_color=TEXT_MAIN,
         )
-        tabs.pack(fill="both", expand=True, padx=20, pady=(4, 6))
+        tabs.pack(fill="both", expand=True, padx=20, pady=(6, 6))
 
         tab_general = tabs.add("Umum")
-        tab_tampilan = tabs.add("Tampilan")
-        tab_advanced = tabs.add("Advanced")
+        tab_studio = tabs.add("UI Studio")
+        tab_terminal = tabs.add("Terminal Log")
+        tab_features = tabs.add("Fitur & Safety")
 
         # ── Helper builders ──────────────────────────
         def _entry_row(parent, label, value, hint=None):
             box = ctk.CTkFrame(parent, fg_color="transparent")
-            box.pack(fill="x", pady=5)
+            box.pack(fill="x", pady=4)
             ctk.CTkLabel(box, text=label, font=(FONT_UI, 12, "bold"),
                          text_color=TEXT_MAIN).pack(anchor="w")
             entry = ctk.CTkEntry(box, font=(FONT_MONO, 12), fg_color=BG_INPUT,
                                  border_color=BORDER_SUBTLE, text_color=TEXT_MAIN,
-                                 corner_radius=8, height=34)
+                                 corner_radius=8, height=32)
             entry.insert(0, str(value))
-            entry.pack(fill="x", pady=(3, 0))
+            entry.pack(fill="x", pady=(2, 0))
             if hint:
                 ctk.CTkLabel(box, text=hint, font=(FONT_UI, 10),
-                             text_color=TEXT_DIM).pack(anchor="w", pady=(2, 0))
+                             text_color=TEXT_DIM).pack(anchor="w", pady=(1, 0))
             return entry
 
         def _switch_row(parent, label, value, hint=None):
             box = ctk.CTkFrame(parent, fg_color="transparent")
-            box.pack(fill="x", pady=5)
+            box.pack(fill="x", pady=4)
             row = ctk.CTkFrame(box, fg_color="transparent")
             row.pack(fill="x")
             ctk.CTkLabel(row, text=label, font=(FONT_UI, 12, "bold"),
@@ -1075,34 +1086,34 @@ class DispatchAssistantGUI(ctk.CTk):
             sw.pack(side="right")
             if hint:
                 ctk.CTkLabel(box, text=hint, font=(FONT_UI, 10),
-                             text_color=TEXT_DIM).pack(anchor="w", pady=(2, 0))
+                             text_color=TEXT_DIM).pack(anchor="w", pady=(1, 0))
             return sw
 
         def _dropdown_row(parent, label, values, current, hint=None):
             box = ctk.CTkFrame(parent, fg_color="transparent")
-            box.pack(fill="x", pady=5)
+            box.pack(fill="x", pady=4)
             ctk.CTkLabel(box, text=label, font=(FONT_UI, 12, "bold"),
                          text_color=TEXT_MAIN).pack(anchor="w")
             dd = ctk.CTkOptionMenu(box, values=values, fg_color=BG_INPUT,
                                    button_color="#CBD5E1", button_hover_color="#94A3B8",
                                    dropdown_fg_color=WHITE, dropdown_hover_color="#F1F5F9",
                                    text_color=TEXT_MAIN, font=(FONT_UI, 12),
-                                   corner_radius=8, height=34)
+                                   corner_radius=8, height=32)
             dd.set(current)
-            dd.pack(fill="x", pady=(3, 0))
+            dd.pack(fill="x", pady=(2, 0))
             if hint:
                 ctk.CTkLabel(box, text=hint, font=(FONT_UI, 10),
-                             text_color=TEXT_DIM).pack(anchor="w", pady=(2, 0))
+                             text_color=TEXT_DIM).pack(anchor="w", pady=(1, 0))
             return dd
 
-        def _slider_row(parent, label, value, from_, to_, hint=None):
+        def _slider_row(parent, label, value, from_, to_, hint=None, unit=""):
             box = ctk.CTkFrame(parent, fg_color="transparent")
-            box.pack(fill="x", pady=5)
+            box.pack(fill="x", pady=4)
             top_r = ctk.CTkFrame(box, fg_color="transparent")
             top_r.pack(fill="x")
             ctk.CTkLabel(top_r, text=label, font=(FONT_UI, 12, "bold"),
                          text_color=TEXT_MAIN).pack(side="left")
-            val_lbl = ctk.CTkLabel(top_r, text=str(int(value)),
+            val_lbl = ctk.CTkLabel(top_r, text=f"{int(value)}{unit}",
                                    font=(FONT_MONO, 12, "bold"),
                                    text_color=RED_MAIN)
             val_lbl.pack(side="right")
@@ -1110,29 +1121,29 @@ class DispatchAssistantGUI(ctk.CTk):
                                fg_color="#CBD5E1", progress_color=RED_MAIN,
                                button_color=RED_MAIN, button_hover_color=RED_HOVER)
             sl.set(value)
-            sl.configure(command=lambda v, l=val_lbl: l.configure(text=str(int(v))))
-            sl.pack(fill="x", pady=(3, 0))
+            sl.configure(command=lambda v, l=val_lbl, u=unit: l.configure(text=f"{int(v)}{u}"))
+            sl.pack(fill="x", pady=(2, 0))
             if hint:
                 ctk.CTkLabel(box, text=hint, font=(FONT_UI, 10),
-                             text_color=TEXT_DIM).pack(anchor="w", pady=(2, 0))
+                             text_color=TEXT_DIM).pack(anchor="w", pady=(1, 0))
             return sl
 
         def _section_label(parent, text):
             ctk.CTkLabel(parent, text=text, font=(FONT_UI, 13, "bold"),
-                         text_color="#0284C7").pack(anchor="w", pady=(10, 4))
+                         text_color="#0284C7").pack(anchor="w", pady=(8, 3))
 
         # ── TAB 1: UMUM ─────────────────────────────
         scroll_gen = ctk.CTkScrollableFrame(tab_general, fg_color="transparent")
         scroll_gen.pack(fill="both", expand=True, padx=4, pady=4)
 
-        _section_label(scroll_gen, "🔄  Loop & Scan")
+        _section_label(scroll_gen, "🔄  Loop & Scan Interval")
         e_loop = _entry_row(scroll_gen,
             "Loop Interval (detik)",
             cur.get("loop_interval", DEFAULTS["loop_interval"]),
             "Jeda scan ulang tiap fitur. Minimum 60 detik.",
         )
 
-        _section_label(scroll_gen, "👤  Koordinator")
+        _section_label(scroll_gen, "👤  Koordinator & Identitas")
         e_skip = _entry_row(scroll_gen,
             "Skip Coordinator (ID/Nama, pisah koma)",
             ", ".join(cur.get("skip_coordinator_user_ids") or DEFAULTS["skip_coordinator_user_ids"]),
@@ -1148,95 +1159,167 @@ class DispatchAssistantGUI(ctk.CTk):
             "User ID & Nama berlaku setelah restart.",
         )
 
-        # ── TAB 2: TAMPILAN ──────────────────────────
-        scroll_vis = ctk.CTkScrollableFrame(tab_tampilan, fg_color="transparent")
-        scroll_vis.pack(fill="both", expand=True, padx=4, pady=4)
+        # ── TAB 2: UI STUDIO ─────────────────────────
+        scroll_stu = ctk.CTkScrollableFrame(tab_studio, fg_color="transparent")
+        scroll_stu.pack(fill="both", expand=True, padx=4, pady=4)
 
-        _section_label(scroll_vis, "🎨  Tema & Warna")
-        dd_theme = _dropdown_row(scroll_vis,
-            "Tema Aplikasi", ["light", "dark"],
+        _section_label(scroll_stu, "🎭  Tema Aplikasi")
+        dd_theme = _dropdown_row(scroll_stu,
+            "Mode Tampilan", ["light", "dark"],
             cur.get("theme", DEFAULTS["theme"]),
-            "Berlaku setelah restart.",
+            "Terapkan instan tanpa restart.",
         )
 
-        # Accent Color Picker
+        _section_label(scroll_stu, "🎨  Warna Aksen Kustom (Signature Color)")
         _ACCENT_PRESETS = {
             "Merah (Telkom)": "#DC2626",
             "Biru Langit": "#0284C7",
-            "Ungu": "#7C3AED",
+            "Ungu Neon": "#7C3AED",
             "Hijau Emerald": "#059669",
             "Oranye Sunset": "#EA580C",
             "Pink Fuchsia": "#DB2777",
-            "Indigo": "#4F46E5",
-            "Teal": "#0D9488",
+            "Indigo Cyber": "#4F46E5",
+            "Teal Modern": "#0D9488",
+            "Emas Amber": "#D97706",
+            "Slate Minimal": "#475569",
         }
-        dd_accent = _dropdown_row(scroll_vis,
-            "Warna Aksen",
-            list(_ACCENT_PRESETS.keys()),
-            next((k for k, v in _ACCENT_PRESETS.items()
-                  if v == cur.get("accent_color", DEFAULTS["accent_color"])),
-                 "Merah (Telkom)"),
-            "Warna utama tombol, header strip, dan status badge.",
+
+        # Preset Dropdown + Custom Hex Row
+        accent_curr = cur.get("accent_color", DEFAULTS["accent_color"])
+        dd_accent = _dropdown_row(scroll_stu,
+            "Preset Warna Aksen",
+            list(_ACCENT_PRESETS.keys()) + ["Kustom (Hex)"],
+            next((k for k, v in _ACCENT_PRESETS.items() if v.lower() == accent_curr.lower()), "Kustom (Hex)"),
+            "Pilih dari palet preset atau masukkan kode HEX di bawah.",
         )
 
-        # Live color preview swatch
-        preview_box = ctk.CTkFrame(scroll_vis, fg_color="transparent")
-        preview_box.pack(fill="x", pady=(0, 4))
-        ctk.CTkLabel(preview_box, text="Preview:", font=(FONT_UI, 10),
-                     text_color=TEXT_DIM).pack(side="left")
+        hex_box = ctk.CTkFrame(scroll_stu, fg_color="transparent")
+        hex_box.pack(fill="x", pady=3)
+        ctk.CTkLabel(hex_box, text="Kode Hex Kustom (#RRGGBB):", font=(FONT_UI, 11, "bold"),
+                     text_color=TEXT_MAIN).pack(side="left")
+        e_hex = ctk.CTkEntry(hex_box, width=100, height=28, font=(FONT_MONO, 11),
+                             fg_color=BG_INPUT, border_color=BORDER_SUBTLE, text_color=TEXT_MAIN)
+        e_hex.insert(0, accent_curr)
+        e_hex.pack(side="left", padx=(8, 10))
+
         _preview_swatch = ctk.CTkLabel(
-            preview_box, text="  ████████  ",
-            font=(FONT_MONO, 14, "bold"),
-            text_color=cur.get("accent_color", DEFAULTS["accent_color"]),
-            fg_color=BG_INPUT, corner_radius=6, padx=6, pady=2,
+            hex_box, text="  ████  ",
+            font=(FONT_MONO, 12, "bold"),
+            text_color=accent_curr,
+            fg_color=BG_INPUT, corner_radius=6, padx=4, pady=2,
         )
-        _preview_swatch.pack(side="left", padx=(6, 0))
+        _preview_swatch.pack(side="left")
 
-        def _on_accent_change(choice):
-            color = _ACCENT_PRESETS.get(choice, "#DC2626")
-            _preview_swatch.configure(text_color=color)
+        def _update_swatch_from_hex(*_):
+            val = e_hex.get().strip()
+            if val.startswith("#") and len(val) in (4, 7):
+                try:
+                    _preview_swatch.configure(text_color=val)
+                except Exception:
+                    pass
 
-        dd_accent.configure(command=_on_accent_change)
+        e_hex.bind("<KeyRelease>", _update_swatch_from_hex)
 
-        _section_label(scroll_vis, "🔤  Font & Log")
-        sl_fontsize = _slider_row(scroll_vis,
+        def _on_preset_change(choice):
+            if choice in _ACCENT_PRESETS:
+                hex_val = _ACCENT_PRESETS[choice]
+                e_hex.delete(0, "end")
+                e_hex.insert(0, hex_val)
+                _preview_swatch.configure(text_color=hex_val)
+
+        dd_accent.configure(command=_on_preset_change)
+
+        # Quick palette chips
+        chip_bar = ctk.CTkFrame(scroll_stu, fg_color="transparent")
+        chip_bar.pack(fill="x", pady=(2, 6))
+        for pname, phex in list(_ACCENT_PRESETS.items())[:6]:
+            btn_chip = ctk.CTkButton(
+                chip_bar, text="", width=24, height=20, corner_radius=5,
+                fg_color=phex, hover_color=phex,
+                command=lambda h=phex, n=pname: (
+                    e_hex.delete(0, "end"), e_hex.insert(0, h),
+                    dd_accent.set(n), _preview_swatch.configure(text_color=h)
+                ),
+            )
+            btn_chip.pack(side="left", padx=2)
+
+        _section_label(scroll_stu, "🐱  Logo Maskot & Header")
+        sw_logo = _switch_row(scroll_stu,
+            "Tampilkan Logo Maskot", cur.get("show_logo", DEFAULTS.get("show_logo", True)),
+            "Sembunyikan atau tampilkan gambar logo di header.",
+        )
+        sl_logosize = _slider_row(scroll_stu,
+            "Ukuran Logo di Header", cur.get("logo_size", DEFAULTS.get("logo_size", 115)),
+            60, 160, "Dimensi tampilan logo (60px – 160px).", unit="px",
+        )
+        sw_clock = _switch_row(scroll_stu,
+            "Tampilkan Jam Digital", cur.get("show_clock", DEFAULTS.get("show_clock", True)),
+            "Tampilkan jam digital live di pojok kanan header.",
+        )
+
+        _section_label(scroll_stu, "🗂️  Kartu Fitur Dashboard")
+        sw_desc = _switch_row(scroll_stu,
+            "Tampilkan Deskripsi Fitur", cur.get("show_feature_desc", DEFAULTS.get("show_feature_desc", True)),
+            "Tampilkan teks penjelasan singkat di bawah judul tiap kartu.",
+        )
+        sw_tags = _switch_row(scroll_stu,
+            "Tampilkan Tag / Badge Spesifikasi", cur.get("show_feature_tags", DEFAULTS.get("show_feature_tags", True)),
+            "Tampilkan chip badge target (misal: MO-INSERA #32, BISCUIT API).",
+        )
+
+        # ── TAB 3: TERMINAL LOG ──────────────────────
+        scroll_term = ctk.CTkScrollableFrame(tab_terminal, fg_color="transparent")
+        scroll_term.pack(fill="both", expand=True, padx=4, pady=4)
+
+        _section_label(scroll_term, "🖥️  Gaya Console Terminal")
+        _TERM_NAMES = {
+            "obsidian": "Obsidian Dark (Slate 900)",
+            "matrix": "Matrix Cyber (Neon Green)",
+            "midnight": "Midnight Navy (Deep Blue)",
+            "light_slate": "Clean Light Slate (White)",
+        }
+        _TERM_REVERSE = {v: k for k, v in _TERM_NAMES.items()}
+        curr_term_key = cur.get("terminal_theme", DEFAULTS.get("terminal_theme", "obsidian"))
+
+        dd_term = _dropdown_row(scroll_term,
+            "Tema Console Terminal",
+            list(_TERM_NAMES.values()),
+            _TERM_NAMES.get(curr_term_key, _TERM_NAMES["obsidian"]),
+            "Warna latar belakang dan font terminal log console.",
+        )
+
+        _section_label(scroll_term, "🔤  Tipografi & Font")
+        _FONTS = ["Consolas", "Courier New", "Lucida Console", "Segoe UI"]
+        dd_fontfam = _dropdown_row(scroll_term,
+            "Jenis Font Monospace", _FONTS,
+            cur.get("log_font_family", DEFAULTS.get("log_font_family", "Consolas")),
+            "Font monospace untuk baris output terminal.",
+        )
+        sl_fontsize = _slider_row(scroll_term,
             "Ukuran Font Log", cur.get("log_font_size", DEFAULTS["log_font_size"]),
-            8, 22, "Font terminal log (8 – 22 pt).",
+            8, 22, "Ukuran font terminal log (8 – 22 pt).", unit="pt",
         )
-        e_maxlog = _entry_row(scroll_vis,
+
+        _section_label(scroll_term, "📜  Perilaku & Kapasitas Log")
+        e_maxlog = _entry_row(scroll_term,
             "Maks Baris Log per Tab",
             cur.get("max_log_lines", DEFAULTS["max_log_lines"]),
             "0 = tidak dibatasi. Rekomendasi 1000 – 5000.",
         )
-
-        # ── TAB 3: ADVANCED ──────────────────────────
-        scroll_adv = ctk.CTkScrollableFrame(tab_advanced, fg_color="transparent")
-        scroll_adv.pack(fill="both", expand=True, padx=4, pady=4)
-
-        _section_label(scroll_adv, "📜  Perilaku Log")
-        sw_autoscroll = _switch_row(scroll_adv,
+        sw_autoscroll = _switch_row(scroll_term,
             "Auto-Scroll Log", cur.get("auto_scroll_log", DEFAULTS["auto_scroll_log"]),
-            "Otomatis scroll ke baris terbaru.",
+            "Otomatis scroll ke baris terbaru saat ada log baru.",
         )
-        sw_timestamp = _switch_row(scroll_adv,
-            "Tampilkan Timestamp", cur.get("show_timestamp", DEFAULTS["show_timestamp"]),
-            "Tampilkan [HH:MM:SS] di awal setiap baris log.",
-        )
-
-        _section_label(scroll_adv, "🛡  Safety")
-        sw_confirm_stop = _switch_row(scroll_adv,
-            "Konfirmasi Sebelum STOP", cur.get("confirm_before_stop", DEFAULTS["confirm_before_stop"]),
-            "Tampilkan dialog konfirmasi saat menekan tombol STOP.",
+        sw_timestamp = _switch_row(scroll_term,
+            "Tampilkan Timestamp [HH:MM:SS]", cur.get("show_timestamp", DEFAULTS["show_timestamp"]),
+            "Tampilkan waktu di awal setiap baris log.",
         )
 
-        _section_label(scroll_adv, "🔌  BISCUIT API")
-        e_biscuit_timeout = _entry_row(scroll_adv,
-            "API Timeout (detik)",
-            cur.get("biscuit_api_timeout", DEFAULTS["biscuit_api_timeout"]),
-            "Timeout request ke BISCUIT API. Min 30 detik.",
-        )
+        # ── TAB 4: FITUR & SAFETY ────────────────────
+        scroll_feat = ctk.CTkScrollableFrame(tab_features, fg_color="transparent")
+        scroll_feat.pack(fill="both", expand=True, padx=4, pady=4)
 
-        _section_label(scroll_adv, "🚀  Auto-Start saat Launch")
+        _section_label(scroll_feat, "🚀  Auto-Start saat Launch")
         _FEATURE_KEYS = [
             ("to_insera", "TO MO-INSERA"),
             ("to_bima", "TO MO-BIMA"),
@@ -1248,7 +1331,7 @@ class DispatchAssistantGUI(ctk.CTk):
         auto_start_cur = cur.get("auto_start_features") or []
         auto_start_cbs = {}
         for fkey, flabel in _FEATURE_KEYS:
-            cb_box = ctk.CTkFrame(scroll_adv, fg_color="transparent")
+            cb_box = ctk.CTkFrame(scroll_feat, fg_color="transparent")
             cb_box.pack(fill="x", pady=2)
             cb = ctk.CTkCheckBox(cb_box, text=flabel, font=(FONT_UI, 12),
                                  text_color=TEXT_MAIN,
@@ -1260,20 +1343,31 @@ class DispatchAssistantGUI(ctk.CTk):
             cb.pack(anchor="w")
             auto_start_cbs[fkey] = cb
 
-        ctk.CTkLabel(scroll_adv, text="Fitur yang dicentang akan otomatis START saat aplikasi dibuka (setelah restart).",
-                     font=(FONT_UI, 10), text_color=TEXT_DIM, wraplength=480
-                     ).pack(anchor="w", pady=(2, 0))
+        ctk.CTkLabel(scroll_feat, text="Fitur yang dicentang akan otomatis START saat aplikasi dibuka (aktif setelah restart).",
+                     font=(FONT_UI, 10), text_color=TEXT_DIM, wraplength=520
+                     ).pack(anchor="w", pady=(2, 6))
+
+        _section_label(scroll_feat, "🛡  Safety & Proteksi")
+        sw_confirm_stop = _switch_row(scroll_feat,
+            "Konfirmasi Sebelum STOP", cur.get("confirm_before_stop", DEFAULTS["confirm_before_stop"]),
+            "Tampilkan dialog konfirmasi saat menekan tombol STOP.",
+        )
+
+        _section_label(scroll_feat, "🔌  Konektivitas API")
+        e_biscuit_timeout = _entry_row(scroll_feat,
+            "BISCUIT API Timeout (detik)",
+            cur.get("biscuit_api_timeout", DEFAULTS["biscuit_api_timeout"]),
+            "Timeout request ke BISCUIT API. Minimum 30 detik.",
+        )
 
         # ── Bottom Bar ───────────────────────────────
-        from app.user_settings import USER_SETTINGS_PATH
-
         bot_bar = ctk.CTkFrame(win, fg_color="transparent")
-        bot_bar.pack(fill="x", padx=24, pady=(0, 16))
+        bot_bar.pack(fill="x", padx=24, pady=(0, 14))
 
         ctk.CTkLabel(
             bot_bar, text=f"📁 {USER_SETTINGS_PATH}",
             font=(FONT_UI, 10), text_color=TEXT_DIM,
-        ).pack(anchor="w", pady=(0, 8))
+        ).pack(anchor="w", pady=(0, 6))
 
         btns = ctk.CTkFrame(bot_bar, fg_color="transparent")
         btns.pack(fill="x")
@@ -1287,8 +1381,13 @@ class DispatchAssistantGUI(ctk.CTk):
 
             skip = [x.strip() for x in e_skip.get().replace(",", " ").split() if x.strip()]
 
-            accent_name = dd_accent.get()
-            accent_hex = _ACCENT_PRESETS.get(accent_name, DEFAULTS["accent_color"])
+            # Accent color resolution
+            hex_input = e_hex.get().strip()
+            if hex_input.startswith("#") and len(hex_input) in (4, 7):
+                accent_hex = hex_input
+            else:
+                accent_name = dd_accent.get()
+                accent_hex = _ACCENT_PRESETS.get(accent_name, DEFAULTS["accent_color"])
 
             auto_start_list = [k for k, cb in auto_start_cbs.items() if cb.get()]
 
@@ -1302,6 +1401,8 @@ class DispatchAssistantGUI(ctk.CTk):
             except ValueError:
                 biscuit_t = DEFAULTS["biscuit_api_timeout"]
 
+            selected_term = _TERM_REVERSE.get(dd_term.get(), "obsidian")
+
             data = {
                 "loop_interval": loop,
                 "skip_coordinator_user_ids": skip,
@@ -1309,6 +1410,13 @@ class DispatchAssistantGUI(ctk.CTk):
                 "user_name": e_uname.get().strip() or DEFAULTS["user_name"],
                 "theme": dd_theme.get(),
                 "accent_color": accent_hex,
+                "show_logo": bool(sw_logo.get()),
+                "logo_size": int(sl_logosize.get()),
+                "show_clock": bool(sw_clock.get()),
+                "show_feature_desc": bool(sw_desc.get()),
+                "show_feature_tags": bool(sw_tags.get()),
+                "terminal_theme": selected_term,
+                "log_font_family": dd_fontfam.get(),
                 "log_font_size": int(sl_fontsize.get()),
                 "max_log_lines": maxlog,
                 "auto_scroll_log": bool(sw_autoscroll.get()),
@@ -1321,32 +1429,25 @@ class DispatchAssistantGUI(ctk.CTk):
             from app.user_settings import save as _save_settings
             self.user_settings = _save_settings(data)
 
-            # Live-apply visual settings
+            # Live-apply visual settings immediately
             self._apply_visual_settings(data)
 
             self.write_log(
-                f"[settings] Disimpan: loop={loop}s, skip={skip or 'none'}, "
-                f"user={data['user_name']} ({data['user_id']}), "
-                f"theme={data['theme']}, accent={accent_hex}, "
-                f"font={data['log_font_size']}pt",
-                channel="all",
-            )
-            self.write_log(
-                "[settings] Perubahan tampilan & perilaku langsung aktif. "
-                "Tema, User ID/Nama, Auto-Start aktif setelah restart.",
+                f"[settings] UI Studio disimpan: aksen={accent_hex}, tema={data['theme']}, "
+                f"logo={data['logo_size']}px, term={selected_term}",
                 channel="all",
             )
             win.destroy()
 
         ctk.CTkButton(
-            btns, text="💾  Simpan", width=120, height=36,
+            btns, text="💾  Simpan & Terapkan", width=145, height=34,
             corner_radius=8, fg_color=RED_MAIN, hover_color=RED_HOVER,
             text_color=WHITE, font=(FONT_UI, 12, "bold"),
             command=_save,
         ).pack(side="left")
 
         ctk.CTkButton(
-            btns, text="Batal", width=90, height=36,
+            btns, text="Batal", width=80, height=34,
             corner_radius=8, fg_color="#F1F5F9", hover_color="#E2E8F0",
             text_color=TEXT_MAIN, font=(FONT_UI, 12, "bold"),
             command=win.destroy,
@@ -1354,31 +1455,37 @@ class DispatchAssistantGUI(ctk.CTk):
 
         # Reset defaults button
         def _reset():
-            if hasattr(ctk, "CTkInputDialog"):
-                pass  # no modal needed, just reset
-            from app.user_settings import save as _save_settings
-            self.user_settings = _save_settings(dict(DEFAULTS))
-            self._apply_visual_settings(DEFAULTS)
-            self.write_log("[settings] Reset ke default!", channel="all")
+            from app.user_settings import save as _save_settings, DEFAULTS as _DEF
+            self.user_settings = _save_settings(dict(_DEF))
+            self._apply_visual_settings(_DEF)
+            self.write_log("[settings] UI Studio direset ke default!", channel="all")
             win.destroy()
 
         ctk.CTkButton(
-            btns, text="🔄  Reset Default", width=130, height=36,
+            btns, text="🔄  Reset Default", width=125, height=34,
             corner_radius=8, fg_color="#FEF2F2", hover_color="#FEE2E2",
+            border_width=1, border_color="#FCA5A5",
             text_color=RED_MAIN, font=(FONT_UI, 11, "bold"),
             command=_reset,
         ).pack(side="right")
 
     def _apply_visual_settings(self, data):
-        """Terapkan pengaturan visual secara live (tanpa restart)."""
+        """Terapkan pengaturan visual & UI Studio secara live (tanpa restart)."""
         accent = data.get("accent_color", RED_MAIN)
+        if not isinstance(accent, str) or not accent.startswith("#") or len(accent) not in (4, 7):
+            accent = RED_MAIN
 
         # ── Darken helper for hover color ──
         def _darken(hex_color, factor=0.8):
-            hex_color = hex_color.lstrip("#")
-            r, g, b = int(hex_color[:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
-            r, g, b = int(r * factor), int(g * factor), int(b * factor)
-            return f"#{r:02x}{g:02x}{b:02x}"
+            try:
+                hex_color = hex_color.lstrip("#")
+                if len(hex_color) == 3:
+                    hex_color = "".join(c * 2 for c in hex_color)
+                r, g, b = int(hex_color[:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+                r, g, b = int(r * factor), int(g * factor), int(b * factor)
+                return f"#{r:02x}{g:02x}{b:02x}"
+            except Exception:
+                return hex_color
 
         accent_hover = _darken(accent, 0.82)
 
@@ -1392,17 +1499,15 @@ class DispatchAssistantGUI(ctk.CTk):
 
         # ── 2. Update log tab segmented button colors ──
         try:
-            self._log_tabs.configure(
-                segmented_button_selected_color=accent,
-                segmented_button_selected_hover_color=accent_hover,
-            )
+            if hasattr(self, "_log_tabs") and self._log_tabs:
+                self._log_tabs.configure(
+                    segmented_button_selected_color=accent,
+                    segmented_button_selected_hover_color=accent_hover,
+                )
         except Exception:
             pass
 
-        # ── 3. Update header title label color ──
-        # (Settings gear title uses RED_MAIN, but title text stays TEXT_MAIN)
-
-        # ── 4. Update STOP button text colors on all feature cards ──
+        # ── 3. Update STOP button text colors on all feature cards ──
         for feat in FEATURES:
             key = feat["key"]
             stop_btn = getattr(self, f"{key}_stop_btn", None)
@@ -1412,15 +1517,85 @@ class DispatchAssistantGUI(ctk.CTk):
                 except Exception:
                     pass
 
-        # ── 5. Font size log ──
-        font_size = data.get("log_font_size", 12)
-        for name, box in self.log_boxes.items():
+        # ── 4. Logo Visibility & Size ──
+        show_logo = data.get("show_logo", True)
+        logo_sz = data.get("logo_size", 115)
+        if hasattr(self, "_logo_label") and self._logo_label:
             try:
-                box.configure(font=(FONT_MONO, font_size))
+                if not show_logo:
+                    self._logo_label.pack_forget()
+                else:
+                    self._logo_label.pack(side="left")
+                    if os.path.exists(LOGO_PATH):
+                        from PIL import Image
+                        pil_img = Image.open(LOGO_PATH).convert("RGBA")
+                        new_img = ctk.CTkImage(
+                            light_image=pil_img,
+                            dark_image=pil_img,
+                            size=(logo_sz, logo_sz),
+                        )
+                        self._logo_label.configure(image=new_img, text="")
             except Exception:
                 pass
 
-        # ── 6. Max log lines trimming ──
+        # ── 5. Clock Visibility ──
+        show_clock = data.get("show_clock", True)
+        if hasattr(self, "_clock_label") and self._clock_label:
+            try:
+                if show_clock:
+                    self._clock_label.pack(side="right")
+                else:
+                    self._clock_label.pack_forget()
+            except Exception:
+                pass
+
+        # ── 6. Feature Descriptions Visibility ──
+        show_desc = data.get("show_feature_desc", True)
+        if hasattr(self, "_feature_desc_labels"):
+            for k, lbl in self._feature_desc_labels.items():
+                try:
+                    if show_desc:
+                        lbl.pack(anchor="w")
+                    else:
+                        lbl.pack_forget()
+                except Exception:
+                    pass
+
+        # ── 7. Feature Tags Visibility ──
+        show_tags = data.get("show_feature_tags", True)
+        if hasattr(self, "_feature_tag_labels"):
+            for k, lbl in self._feature_tag_labels.items():
+                try:
+                    if show_tags:
+                        lbl.pack(side="left", padx=(0, 6))
+                    else:
+                        lbl.pack_forget()
+                except Exception:
+                    pass
+
+        # ── 8. Terminal Theme & Fonts ──
+        term_theme = data.get("terminal_theme", "obsidian")
+        _TERM_PALETTES = {
+            "obsidian": {"bg": "#0F172A", "fg": "#E2E8F0"},
+            "matrix": {"bg": "#031408", "fg": "#4ADE80"},
+            "midnight": {"bg": "#0A1128", "fg": "#93C5FD"},
+            "light_slate": {"bg": "#F8FAFC", "fg": "#0F172A"},
+        }
+        pal = _TERM_PALETTES.get(term_theme, _TERM_PALETTES["obsidian"])
+        font_fam = data.get("log_font_family", "Consolas")
+        font_sz = data.get("log_font_size", 12)
+
+        for name, box in self.log_boxes.items():
+            try:
+                box.configure(
+                    fg_color=pal["bg"],
+                    text_color=pal["fg"],
+                    font=(font_fam, font_sz),
+                )
+            except Exception:
+                pass
+
+        # ── 9. Max log lines trimming ──
         max_lines = data.get("max_log_lines", 2000)
         if max_lines > 0:
             for name, box in self.log_boxes.items():
@@ -1432,21 +1607,21 @@ class DispatchAssistantGUI(ctk.CTk):
                 except Exception:
                     pass
 
-        # ── 7. Theme mode (light/dark) ──
+        # ── 10. Theme mode (light/dark) ──
         theme = data.get("theme", "light")
         try:
             ctk.set_appearance_mode(theme)
         except Exception:
             pass
 
-        # ── 8. Update Header KPI Labels ──
-        if hasattr(self, "_kpi_loop"):
+        # ── 11. Update Header KPI Labels ──
+        if hasattr(self, "_kpi_loop") and self._kpi_loop:
             try:
                 loop_val = data.get("loop_interval", 180)
                 self._kpi_loop.configure(text=f"\u23f1 Loop: {loop_val}s")
             except Exception:
                 pass
-        if hasattr(self, "_kpi_skip"):
+        if hasattr(self, "_kpi_skip") and self._kpi_skip:
             try:
                 skip_val = data.get("skip_coordinator_user_ids", ["55652"])
                 skip_str = ", ".join(skip_val) if skip_val else "None"
@@ -1454,7 +1629,11 @@ class DispatchAssistantGUI(ctk.CTk):
             except Exception:
                 pass
 
-        self.write_log(f"[settings] Visual diterapkan: aksen={accent}, tema={theme}, font={font_size}pt", channel="all")
+        self.write_log(
+            f"[settings] Visual diterapkan: aksen={accent}, tema={theme}, "
+            f"logo={logo_sz}px, term={term_theme}, font={font_fam} {font_sz}pt",
+            channel="all",
+        )
 
 
 # =====================================================

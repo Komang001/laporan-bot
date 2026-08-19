@@ -16,14 +16,22 @@ DEFAULTS = {
     "skip_coordinator_user_ids": ["55652"],
     "user_id": "55654",
     "user_name": "I Nyoman Windu",
-    # Tampilan
+    # UI Studio / Tampilan
     "theme": "light",                # light / dark
     "accent_color": "#DC2626",       # warna aksen utama
+    "show_logo": True,               # tampilkan logo maskot
+    "logo_size": 115,                # ukuran logo di header (60 - 160 px)
+    "show_clock": True,              # tampilkan jam digital di header
+    "show_feature_desc": True,       # tampilkan deskripsi pada kartu fitur
+    "show_feature_tags": True,       # tampilkan badge tag spesifikasi
+    # Terminal / Log Console
+    "terminal_theme": "obsidian",    # obsidian / matrix / midnight / light_slate
+    "log_font_family": "Consolas",   # Consolas / Courier New / Lucida Console / Segoe UI
     "log_font_size": 12,             # ukuran font terminal log
     "max_log_lines": 2000,           # batas baris log per tab (0 = unlimited)
-    # Advanced
     "auto_scroll_log": True,         # auto-scroll log ke bawah
     "show_timestamp": True,          # tampilkan [HH:MM:SS] di log
+    # Safety & Fitur
     "confirm_before_stop": False,    # konfirmasi sebelum STOP
     "auto_start_features": [],       # fitur yang auto-start saat launch
     "biscuit_api_timeout": 180,      # timeout BISCUIT API (detik)
@@ -32,7 +40,9 @@ DEFAULTS = {
 # Kunci yang berlaku langsung tanpa restart
 _LIVE_KEYS = {
     "loop_interval", "skip_coordinator_user_ids",
-    "theme", "accent_color", "log_font_size", "max_log_lines",
+    "theme", "accent_color", "show_logo", "logo_size", "show_clock",
+    "show_feature_desc", "show_feature_tags",
+    "terminal_theme", "log_font_family", "log_font_size", "max_log_lines",
     "auto_scroll_log", "show_timestamp", "confirm_before_stop",
     "biscuit_api_timeout",
 }
@@ -79,6 +89,7 @@ def save(data):
         payload[k] = data.get(k, DEFAULTS.get(k))
     payload["loop_interval"] = max(60, int(payload.get("loop_interval", 180)))
     payload["skip_coordinator_user_ids"] = list(payload.get("skip_coordinator_user_ids") or [])
+    payload["logo_size"] = max(50, min(180, int(payload.get("logo_size", 115))))
     payload["log_font_size"] = max(8, min(24, int(payload.get("log_font_size", 12))))
     payload["max_log_lines"] = max(0, int(payload.get("max_log_lines", 2000)))
     payload["biscuit_api_timeout"] = max(30, int(payload.get("biscuit_api_timeout", 180)))
