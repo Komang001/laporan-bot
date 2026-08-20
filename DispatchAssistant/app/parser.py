@@ -29,7 +29,7 @@ def parse_owner_group(note: str):
 
     # Try patterns in order of priority
     patterns = [
-        r"(?:loker|og|owner\s+group)\s*[:.]?\s+(.+)",
+        r"(?:loker|og|owner\s+gr(?:o)?up)\s*[:.]?\s+(.+)",
         r"ke\s+(.+)",
     ]
 
@@ -40,8 +40,8 @@ def parse_owner_group(note: str):
 
         candidate = match.group(1).strip()
 
-        # Strip label prefixes: "Owner Group", "LOKER", "OWNER GROUP"
-        candidate = re.sub(r"(?i)\bowner\s+group\b", "", candidate)
+        # Strip label prefixes: "Owner Group", "Owner Grup", "LOKER", "OWNER GROUP"
+        candidate = re.sub(r"(?i)\bowner\s+gr(?:o)?up\b", "", candidate)
         candidate = re.sub(r"(?i)\bloker\b", "", candidate)
         candidate = re.sub(r"\s+", " ", candidate).strip()
 
