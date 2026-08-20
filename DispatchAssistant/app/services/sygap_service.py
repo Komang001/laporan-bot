@@ -1556,7 +1556,7 @@ class SygapService:
                         log(f"    Anak {ex['inc']} source={ex['source']} -> jangan di-input ({ex['detail'][:90]})")
                     child_incs = child_check["valid"]
                     if not child_incs:
-                        log(f"    Semua anak tidak valid (bukan CUSTOMER/PROACTIVE), SKIP relasi")
+                        log(f"    Semua anak tidak valid (bukan CUSTOMER), SKIP relasi")
                         continue
                     child_str = ",".join(child_incs)
                     log(f"    Child INCs valid ({len(child_incs)}): {child_str[:100]}...")

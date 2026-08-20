@@ -171,14 +171,19 @@ class InseraGamasService:
                         ctx = pg.context
                         break
             if ctx is None:
+                self.log("    GAMAS API: konteks browser tidak tersedia (cookie tidak bisa dibaca)")
                 return ""
             cookies = ctx.cookies()
-            return "; ".join(
+            header = "; ".join(
                 f"{c['name']}={c['value']}"
                 for c in cookies
                 if "oss-incident" in c.get("domain", "")
             )
-        except Exception:
+            if not header:
+                self.log("    GAMAS API: cookie oss-incident TIDAK ditemukan di profil browser (cek login INSERA)")
+            return header
+        except Exception as e:
+            self.log(f"    GAMAS API: gagal baca cookie ({e})")
             return ""
 
     def _get_form_tokens(self, cookie_header):
@@ -208,7 +213,9 @@ class InseraGamasService:
             if m:
                 tokens["nonce"] = m.group(1)
         except Exception as e:
-            print(f"get form tokens error: {e}")
+            self.log(f"    GAMAS API: gagal ambil token form ({e})")
+        if not tokens["csrf"] or not tokens["nonce"]:
+            self.log("    GAMAS API: CSRF/nonce TIDAK ditemukan di halaman form")
         return tokens
 
     def submit_via_api(self, parent_inc, child_str):
@@ -222,6 +229,7 @@ class InseraGamasService:
 
         cookie_header = self._get_cookie_header()
         if not cookie_header:
+            self.log("    GAMAS API: cookie kosong -> fallback UI")
             return None
         tokens = self._get_form_tokens(cookie_header)
 
@@ -259,7 +267,7 @@ class InseraGamasService:
             with urllib.request.urlopen(req, timeout=60) as resp:
                 content = resp.read().decode("utf-8", errors="replace")
         except Exception as e:
-            print(f"GAMAS API error: {e}")
+            self.log(f"    GAMAS API: POST gagal ({e}) -> fallback UI")
             return None
 
         # Validasi server: hidden field _FORM_ERRORS berisi {"errors":{...}}
