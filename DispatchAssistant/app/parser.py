@@ -29,7 +29,7 @@ def parse_owner_group(note: str):
 
     # Try patterns in order of priority
     patterns = [
-        r"(?:loker|og|owner\s+group)\s+(.+)",
+        r"(?:loker|og|owner\s+group)\s*[:.]?\s+(.+)",
         r"ke\s+(.+)",
     ]
 
@@ -45,7 +45,8 @@ def parse_owner_group(note: str):
         candidate = re.sub(r"(?i)\bloker\b", "", candidate)
         candidate = re.sub(r"\s+", " ", candidate).strip()
 
-        # Ambil hanya kata UPPERCASE (OG selalu UPPERCASE)
+        # Ambil hanya kata UPPERCASE atau Title-Case (OG kadang ditulis campur,
+        # misal "TIF Surveillance Area 1")
         words = candidate.split()
         og_words = []
         for w in words:
@@ -62,6 +63,14 @@ def parse_owner_group(note: str):
             elif w.replace("-", "").replace("_", "").isalpha() and w == w.upper() and len(w) > 0:
                 og_words.append(w)
             elif w.replace("-", "").replace("_", "").isalnum() and w == w.upper() and len(w) > 0:
+                og_words.append(w)
+            # Title-Case (huruf besar di awal, sisanya kecil) - bagian OG campur
+            elif (
+                len(w) > 1
+                and w[0].isupper()
+                and w[1:].islower()
+                and w.replace("-", "").replace("_", "").isalnum()
+            ):
                 og_words.append(w)
             else:
                 break
