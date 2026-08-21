@@ -273,6 +273,14 @@ def extract_service_type(text: str):
         r"\binsera\b",
         r"\bINC\d+\b",
         r"#\w+",
+        r"\bya\b",
+        r"\bsaja\b",
+        r"\bdll\b",
+        r"\bdst\b",
+        r"\boke?\b",
+        r"\bsip\b",
+        r"\btq\b",
+        r"\boho\b",
     ]
     stop_pattern = "|".join(stop_keywords)
 
