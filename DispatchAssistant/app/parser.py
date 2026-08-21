@@ -209,11 +209,11 @@ def extract_service_id(text: str):
     clean = re.sub(r"\s+", " ", clean).strip()
 
     # Pattern 1: Explicit "Service ID" label
-    pattern_explicit = r"(?i)\b(?:service\s*id|service_id|serviceid)\s*(?:menjadi|ke|adalah|:|:|=|\->|->)?\s*([A-Za-z0-9_\-\.]+)"
+    pattern_explicit = r"(?i)\b(?:service\s*id|service_id|serviceid)\s*(?:menjadi|jadi|ke|adalah|:|:|=|\->|->)?\s*([A-Za-z0-9_\-\.]+)"
     match = re.search(pattern_explicit, clean)
     if match:
         candidate = match.group(1).strip().rstrip(".,;:!")
-        if candidate and candidate.lower() not in ("menjadi", "ke", "adalah", "null", "none", "tidak", "ada"):
+        if candidate and candidate.lower() not in ("menjadi", "jadi", "ke", "adalah", "null", "none", "tidak", "ada"):
             return candidate
 
     # Pattern 2: Fallback - Service ID format is typically DIGITS_DIGITS_WORD
@@ -286,7 +286,7 @@ def extract_service_type(text: str):
 
     pattern = (
         r"\b(?:service\s*type|service_type|servicetype)\s*"
-        r"(?:menjadi|ke|adalah|diubah\s*ke|dirubah\s*ke|:|=|\->|->)?\s*"
+        r"(?:menjadi|jadi|ke|adalah|diubah\s*ke|dirubah\s*ke|:|=|\->|->)?\s*"
         r"([A-Za-z0-9\s\-_]+?)"
         r"(?=\s*(?:" + stop_pattern + r")|[.,;!?:|]|$)"
     )
