@@ -29,7 +29,7 @@ def parse_owner_group(note: str):
 
     # Try patterns in order of priority
     patterns = [
-        r"(?:loker|og|owner\s+gr(?:o)?up)\s*[:.]?\s+(.+)",
+        r"(?:\bloker\b|\bog\b|owner\s+gr(?:o)?up)\s*[:.]?\s+(.+)",
         r"ke\s+(.+)",
     ]
 
@@ -185,3 +185,110 @@ def extract_bulk_inc_list(note: str):
         return []
     matches = re.findall(r'INC\d+', note, re.IGNORECASE)
     return [m.upper() for m in matches]
+
+
+# =====================================================
+# Extract Service ID
+# =====================================================
+
+def extract_service_id(text: str):
+    """Extract Service ID from ticket note.
+    
+    Examples:
+      - 'Service ID menjadi 5480832_0214711635_VOICE' -> '5480832_0214711635_VOICE'
+      - 'Service ID : 5480832_0214711635_VOICE' -> '5480832_0214711635_VOICE'
+      - 'Service ID: 5480832_0214711635_VOICE' -> '5480832_0214711635_VOICE'
+      - 'service_id = 5480832_0214711635_VOICE' -> '5480832_0214711635_VOICE'
+      - 'service id ke 5480832_0214711635_VOICE' -> '5480832_0214711635_VOICE'
+      - 'SERVICE NO MENJADI 0224233814 20780_0224233814_VOICE Sesuai' -> '20780_0224233814_VOICE'
+    """
+    if not text:
+        return None
+
+    clean = re.sub(r"<[^>]+>", " ", text)
+    clean = re.sub(r"\s+", " ", clean).strip()
+
+    # Pattern 1: Explicit "Service ID" label
+    pattern_explicit = r"(?i)\b(?:service\s*id|service_id|serviceid)\s*(?:menjadi|ke|adalah|:|:|=|\->|->)?\s*([A-Za-z0-9_\-\.]+)"
+    match = re.search(pattern_explicit, clean)
+    if match:
+        candidate = match.group(1).strip().rstrip(".,;:!")
+        if candidate and candidate.lower() not in ("menjadi", "ke", "adalah", "null", "none", "tidak", "ada"):
+            return candidate
+
+    # Pattern 2: Fallback - Service ID format is typically DIGITS_DIGITS_WORD
+    # e.g. 20780_0224233814_VOICE, 5480832_0214711635_VOICE
+    pattern_format = r"\b(\d+_\d+_[A-Za-z][A-Za-z0-9]*)\b"
+    match = re.search(pattern_format, clean)
+    if match:
+        return match.group(1)
+
+    return None
+
+
+# =====================================================
+# Extract Service Type
+# =====================================================
+
+def extract_service_type(text: str):
+    """Extract Service Type from ticket note.
+    
+    Examples:
+      - 'moban ubah service type ke WMS LITE' -> 'WMS LITE'
+      - 'Service Type menjadi VOICE' -> 'VOICE'
+      - 'Service Type : VOICE' -> 'VOICE'
+      - 'service type: WMS LITE' -> 'WMS LITE'
+      - 'service_type = INTERNET' -> 'INTERNET'
+      - 'mohon ganti service type ke ASTINET terima kasih' -> 'ASTINET'
+    """
+    if not text:
+        return None
+
+    clean = re.sub(r"<[^>]+>", " ", text)
+    clean = re.sub(r"\s+", " ", clean).strip()
+
+    stop_keywords = [
+        r"\bservice\s*id\b",
+        r"\bservice_id\b",
+        r"\bservice\s*no\b",
+        r"\bservice_no\b",
+        r"\bsesuai\b",
+        r"\breference\b",
+        r"\bref\b",
+        r"\bmohon\b",
+        r"\bmoban\b",
+        r"\btolong\b",
+        r"\bbantu\b",
+        r"\bterima\s*kasih\b",
+        r"\btrimakasih\b",
+        r"\bmakasih\b",
+        r"\bthanks\b",
+        r"\blapor\b",
+        r"\binet\b",
+        r"\bcabut\b",
+        r"\bsymptom\b",
+        r"\bsymtomp\b",
+        r"\bdiinsera\b",
+        r"\bdi\s*insera\b",
+        r"\binsera\b",
+        r"\bINC\d+\b",
+        r"#\w+",
+    ]
+    stop_pattern = "|".join(stop_keywords)
+
+    pattern = (
+        r"\b(?:service\s*type|service_type|servicetype)\s*"
+        r"(?:menjadi|ke|adalah|diubah\s*ke|dirubah\s*ke|:|=|\->|->)?\s*"
+        r"([A-Za-z0-9\s\-_]+?)"
+        r"(?=\s*(?:" + stop_pattern + r")|[.,;!?:|]|$)"
+    )
+
+    match = re.search(pattern, clean, re.IGNORECASE)
+    if match:
+        candidate = match.group(1).strip()
+        candidate = re.sub(r"^(?:menjadi|ke|adalah|=|:)\s*", "", candidate, flags=re.IGNORECASE).strip()
+        if candidate and candidate.lower() not in ("null", "none", "tidak", "ada", "-", ""):
+            return candidate.upper()
+
+    return None
+
