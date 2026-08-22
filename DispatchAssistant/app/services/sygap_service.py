@@ -50,27 +50,34 @@ class SygapService:
         return page
 
     def navigate_to_incident_dashboard(self):
+        from config.settings import INCIDENT_DASHBOARD_URL
+        # 1) coba pakai tab incident yang sudah ada (bisa masih di /login)
         try:
-            page = self.get_incident_dashboard_page()
-            self.browser_manager.activate_page(page)
-            current = page.url.lower()
-            if "/incident" in current and "/form/" not in current:
+            page = self.browser_manager.get_incident_dashboard_page()
+            if page and self.browser_manager.is_page_alive(page):
+                self.browser_manager.activate_page(page)
+                current = page.url.lower()
+                if "/incident" in current and "/form/" not in current:
+                    return page
+                # ada tab SYGAP tapi belum di /incident (misal di /login) -> arahkan tab yang sama, jangan buka baru
+                page.goto(INCIDENT_DASHBOARD_URL)
+                page.wait_for_load_state("domcontentloaded", timeout=15000)
+                page.wait_for_timeout(3000)
                 return page
         except Exception:
             pass
-        # fallback: buka langsung URL incident
-        from config.settings import INCIDENT_DASHBOARD_URL
-        # cari tab sygap yang masih hidup sebagai base
-        try:
-            base = self.get_dashboard_page()
-            self.browser_manager.activate_page(base)
-            base.goto(INCIDENT_DASHBOARD_URL)
-            base.wait_for_load_state("domcontentloaded", timeout=15000)
-            base.wait_for_timeout(3000)
-            return base
-        except Exception:
-            pass
-        # buat tab baru
+        # 2) cari SYGAP tab mana pun dan pakai ulang (hindari open_url baru)
+        for p in self.browser_manager.get_pages():
+            try:
+                if "sygap.telkom.co.id" in p.url.lower():
+                    self.browser_manager.activate_page(p)
+                    p.goto(INCIDENT_DASHBOARD_URL)
+                    p.wait_for_load_state("domcontentloaded", timeout=15000)
+                    p.wait_for_timeout(3000)
+                    return p
+            except Exception:
+                continue
+        # 3) fallback: baru buka tab baru jika benar-benar tidak ada SYGAP tab
         page = self.browser_manager.open_url(INCIDENT_DASHBOARD_URL)
         if page:
             page.wait_for_load_state("domcontentloaded", timeout=15000)

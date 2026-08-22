@@ -537,23 +537,16 @@ class BrowserManager:
             else:
                 log("WARNING: Gagal buka BISCUIT")
 
-        # Bersihkan tab SYGAP REQUEST yang nyasar di profil INCIDENT (dari launch lama yang pakai DASHBOARD_URL)
+        # Final dedup: pastikan hanya 1 SYGAP tab di chrome INCIDENT (tutup duplikat login/request)
         try:
-            # perbarui has_incident setelah buka tab baru
-            has_incident_now = has_incident or any(
-                "sygap.telkom.co.id" in (pg.url.lower() if hasattr(pg, 'url') else "") and "/incident" in pg.url.lower()
-                for pg in self.get_pages()
-            )
-            if has_incident_now:
-                for p in list(self.get_pages()):
+            sygap_pages = [p for p in self.get_pages() if "sygap.telkom.co.id" in p.url.lower()]
+            if len(sygap_pages) > 1:
+                for p in sygap_pages[1:]:
                     try:
-                        u = p.url.lower()
-                        if "sygap.telkom.co.id" in u and "/req_fulfillment" in u:
-                            p.close()
-                            log("Menutup tab SYGAP REQUEST ekstra di chrome INCIDENT")
-                            break
+                        p.close()
+                        log("Menutup tab SYGAP duplikat ekstra di chrome INCIDENT")
                     except Exception:
-                        continue
+                        pass
         except Exception:
             pass
 
