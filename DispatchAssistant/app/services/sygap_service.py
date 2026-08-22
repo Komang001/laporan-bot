@@ -727,6 +727,10 @@ class SygapService:
             if (nextBtn && nextBtn.offsetParent !== null) {{
                 nextBtn.click(); return 'NEXT_STAGE';
             }}
+            var wipNoteBtn = document.getElementById('btn_wip_note');
+            if (wipNoteBtn && wipNoteBtn.offsetParent !== null) {{
+                wipNoteBtn.click(); return 'WIP_NOTE';
+            }}
             var wipBtn = document.getElementById('btn_wip_inc');
             if (wipBtn && wipBtn.offsetParent !== null) {{
                 wipBtn.click(); return 'WIP_INC';
