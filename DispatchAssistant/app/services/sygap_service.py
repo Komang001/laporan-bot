@@ -693,7 +693,7 @@ class SygapService:
 
         try:
             ticket_page.wait_for_selector("#id_coordinator, #selectSolver, #selectIncidentOwner", timeout=8000)
-            ticket_page.wait_for_selector("#btn_next_stage, #btn_submit_request, #btn_wip_inc, #btn_update_inc, #btn_redispatch_inc", timeout=8000)
+            ticket_page.wait_for_selector("#btn_next_stage, #btn_submit_request, #btn_wip_note, #btn_wip_inc, #btn_update_inc, #btn_redispatch_inc", timeout=8000)
             ticket_page.wait_for_timeout(1500)
         except Exception:
             pass
@@ -729,50 +729,7 @@ class SygapService:
             }}
             var wipNoteBtn = document.getElementById('btn_wip_note');
             if (wipNoteBtn && wipNoteBtn.offsetParent !== null) {{
-                wipNoteBtn.click();
-                await sleep(1500);
-                // INCIDENT Work Progress modal -> isi progress_note = WIP lalu klik Work Progress di footer
-                try {{
-                    var modal = document.querySelector('#form_wip_inc')?.closest('.modal') || document.querySelector('.modal.show');
-                    var editorEl = document.querySelector('#form_wip_inc .ck-editor__editable, .modal.show .ck-editor__editable');
-                    var ta = document.getElementById('progress_note');
-                    if (editorEl) {{
-                        editorEl.focus();
-                        // coba via CKEditor API jika ada
-                        var ckInstance = null;
-                        if (window.CKEDITOR) {{
-                            for (var k in CKEDITOR.instances) {{ ckInstance = CKEDITOR.instances[k]; break; }}
-                        }}
-                        if (ckInstance && ckInstance.setData) {{
-                            ckInstance.setData('<p>WIP</p>');
-                        }} else {{
-                            editorEl.innerHTML = '<p>WIP</p>';
-                        }}
-                        editorEl.dispatchEvent(new Event('input', {{bubbles:true}}));
-                        editorEl.dispatchEvent(new Event('change', {{bubbles:true}}));
-                    }} else if (ta) {{
-                        ta.style.display = 'block';
-                        ta.value = 'WIP';
-                        ta.dispatchEvent(new Event('input', {{bubbles:true}}));
-                        ta.dispatchEvent(new Event('change', {{bubbles:true}}));
-                    }} else if (ta === null && editorEl === null) {{
-                        // fallback: cari textarea apapun di modal
-                        var anyTa = modal ? modal.querySelector('textarea') : null;
-                        if (anyTa) {{
-                            anyTa.style.display = 'block';
-                            anyTa.value = 'WIP';
-                            anyTa.dispatchEvent(new Event('input', {{bubbles:true}}));
-                        }}
-                    }}
-                    await sleep(800);
-                    var confirmBtn = document.getElementById('btn_wip_inc');
-                    if (confirmBtn && confirmBtn.offsetParent !== null) {{
-                        confirmBtn.click(); return 'WIP_NOTE';
-                    }}
-                    var footerBtn = document.querySelector('.modal.show #btn_wip_inc, .modal-footer #btn_wip_inc');
-                    if (footerBtn) {{ footerBtn.click(); return 'WIP_NOTE'; }}
-                }} catch(e) {{}}
-                return 'WIP_NOTE';
+                wipNoteBtn.click(); return 'WIP_NOTE_CLICKED';
             }}
             var wipBtn = document.getElementById('btn_wip_inc');
             if (wipBtn && wipBtn.offsetParent !== null) {{
@@ -796,7 +753,47 @@ class SygapService:
 
         try:
             result = ticket_page.evaluate(js_code)
-            ticket_page.wait_for_timeout(2000)
+            ticket_page.wait_for_timeout(1500)
+            # INCIDENT: klik btn_wip_note hanya buka modal, perlu isi WIP dulu baru klik Work Progress di footer
+            if result == 'WIP_NOTE_CLICKED':
+                try:
+                    ticket_page.wait_for_selector("#form_wip_inc, .modal.show", timeout=5000)
+                    ticket_page.wait_for_timeout(1000)
+                    # Isi Work Progress Note = WIP (CKEditor atau textarea)
+                    editor = ticket_page.locator("#form_wip_inc .ck-editor__editable, .modal.show .ck-editor__editable").first
+                    if editor.count() > 0:
+                        editor.click()
+                        ticket_page.wait_for_timeout(500)
+                        ticket_page.keyboard.press("Control+a")
+                        ticket_page.keyboard.press("Backspace")
+                        ticket_page.wait_for_timeout(300)
+                        ticket_page.keyboard.type("WIP", delay=50)
+                        ticket_page.wait_for_timeout(500)
+                    else:
+                        ta = ticket_page.locator("#progress_note").first
+                        if ta.count() > 0:
+                            ticket_page.evaluate("() => { const el=document.getElementById('progress_note'); if(el) el.style.display='block'; }")
+                            ta.fill("WIP")
+                            ticket_page.wait_for_timeout(500)
+                    # Klik Work Progress di footer modal
+                    confirm = ticket_page.locator("#btn_wip_inc").first
+                    if confirm.count() == 0:
+                        confirm = ticket_page.locator(".modal-footer #btn_wip_inc, .modal.show #btn_wip_inc").first
+                    if confirm.count() > 0:
+                        confirm.scroll_into_view_if_needed()
+                        ticket_page.wait_for_timeout(500)
+                        confirm.click()
+                        ticket_page.wait_for_timeout(3000)
+                        return 'WIP_NOTE'
+                    # fallback: tombol Work Progress mana pun di modal
+                    btn = ticket_page.locator(".modal.show button:has-text('Work Progress')").last
+                    if btn.count() > 0:
+                        btn.click()
+                        ticket_page.wait_for_timeout(3000)
+                        return 'WIP_NOTE'
+                except Exception as e:
+                    print(f"WIP modal handling error: {e}")
+                return 'WIP_NOTE'
             return result
         except Exception as e:
             print(f"take_ownership JS error: {e}")
