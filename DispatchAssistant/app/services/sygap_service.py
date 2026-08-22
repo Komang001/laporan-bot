@@ -49,6 +49,65 @@ class SygapService:
             raise Exception("Dashboard INCIDENT tidak ditemukan. Buka /incident dulu.")
         return page
 
+    def _wait_for_sygap_login(self, page, log, timeout=180):
+        """Tunggu user login SYGAP manual jika masih di halaman login."""
+        try:
+            if "login" not in page.url.lower():
+                return True
+        except Exception:
+            return True
+        log("SYGAP belum login! Silakan login manual di tab SYGAP (maks 180 detik)...")
+        log(f"Buka tab SYGAP lalu login ke {page.url[:60]}")
+        waited = 0
+        while waited < timeout:
+            if self._stopped():
+                log("STOP requested - aborting")
+                return False
+            page.wait_for_timeout(5000)
+            waited += 5
+            try:
+                url = page.url.lower()
+                if "login" not in url and "sygap.telkom.co.id" in url:
+                    log(f"Login berhasil setelah {waited}s - lanjut.")
+                    page.wait_for_timeout(2000)
+                    return True
+            except Exception:
+                continue
+            if waited % 30 == 0:
+                log(f"  Menunggu login... ({waited}s/{timeout}s)")
+        log("Waktu tunggu login habis. Silakan login manual lalu START lagi.")
+        return False
+
+    def _wait_for_biscuit_login(self, log, timeout=180):
+        """Tunggu user login BISCUIT manual jika masih di halaman login."""
+        try:
+            page = self.browser_manager.get_biscuit_page()
+            if not page or not self.browser_manager.is_page_alive(page):
+                return True  # tidak ada tab biscuit -> biar flow yang tangani
+            if "login" not in page.url.lower():
+                return True
+        except Exception:
+            return True
+        log("BISCUIT belum login! Silakan login manual di tab BISCUIT (maks 180 detik)...")
+        waited = 0
+        while waited < timeout:
+            if self._stopped():
+                return False
+            page.wait_for_timeout(5000)
+            waited += 5
+            try:
+                url = page.url.lower()
+                if "login" not in url and "biscuit-dashboard" in url:
+                    log(f"BISCUIT login berhasil setelah {waited}s - lanjut.")
+                    page.wait_for_timeout(2000)
+                    return True
+            except Exception:
+                continue
+            if waited % 30 == 0:
+                log(f"  Menunggu BISCUIT login... ({waited}s/{timeout}s)")
+        log("Waktu tunggu BISCUIT login habis. Silakan login manual lalu START lagi.")
+        return False
+
     def navigate_to_incident_dashboard(self):
         from config.settings import INCIDENT_DASHBOARD_URL
         # 1) coba pakai tab incident yang sudah ada (bisa masih di /login)
@@ -2378,6 +2437,22 @@ class SygapService:
 
         page = self.navigate_to_incident_dashboard()
         log(f"Dashboard INCIDENT loaded: {page.url[:60]}")
+
+        if not self._wait_for_sygap_login(page, log):
+            return results
+        if not self._wait_for_biscuit_login(log):
+            return results
+        # pastikan sudah di /incident setelah login (kadang redirect ke landing)
+        try:
+            if "/incident" not in page.url.lower():
+                page = self.navigate_to_incident_dashboard()
+                log(f"Dashboard INCIDENT reloaded: {page.url[:60]}")
+                if not self._wait_for_sygap_login(page, log):
+                    return results
+                if not self._wait_for_biscuit_login(log):
+                    return results
+        except Exception:
+            pass
 
         self.filter_dispatch_incident(page)
         log("Filtered: dispatch INCIDENT")
