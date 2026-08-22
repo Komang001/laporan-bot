@@ -351,7 +351,17 @@ class BrowserManager:
             return page
 
         self.refresh_cache()
-        return self.cache.get("incident_dashboard")
+        page = self.cache.get("incident_dashboard")
+        if page and self.is_page_alive(page):
+            return page
+        # fallback: SYGAP tab masih di /login (belum ke /incident) — tetap anggap dashboard
+        for p in self.get_pages():
+            try:
+                if "sygap.telkom.co.id" in p.url.lower():
+                    return p
+            except Exception:
+                continue
+        return None
 
     # ==================================================
     # Active Ticket
@@ -484,16 +494,32 @@ class BrowserManager:
         existing = self.get_pages()
         has_incident = False
         has_biscuit = False
+        sygap_count = 0
 
         for p in existing:
             try:
                 url = p.url.lower()
-                if "sygap.telkom.co.id" in url and "/incident" in url:
+                if "sygap.telkom.co.id" in url:
                     has_incident = True
+                    sygap_count += 1
                 if "biscuit-dashboard" in url:
                     has_biscuit = True
             except Exception:
                 continue
+        # deduplikasi: jangan biarkan >1 SYGAP tab di profil INCIDENT
+        if sygap_count > 1:
+            kept = False
+            for p in list(existing):
+                try:
+                    if "sygap.telkom.co.id" not in p.url.lower():
+                        continue
+                    if not kept:
+                        kept = True
+                        continue
+                    p.close()
+                    log("Menutup tab SYGAP duplikat di chrome INCIDENT")
+                except Exception:
+                    continue
 
         if not has_incident:
             log(f"Opening SYGAP INCIDENT: {INCIDENT_DASHBOARD_URL[:50]}...")
