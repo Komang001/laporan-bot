@@ -17,6 +17,7 @@ class BrowserManager:
 
         self.cache = {
             "dashboard": None,
+            "incident_dashboard": None,
             "biscuit": None,
             "ticket": None,
         }
@@ -159,6 +160,7 @@ class BrowserManager:
 
         self.cache = {
             "dashboard": None,
+            "incident_dashboard": None,
             "biscuit": None,
             "ticket": None,
         }
@@ -278,6 +280,7 @@ class BrowserManager:
 
         self.cache = {
             "dashboard": None,
+            "incident_dashboard": None,
             "biscuit": None,
             "ticket": None,
             "insera_gamas": None,
@@ -296,6 +299,14 @@ class BrowserManager:
                 ):
 
                     self.cache["dashboard"] = page
+
+                elif (
+                    "sygap.telkom.co.id" in url
+                    and "/incident" in url
+                    and "/form/" not in url
+                ):
+
+                    self.cache["incident_dashboard"] = page
 
                 elif (
                     "sygap.telkom.co.id" in url
@@ -328,6 +339,16 @@ class BrowserManager:
 
         self.refresh_cache()
         return self.cache.get("dashboard")
+
+    def get_incident_dashboard_page(self):
+
+        page = self.cache.get("incident_dashboard")
+
+        if self.is_page_alive(page):
+            return page
+
+        self.refresh_cache()
+        return self.cache.get("incident_dashboard")
 
     # ==================================================
     # Active Ticket
@@ -450,6 +471,51 @@ class BrowserManager:
             log("BISCUIT tab opened. SYGAP already open.")
         elif has_biscuit:
             log("SYGAP tab opened. BISCUIT already open.")
+
+    def open_required_tabs_incident(self, log_callback=None):
+
+        log = log_callback or (lambda msg: None)
+
+        from config.settings import INCIDENT_DASHBOARD_URL, BISCUIT_URL
+
+        existing = self.get_pages()
+        has_incident = False
+        has_biscuit = False
+
+        for p in existing:
+            try:
+                url = p.url.lower()
+                if "sygap.telkom.co.id" in url and "/incident" in url:
+                    has_incident = True
+                if "biscuit-dashboard" in url:
+                    has_biscuit = True
+            except Exception:
+                continue
+
+        if not has_incident:
+            log(f"Opening SYGAP INCIDENT: {INCIDENT_DASHBOARD_URL[:50]}...")
+            page = self.open_url(INCIDENT_DASHBOARD_URL)
+            if page:
+                log("SYGAP INCIDENT tab opened.")
+            else:
+                log("WARNING: Gagal buka SYGAP INCIDENT")
+
+        if not has_biscuit:
+            log(f"Opening BISCUIT: {BISCUIT_URL[:50]}...")
+            page = self.open_url(BISCUIT_URL)
+            if page:
+                log("BISCUIT tab opened.")
+            else:
+                log("WARNING: Gagal buka BISCUIT")
+
+        self.refresh_cache()
+
+        if has_incident and has_biscuit:
+            log("SYGAP INCIDENT & BISCUIT tabs already open.")
+        elif has_incident:
+            log("BISCUIT tab opened. SYGAP INCIDENT already open.")
+        elif has_biscuit:
+            log("SYGAP INCIDENT tab opened. BISCUIT already open.")
 
     # ==================================================
     # Open SYGAP + INSERA tabs (for GAMAS RELATIONS)

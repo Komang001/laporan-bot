@@ -33,6 +33,8 @@ class FeatureTelegramBot:
     FEATURE_LABELS = {
         "canclwork": "CANCLWORK WO",
         "dispatch": "DISPATCH",
+        "dispatch_incident": "DISPATCH INCIDENT",
+        "change_service_id": "CHANGE SERVICE ID",
         "gamas_relations": "GAMAS RELATIONS",
     }
 
@@ -286,6 +288,7 @@ class TelegramRemote:
         self.app.add_handler(CommandHandler("to_bima", self._cmd_start_to_bima))
         self.app.add_handler(CommandHandler("canclwork", self._cmd_start_canclwork))
         self.app.add_handler(CommandHandler("dispatch", self._cmd_start_dispatch))
+        self.app.add_handler(CommandHandler("dispatch_incident", self._cmd_start_dispatch_incident))
         self.app.add_handler(CommandHandler("gamas", self._cmd_start_gamas))
 
         self._setup_report_schedule()
@@ -315,6 +318,7 @@ class TelegramRemote:
             BotCommand("to_bima", "Start TO MO-BIMA"),
             BotCommand("canclwork", "Start CANCLWORK WO"),
             BotCommand("dispatch", "Start DISPATCH"),
+            BotCommand("dispatch_incident", "Start DISPATCH INCIDENT"),
             BotCommand("gamas", "Start GAMAS RELATIONS"),
             BotCommand("stop", "Stop semua fitur"),
         ]
@@ -631,6 +635,7 @@ class TelegramRemote:
             "/to_bima    - Start TO MO-BIMA",
             "/canclwork  - Start CANCLWORK WO",
             "/dispatch   - Start DISPATCH",
+            "/dispatch_incident - Start DISPATCH INCIDENT",
             "/gamas      - Start GAMAS RELATIONS",
             "",
             "/stop       - Stop semua fitur",
@@ -673,12 +678,13 @@ class TelegramRemote:
             return
 
         lines = ["Status Fitur:", ""]
-        features = ["to_insera", "to_bima", "canclwork", "dispatch", "gamas_relations"]
+        features = ["to_insera", "to_bima", "canclwork", "dispatch", "dispatch_incident", "gamas_relations"]
         labels = {
             "to_insera": "TO MO-INSERA",
             "to_bima": "TO MO-BIMA",
             "canclwork": "CANCLWORK WO",
             "dispatch": "DISPATCH",
+            "dispatch_incident": "DISPATCH INCIDENT",
             "gamas_relations": "GAMAS RELATIONS",
         }
         for key in features:
@@ -732,6 +738,12 @@ class TelegramRemote:
             return
         await self._start_feature(update, "dispatch", None, None)
 
+    async def _cmd_start_dispatch_incident(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if not self._is_authorized(update):
+            await update.message.reply_text("Akses ditolak.")
+            return
+        await self._start_feature(update, "dispatch_incident", None, None)
+
     async def _cmd_start_gamas(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not self._is_authorized(update):
             await update.message.reply_text("Akses ditolak.")
@@ -752,6 +764,7 @@ class TelegramRemote:
             "to_bima": "TO",
             "canclwork": "CANCLWORK",
             "dispatch": "DISPATCH",
+            "dispatch_incident": "DISPATCH_INCIDENT",
             "gamas_relations": "GAMAS",
         }
         port = CHROME_PORTS.get(port_key_map.get(key, "TO"), 9222)
@@ -773,6 +786,8 @@ class TelegramRemote:
             ctrl.start_canclwork()
         elif key == "dispatch":
             ctrl.start_dispatch()
+        elif key == "dispatch_incident":
+            ctrl.start_dispatch_incident()
         elif key == "gamas_relations":
             ctrl.start_gamas_relations()
 

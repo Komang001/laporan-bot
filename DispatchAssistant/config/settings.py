@@ -24,6 +24,8 @@ CHROME_PORTS = {
     "DISPATCH": 9224,
     "GAMAS": 9225,
     "REPORT": 9226,
+    "CHANGE_SERVICE_ID": 9227,
+    "DISPATCH_INCIDENT": 9228,
 }
 
 CHROME_PROFILES = {
@@ -32,6 +34,8 @@ CHROME_PROFILES = {
     9224: r"C:\ChromeDebug_DISPATCH",
     9225: r"C:\ChromeDebug_GAMAS",
     9226: r"C:\ChromeDebug_REPORT",
+    9227: r"C:\ChromeDebug_CHANGE_SERVICE_ID",
+    9228: r"C:\ChromeDebug_INCIDENT",
 }
 
 
@@ -40,6 +44,7 @@ CHROME_PROFILES = {
 # ==================================================
 
 DASHBOARD_URL = "https://sygap.telkom.co.id/req_fulfillment"
+INCIDENT_DASHBOARD_URL = "https://sygap.telkom.co.id/incident"
 
 BISCUIT_URL = (
     "https://biscuit-dashboard-dev-playground.apps.mypaas.telkom.co.id"
@@ -50,6 +55,20 @@ GAMAS_RELATIONS_URL = (
     "https://oss-incident.telkom.co.id"
     "/jw/web/userview/ticketIncidentService/ticketIncidentService/_/gamasRelations"
 )
+
+# ==================================================
+# OSS Incident API (Service Type Update)
+# ==================================================
+
+OSS_INCIDENT_API_URL = os.environ.get(
+    "OSS_INCIDENT_API_URL",
+    "https://oss-incident.telkom.co.id/jw/web/json/plugin/id.co.itasoft.telkom.oss.plugin.CompleteActivityTicketIncidentApiV4/service?=&",
+)
+
+# Secrets diambil dari .env (tidak disimpan di dalam kode/git)
+OSS_INCIDENT_API_ID = os.environ.get("OSS_INCIDENT_API_ID", "")
+OSS_INCIDENT_API_KEY = os.environ.get("OSS_INCIDENT_API_KEY", "")
+
 
 
 # ==================================================
@@ -77,16 +96,20 @@ INSERA_GROUP_ID = "80148276"
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")  # dari .env (jangan isi manual di sini)
 
 # Token bot per fitur (masing-masing kirim log live fiturnya + remote control fitur itu).
-# Isi di .env: TELEGRAM_BOT_TOKEN_CANCLWORK, TELEGRAM_BOT_TOKEN_DISPATCH, TELEGRAM_BOT_TOKEN_GAMAS
+# Isi di .env: TELEGRAM_BOT_TOKEN_CANCLWORK, TELEGRAM_BOT_TOKEN_DISPATCH, TELEGRAM_BOT_TOKEN_GAMAS, TELEGRAM_BOT_TOKEN_CHANGE_SERVICE_ID
 TELEGRAM_BOT_TOKEN_CANCLWORK = os.environ.get("TELEGRAM_BOT_TOKEN_CANCLWORK", "")
 TELEGRAM_BOT_TOKEN_DISPATCH = os.environ.get("TELEGRAM_BOT_TOKEN_DISPATCH", "")
+TELEGRAM_BOT_TOKEN_DISPATCH_INCIDENT = os.environ.get("TELEGRAM_BOT_TOKEN_DISPATCH_INCIDENT", "")
 TELEGRAM_BOT_TOKEN_GAMAS = os.environ.get("TELEGRAM_BOT_TOKEN_GAMAS", "")
+TELEGRAM_BOT_TOKEN_CHANGE_SERVICE_ID = os.environ.get("TELEGRAM_BOT_TOKEN_CHANGE_SERVICE_ID", "")
 
 # Chat ID tujuan log per fitur. Kosong -> fallback ke TELEGRAM_ALLOWED_USER_IDS.
 TELEGRAM_CHAT_IDS = {
     "canclwork": [],
     "dispatch": [],
+    "dispatch_incident": [],
     "gamas_relations": [],
+    "change_service_id": [],
 }
 
 TELEGRAM_ALLOWED_USER_IDS = []  # chat ID admin/pemilik bot; kosongkan = semua boleh akses
@@ -116,18 +139,19 @@ REPORT_SCHEDULE_INTERVAL_MINUTES = 30
 
 # Shift kerja: header laporan mengikuti shift yang sedang aktif saat report
 # dijalankan. Deteksi otomatis dari jam server.
-#   Shift 1: 00:00-09:00, Shift 2: 08:00-15:00, Shift 3: 15:00-24:00
-# Pergantian shift 2 -> 3 terjadi di 15:00; report tepat di jam AKHIR sebuah
-# shift masih dihitung shift itu (mis. 09:00 -> Shift 1, 15:00 -> Shift 2,
-# 00:00 -> Shift 3). Jika dua shift memuat waktu sama (overlap 08:00-09:00),
-# shift yang BERAKHIR paling awal menang.
+#   Shift 1: 00:00-09:00, Shift 2: 09:00-16:30, Shift 3: 16:30-23:59
+# Pergantian shift 1 -> 2 di 09:00, shift 2 -> 3 di 16:30; report tepat di
+# jam AKHIR sebuah shift masih dihitung shift itu (mis. 09:00 -> Shift 1,
+# 16:30 -> Shift 2). Khusus 00:00 -> Shift 1 (bukan Shift 3), karena hari
+# baru dimulai. Jika dua shift memuat waktu sama (overlap), shift yang
+# BERAKHIR paling awal menang.
 # Daftar orang per report = hanya yang MASUK di shift aktif (dari sheet
 # jadwal), bukan semua piket hari itu.
 # 'end' = "00:00" berarti akhir hari (lewat tengah malam).
 REPORT_SHIFTS = [
     {"label": "Shift 1", "level": "L1", "start": "00:00", "end": "09:00"},
-    {"label": "Shift 2", "level": "L1", "start": "08:00", "end": "15:00"},
-    {"label": "Shift 3", "level": "L1", "start": "15:00", "end": "00:00"},
+    {"label": "Shift 2", "level": "L1", "start": "09:00", "end": "16:30"},
+    {"label": "Shift 3", "level": "L1", "start": "16:30", "end": "23:59"},
 ]
 
 # Google Sheet jadwal shift (export CSV public, tanpa login).

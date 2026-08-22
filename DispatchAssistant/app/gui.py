@@ -148,6 +148,26 @@ FEATURES = [
         "port_key": "DISPATCH",
     },
     {
+        "key": "dispatch_incident",
+        "label": "DISPATCH INCIDENT",
+        "icon": "\U0001F692",
+        "desc": "Dispatch tiket INCIDENT via BISCUIT",
+        "tag": "⚡ BISCUIT API • INCIDENT",
+        "color": "#DC2626",
+        "hover": "#B91C1C",
+        "port_key": "DISPATCH_INCIDENT",
+    },
+    {
+        "key": "change_service_id",
+        "label": "CHANGE SERVICE ID",
+        "icon": "\U0001F504",
+        "desc": "Ubah Service ID (UI) & Type (API)",
+        "tag": "🖥️ UI + ⚡ API",
+        "color": "#0D9488",
+        "hover": "#0F766E",
+        "port_key": "CHANGE_SERVICE_ID",
+    },
+    {
         "key": "gamas_relations",
         "label": "GAMAS RELATIONS",
         "icon": "\U0001F517",
@@ -175,11 +195,13 @@ CHANNEL_TAB_MAP = {
     "to_bima": "TO",
     "canclwork": "CANCLWORK",
     "dispatch": "DISPATCH",
+    "dispatch_incident": "DISPATCH",
+    "change_service_id": "SERVICE_ID",
     "gamas_relations": "GAMAS",
     "report": "REPORT",
 }
 
-LOG_TABS = ["SEMUA", "TO", "CANCLWORK", "DISPATCH", "GAMAS", "REPORT"]
+LOG_TABS = ["SEMUA", "TO", "CANCLWORK", "DISPATCH", "SERVICE_ID", "GAMAS", "REPORT"]
 
 STATUS_COLORS = {
     "READY": ("#059669", "#34D399"),
@@ -623,6 +645,10 @@ class DispatchAssistantGUI(ctk.CTk):
             ctrl.start_canclwork()
         elif key == "dispatch":
             ctrl.start_dispatch()
+        elif key == "dispatch_incident":
+            ctrl.start_dispatch_incident()
+        elif key == "change_service_id":
+            ctrl.start_change_service_id()
         elif key == "gamas_relations":
             ctrl.start_gamas_relations()
 
@@ -822,11 +848,13 @@ class DispatchAssistantGUI(ctk.CTk):
         self.write_log("=== MULTI-CHROME CDP MODE ===")
         self.write_log("Setiap fitur terisolasi pada Chrome CDP terpisah.")
         self.write_log("Daftar alokasi port:")
-        self.write_log(f"  TO        -> port {CHROME_PORTS['TO']}")
-        self.write_log(f"  CANCLWORK -> port {CHROME_PORTS['CANCLWORK']}")
-        self.write_log(f"  DISPATCH  -> port {CHROME_PORTS['DISPATCH']}")
-        self.write_log(f"  GAMAS     -> port {CHROME_PORTS['GAMAS']}")
-        self.write_log(f"  REPORT    -> port {CHROME_PORTS['REPORT']}")
+        self.write_log(f"  TO                -> port {CHROME_PORTS['TO']}")
+        self.write_log(f"  CANCLWORK         -> port {CHROME_PORTS['CANCLWORK']}")
+        self.write_log(f"  DISPATCH          -> port {CHROME_PORTS['DISPATCH']}")
+        self.write_log(f"  DISPATCH INCIDENT -> port {CHROME_PORTS['DISPATCH_INCIDENT']}")
+        self.write_log(f"  CHANGE SERVICE ID -> port {CHROME_PORTS['CHANGE_SERVICE_ID']}")
+        self.write_log(f"  GAMAS             -> port {CHROME_PORTS['GAMAS']}")
+        self.write_log(f"  REPORT            -> port {CHROME_PORTS['REPORT']}")
         self.write_log("=============================")
 
     def _setup_tags(self, box):
@@ -994,7 +1022,9 @@ class DispatchAssistantGUI(ctk.CTk):
         from config.settings import (
             TELEGRAM_BOT_TOKEN_CANCLWORK,
             TELEGRAM_BOT_TOKEN_DISPATCH,
+            TELEGRAM_BOT_TOKEN_DISPATCH_INCIDENT,
             TELEGRAM_BOT_TOKEN_GAMAS,
+            TELEGRAM_BOT_TOKEN_CHANGE_SERVICE_ID,
             TELEGRAM_CHAT_IDS,
             TELEGRAM_ALLOWED_USER_IDS,
             REPORT_CHAT_IDS,
@@ -1003,6 +1033,8 @@ class DispatchAssistantGUI(ctk.CTk):
         specs = [
             ("canclwork", TELEGRAM_BOT_TOKEN_CANCLWORK, "CANCLWORK"),
             ("dispatch", TELEGRAM_BOT_TOKEN_DISPATCH, "DISPATCH"),
+            ("dispatch_incident", TELEGRAM_BOT_TOKEN_DISPATCH_INCIDENT, "DISPATCH_INCIDENT"),
+            ("change_service_id", TELEGRAM_BOT_TOKEN_CHANGE_SERVICE_ID, "CHANGE_SERVICE_ID"),
             ("gamas_relations", TELEGRAM_BOT_TOKEN_GAMAS, "GAMAS"),
         ]
         self.feature_telegrams = {}
@@ -1372,6 +1404,7 @@ class DispatchAssistantGUI(ctk.CTk):
             ("to_bima", "TO MO-BIMA"),
             ("canclwork", "CANCLWORK WO"),
             ("dispatch", "DISPATCH"),
+            ("change_service_id", "CHANGE SERVICE ID"),
             ("gamas_relations", "GAMAS RELATIONS"),
             ("report", "REPORT HARIAN"),
         ]

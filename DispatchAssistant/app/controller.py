@@ -518,6 +518,336 @@ class DispatchController:
                 self.on_complete()
 
     # ==========================================
+    # Start DISPATCH INCIDENT
+    # ==========================================
+
+    def start_dispatch_incident(self):
+
+        if self.running:
+
+            self.gui.write_log("Assistant already running.")
+
+            return
+
+        self.running = True
+
+        self.gui.update_status("STARTING")
+
+        self.gui.write_log("=" * 40)
+
+        self.gui.write_log("Starting DISPATCH INCIDENT...")
+
+        self.gui.write_log("=" * 40)
+
+        thread = threading.Thread(
+            target=self._run_auto_dispatch_incident,
+            daemon=True,
+        )
+
+        thread.start()
+
+    # ==========================================
+    # Run DISPATCH INCIDENT - Background Thread
+    # ==========================================
+
+    def _run_auto_dispatch_incident(self):
+
+        connected_in_thread = False
+
+        try:
+
+            while self.running:
+
+                self.gui.write_log("Step 1: Launching Chrome...")
+
+                self.gui.update_status("LAUNCHING")
+
+                if not self.browser_manager.is_chrome_running():
+
+                    launched = self.browser_manager.launch(
+                        log_callback=self.gui.write_log
+                    )
+
+                    if not launched:
+
+                        self.gui.write_log("ERROR: Gagal launch Chrome")
+
+                        self.gui.update_status("ERROR")
+
+                        return
+
+                self.gui.write_log("Step 2: Connecting browser...")
+
+                self.gui.update_status("CONNECTING")
+
+                try:
+
+                    self.browser_manager.connect()
+
+                    connected_in_thread = True
+
+                except Exception as e:
+
+                    self.gui.write_log(f"ERROR: Browser gagal: {e}")
+
+                    self.gui.update_status("ERROR")
+
+                    return
+
+                self.gui.write_log("Browser connected.")
+
+                self.gui.write_log("Opening SYGAP INCIDENT + BISCUIT tabs...")
+
+                try:
+                    self.browser_manager.open_required_tabs_incident(
+                        log_callback=self.gui.write_log
+                    )
+                except AttributeError:
+                    self.browser_manager.open_required_tabs(
+                        log_callback=self.gui.write_log
+                    )
+
+                self.gui.write_log("Step 3: Scanning DISPATCH INCIDENT tickets...")
+
+                self.gui.update_status("SCANNING")
+
+                sygap = SygapService(
+                    browser_manager=self.browser_manager,
+                    stop_check=lambda: not self.running,
+                )
+
+                tickets = sygap.process_dispatch_incident_tickets(
+                    log_callback=self.gui.write_log,
+                )
+
+                if not self.running:
+                    self.gui.write_log("STOP - scan dihentikan user.")
+                    return
+
+                if not tickets:
+
+                    self.gui.write_log("No DISPATCH INCIDENT tickets found.")
+
+                else:
+
+                    self.gui.write_log(f"Found {len(tickets)} DISPATCH INCIDENT ticket(s)!")
+
+                    for idx, t in enumerate(tickets):
+
+                        code = t["request_code"]
+
+                        og = t.get("owner_group", t.get("type", ""))
+
+                        self.gui.write_log(f"  [{idx+1}] {code} -> {og} -> BISCUIT [INCIDENT]")
+
+                self.gui.write_log("")
+
+                self.gui.write_log("=" * 40)
+
+                self.gui.write_log("DISPATCH INCIDENT SELESAI")
+
+                self.gui.write_log("=" * 40)
+
+                self.gui.write_log(f"Menunggu {LOOP_INTERVAL // 60} menit...")
+
+                self.gui.update_status("WAITING")
+
+                for _ in range(LOOP_INTERVAL):
+
+                    if not self.running:
+
+                        break
+
+                    time.sleep(1)
+
+        except Exception as e:
+
+            self.gui.write_log(f"ERROR: {e}")
+
+            self.gui.update_status("ERROR")
+
+        finally:
+
+            self.running = False
+
+            if connected_in_thread:
+
+                try:
+
+                    self.browser_manager.disconnect()
+
+                except Exception:
+
+                    pass
+
+            if self.on_complete:
+
+                self.on_complete()
+
+    # ==========================================
+    # Start CHANGE SERVICE ID
+    # ==========================================
+
+    def start_change_service_id(self):
+
+        if self.running:
+
+            self.gui.write_log("Assistant already running.")
+
+            return
+
+        self.running = True
+
+        self.gui.update_status("STARTING")
+
+        self.gui.write_log("=" * 40)
+
+        self.gui.write_log("Starting CHANGE SERVICE ID...")
+
+        self.gui.write_log("=" * 40)
+
+        thread = threading.Thread(
+            target=self._run_auto_change_service_id,
+            daemon=True,
+        )
+
+        thread.start()
+
+    # ==========================================
+    # Run CHANGE SERVICE ID - Background Thread
+    # ==========================================
+
+    def _run_auto_change_service_id(self):
+
+        connected_in_thread = False
+
+        try:
+
+            while self.running:
+
+                self.gui.write_log("Step 1: Launching Chrome...")
+
+                self.gui.update_status("LAUNCHING")
+
+                if not self.browser_manager.is_chrome_running():
+
+                    launched = self.browser_manager.launch(
+                        log_callback=self.gui.write_log
+                    )
+
+                    if not launched:
+
+                        self.gui.write_log("ERROR: Gagal launch Chrome")
+
+                        self.gui.update_status("ERROR")
+
+                        return
+
+                self.gui.write_log("Step 2: Connecting browser...")
+
+                self.gui.update_status("CONNECTING")
+
+                try:
+
+                    self.browser_manager.connect()
+
+                    connected_in_thread = True
+
+                except Exception as e:
+
+                    self.gui.write_log(f"ERROR: Browser gagal: {e}")
+
+                    self.gui.update_status("ERROR")
+
+                    return
+
+                self.gui.write_log("Browser connected.")
+
+                self.gui.write_log("Opening SYGAP + BISCUIT tabs...")
+
+                self.browser_manager.open_required_tabs(
+                    log_callback=self.gui.write_log
+                )
+
+                self.gui.write_log("Step 3: Scanning CHANGE SERVICE ID tickets...")
+
+                self.gui.update_status("SCANNING")
+
+                sygap = SygapService(
+                    browser_manager=self.browser_manager,
+                    stop_check=lambda: not self.running,
+                )
+
+                tickets = sygap.process_change_service_id_tickets(
+                    log_callback=self.gui.write_log,
+                )
+
+                if not self.running:
+                    self.gui.write_log("STOP - scan dihentikan user.")
+                    return
+
+                if not tickets:
+
+                    self.gui.write_log("No CHANGE SERVICE ID tickets found.")
+
+                else:
+
+                    self.gui.write_log(f"Found {len(tickets)} CHANGE SERVICE ID ticket(s)!")
+
+                    for idx, t in enumerate(tickets):
+
+                        code = t["request_code"]
+
+                        inc = t.get("inc_number", "")
+                        srv = t.get("service_id", "")
+
+                        self.gui.write_log(f"  [{idx+1}] {code} -> {inc} -> {srv} -> BISCUIT UI")
+
+                self.gui.write_log("")
+
+                self.gui.write_log("=" * 40)
+
+                self.gui.write_log("CHANGE SERVICE ID SELESAI")
+
+                self.gui.write_log("=" * 40)
+
+                self.gui.write_log(f"Menunggu {LOOP_INTERVAL // 60} menit...")
+
+                self.gui.update_status("WAITING")
+
+                for _ in range(LOOP_INTERVAL):
+
+                    if not self.running:
+
+                        break
+
+                    time.sleep(1)
+
+        except Exception as e:
+
+            self.gui.write_log(f"ERROR: {e}")
+
+            self.gui.update_status("ERROR")
+
+        finally:
+
+            self.running = False
+
+            if connected_in_thread:
+
+                try:
+
+                    self.browser_manager.disconnect()
+
+                except Exception:
+
+                    pass
+
+            if self.on_complete:
+
+                self.on_complete()
+
+    # ==========================================
     # Start REPORT Harian
     # ==========================================
 
