@@ -729,7 +729,50 @@ class SygapService:
             }}
             var wipNoteBtn = document.getElementById('btn_wip_note');
             if (wipNoteBtn && wipNoteBtn.offsetParent !== null) {{
-                wipNoteBtn.click(); return 'WIP_NOTE';
+                wipNoteBtn.click();
+                await sleep(1500);
+                // INCIDENT Work Progress modal -> isi progress_note = WIP lalu klik Work Progress di footer
+                try {{
+                    var modal = document.querySelector('#form_wip_inc')?.closest('.modal') || document.querySelector('.modal.show');
+                    var editorEl = document.querySelector('#form_wip_inc .ck-editor__editable, .modal.show .ck-editor__editable');
+                    var ta = document.getElementById('progress_note');
+                    if (editorEl) {{
+                        editorEl.focus();
+                        // coba via CKEditor API jika ada
+                        var ckInstance = null;
+                        if (window.CKEDITOR) {{
+                            for (var k in CKEDITOR.instances) {{ ckInstance = CKEDITOR.instances[k]; break; }}
+                        }}
+                        if (ckInstance && ckInstance.setData) {{
+                            ckInstance.setData('<p>WIP</p>');
+                        }} else {{
+                            editorEl.innerHTML = '<p>WIP</p>';
+                        }}
+                        editorEl.dispatchEvent(new Event('input', {{bubbles:true}}));
+                        editorEl.dispatchEvent(new Event('change', {{bubbles:true}}));
+                    }} else if (ta) {{
+                        ta.style.display = 'block';
+                        ta.value = 'WIP';
+                        ta.dispatchEvent(new Event('input', {{bubbles:true}}));
+                        ta.dispatchEvent(new Event('change', {{bubbles:true}}));
+                    }} else if (ta === null && editorEl === null) {{
+                        // fallback: cari textarea apapun di modal
+                        var anyTa = modal ? modal.querySelector('textarea') : null;
+                        if (anyTa) {{
+                            anyTa.style.display = 'block';
+                            anyTa.value = 'WIP';
+                            anyTa.dispatchEvent(new Event('input', {{bubbles:true}}));
+                        }}
+                    }}
+                    await sleep(800);
+                    var confirmBtn = document.getElementById('btn_wip_inc');
+                    if (confirmBtn && confirmBtn.offsetParent !== null) {{
+                        confirmBtn.click(); return 'WIP_NOTE';
+                    }}
+                    var footerBtn = document.querySelector('.modal.show #btn_wip_inc, .modal-footer #btn_wip_inc');
+                    if (footerBtn) {{ footerBtn.click(); return 'WIP_NOTE'; }}
+                }} catch(e) {{}}
+                return 'WIP_NOTE';
             }}
             var wipBtn = document.getElementById('btn_wip_inc');
             if (wipBtn && wipBtn.offsetParent !== null) {{
