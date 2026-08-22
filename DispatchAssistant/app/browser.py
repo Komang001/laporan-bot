@@ -79,9 +79,12 @@ class BrowserManager:
         # Buka langsung halaman kerja supaya window tidak about:blank
         # (dan sesi login mudah dicek/diisi manual).
         try:
-            from config.settings import DASHBOARD_URL
+            from config.settings import DASHBOARD_URL, INCIDENT_DASHBOARD_URL, CHROME_PORTS
 
-            args.append(DASHBOARD_URL)
+            if self.cdp_port == CHROME_PORTS.get("DISPATCH_INCIDENT"):
+                args.append(INCIDENT_DASHBOARD_URL)
+            else:
+                args.append(DASHBOARD_URL)
         except Exception:
             pass
 
@@ -507,6 +510,26 @@ class BrowserManager:
                 log("BISCUIT tab opened.")
             else:
                 log("WARNING: Gagal buka BISCUIT")
+
+        # Bersihkan tab SYGAP REQUEST yang nyasar di profil INCIDENT (dari launch lama yang pakai DASHBOARD_URL)
+        try:
+            # perbarui has_incident setelah buka tab baru
+            has_incident_now = has_incident or any(
+                "sygap.telkom.co.id" in (pg.url.lower() if hasattr(pg, 'url') else "") and "/incident" in pg.url.lower()
+                for pg in self.get_pages()
+            )
+            if has_incident_now:
+                for p in list(self.get_pages()):
+                    try:
+                        u = p.url.lower()
+                        if "sygap.telkom.co.id" in u and "/req_fulfillment" in u:
+                            p.close()
+                            log("Menutup tab SYGAP REQUEST ekstra di chrome INCIDENT")
+                            break
+                    except Exception:
+                        continue
+        except Exception:
+            pass
 
         self.refresh_cache()
 
