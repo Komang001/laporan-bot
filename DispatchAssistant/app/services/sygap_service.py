@@ -327,11 +327,14 @@ class SygapService:
                 pass
 
     def read_ticket_status(self, ticket_page):
-        """Quick status check from form field - tanpa tunggu full load"""
+        """Quick status check from form field - support REQUEST & INCIDENT"""
         selectors = [
             "select[name*='status'] option[selected]",
             "select[name*='status']",
             "#status",
+            "#select_incident_status",
+            "select[id*='incident_status']",
+            "select[id*='select_incident']",
         ]
         for sel in selectors:
             try:
@@ -689,8 +692,8 @@ class SygapService:
             pass
 
         try:
-            ticket_page.wait_for_selector("#id_coordinator", timeout=10000)
-            ticket_page.wait_for_selector("#btn_next_stage, #btn_submit_request", timeout=10000)
+            ticket_page.wait_for_selector("#id_coordinator, #selectSolver, #selectIncidentOwner", timeout=8000)
+            ticket_page.wait_for_selector("#btn_next_stage, #btn_submit_request, #btn_wip_inc, #btn_update_inc, #btn_redispatch_inc", timeout=8000)
             ticket_page.wait_for_timeout(1500)
         except Exception:
             pass
@@ -705,8 +708,8 @@ class SygapService:
             }}
             if (!window.jQuery) return 'NO_JQUERY';
 
-            // Only set Request Coordinator (solver) to user
-            var ic = document.getElementById('id_coordinator');
+            // Support REQUEST (id_coordinator) & INCIDENT (selectSolver / selectIncidentOwner)
+            var ic = document.getElementById('id_coordinator') || document.getElementById('selectSolver') || document.getElementById('selectIncidentOwner');
             if (!ic) return 'NO_IC';
             var $ic = jQuery(ic);
             if ($ic.find('option[value="{USER_ID}"]').length === 0) {{
@@ -723,6 +726,18 @@ class SygapService:
             var nextBtn = document.getElementById('btn_next_stage');
             if (nextBtn && nextBtn.offsetParent !== null) {{
                 nextBtn.click(); return 'NEXT_STAGE';
+            }}
+            var wipBtn = document.getElementById('btn_wip_inc');
+            if (wipBtn && wipBtn.offsetParent !== null) {{
+                wipBtn.click(); return 'WIP_INC';
+            }}
+            var redispatchBtn = document.getElementById('btn_redispatch_inc');
+            if (redispatchBtn && redispatchBtn.offsetParent !== null) {{
+                redispatchBtn.click(); return 'REDISPATCH';
+            }}
+            var updateBtn = document.getElementById('btn_update_inc');
+            if (updateBtn && updateBtn.offsetParent !== null) {{
+                updateBtn.click(); return 'UPDATE_INC';
             }}
             var saveBtn = document.getElementById('btn_submit_request');
             if (saveBtn && saveBtn.offsetParent !== null) {{
@@ -741,13 +756,16 @@ class SygapService:
             return None
 
     def read_coordinator_user_id(self, ticket_page):
-        """Return user ID Request Coordinator saat ini dari #id_coordinator."""
+        """Return user ID Coordinator saat ini (REQUEST #id_coordinator / INCIDENT #selectSolver)."""
         try:
             val = ticket_page.evaluate("""
                 (function() {
-                    var el = document.getElementById('id_coordinator');
-                    if (!el) return '';
-                    return el.value || '';
+                    var ids = ['id_coordinator','selectSolver','selectIncidentOwner'];
+                    for (var i=0;i<ids.length;i++){
+                        var el=document.getElementById(ids[i]);
+                        if(el) return el.value || '';
+                    }
+                    return '';
                 })();
             """)
             return str(val).strip()
@@ -755,14 +773,19 @@ class SygapService:
             return ""
 
     def read_coordinator_label(self, ticket_page):
-        """Return teks label Request Coordinator (mis. 'Rizky Senja Budiman - CRS...')."""
+        """Return teks label Coordinator (REQUEST/INCIDENT)."""
         try:
             val = ticket_page.evaluate("""
                 (function() {
-                    var el = document.getElementById('id_coordinator');
-                    if (!el) return '';
-                    var opt = el.options[el.selectedIndex];
-                    return opt ? (opt.text || '') : '';
+                    var ids = ['id_coordinator','selectSolver','selectIncidentOwner'];
+                    for (var i=0;i<ids.length;i++){
+                        var el=document.getElementById(ids[i]);
+                        if(el){
+                            var opt=el.options[el.selectedIndex];
+                            return opt ? (opt.text || '') : '';
+                        }
+                    }
+                    return '';
                 })();
             """)
             return str(val).strip()
@@ -818,7 +841,7 @@ class SygapService:
             }}
             if (!window.jQuery) return 'NO_JQUERY';
 
-            var ic = document.getElementById('id_coordinator');
+            var ic = document.getElementById('id_coordinator') || document.getElementById('selectSolver') || document.getElementById('selectIncidentOwner');
             if (!ic) return 'NO_IC';
             var $ic = jQuery(ic);
             if ($ic.find('option[value="{USER_ID}"]').length === 0) {{
@@ -836,6 +859,10 @@ class SygapService:
             if (saveBtn && saveBtn.offsetParent !== null) {{
                 saveBtn.click(); return 'SAVE';
             }}
+            var updateBtn = document.getElementById('btn_update_inc');
+            if (updateBtn && updateBtn.offsetParent !== null) {{
+                updateBtn.click(); return 'UPDATE_INC';
+            }}
             return 'NO_BUTTON';
         }})();
         """
@@ -852,36 +879,64 @@ class SygapService:
         start = time.time()
         while time.time() - start < timeout:
             try:
-                status_el = ticket_page.locator("#status")
-                if status_el.count() > 0:
-                    raw = status_el.input_value().strip()
-                    if raw == "IN_PROGRESS":
-                        return True
+                # REQUEST: #status , INCIDENT: #select_incident_status
+                for sel in ["#status", "#select_incident_status", "select[id*='incident_status']"]:
+                    try:
+                        loc = ticket_page.locator(sel)
+                        if loc.count() > 0:
+                            raw = ""
+                            try:
+                                raw = loc.first.input_value().strip()
+                            except Exception:
+                                raw = loc.first.inner_text().strip()
+                            raw_up = raw.upper()
+                            if raw_up in ("IN_PROGRESS", "WIP", "WORK_IN_PROGRESS", "IN PROGRESS"):
+                                return True
+                            # incident ASSIGNED -> after WIP click may jadi IN_PROGRESS or ASSIGNED->WIP
+                            if "IN_PROGRESS" in raw_up or raw_up == "WIP":
+                                return True
+                    except Exception:
+                        continue
                 try:
                     ticket_page.wait_for_load_state("domcontentloaded", timeout=8000)
                 except Exception:
                     pass
             except Exception:
                 pass
-            ticket_page.wait_for_timeout(2000)
+            try:
+                ticket_page.wait_for_timeout(2000)
+            except Exception:
+                # page closed -> stop polling
+                return False
         return False
 
     def wait_for_completed(self, ticket_page, timeout=30):
         start = time.time()
         while time.time() - start < timeout:
             try:
-                status_el = ticket_page.locator("#status")
-                if status_el.count() > 0:
-                    raw = status_el.input_value().strip()
-                    if raw == "COMPLETED":
-                        return True
+                for sel in ["#status", "#select_incident_status", "select[id*='incident_status']"]:
+                    try:
+                        loc = ticket_page.locator(sel)
+                        if loc.count() > 0:
+                            raw = ""
+                            try:
+                                raw = loc.first.input_value().strip()
+                            except Exception:
+                                raw = loc.first.inner_text().strip()
+                            if raw.upper() in ("COMPLETED", "RESOLVED", "CLOSED"):
+                                return True
+                    except Exception:
+                        continue
                 try:
                     ticket_page.wait_for_load_state("domcontentloaded", timeout=5000)
                 except Exception:
                     pass
             except Exception:
                 pass
-            ticket_page.wait_for_timeout(2000)
+            try:
+                ticket_page.wait_for_timeout(2000)
+            except Exception:
+                return False
         return False
 
     def complete_ticket(self, ticket_page, note="", log_callback=None):
@@ -890,6 +945,7 @@ class SygapService:
             ticket_page.wait_for_load_state("domcontentloaded", timeout=10000)
             ticket_page.wait_for_timeout(2000)
 
+            # REQUEST: Complete / INCIDENT: Resolve / Close Incident
             btn = ticket_page.locator("button:has-text('Complete')")
             if btn.count() == 0:
                 btn = ticket_page.locator("a:has-text('Complete')")
@@ -899,6 +955,14 @@ class SygapService:
                 btn = ticket_page.locator("button:has-text('completed')")
             if btn.count() == 0:
                 btn = ticket_page.locator("button:has-text('Completed')")
+            if btn.count() == 0:
+                btn = ticket_page.locator("#btn_resolve_inc")
+            if btn.count() == 0:
+                btn = ticket_page.locator("#btn_close_inc")
+            if btn.count() == 0:
+                btn = ticket_page.locator("button:has-text('Resolve')")
+            if btn.count() == 0:
+                btn = ticket_page.locator("button:has-text('Close Incident')")
             if btn.count() > 0:
                 log(f"    [COMPLETE] Clicking Complete button...")
                 btn.first.scroll_into_view_if_needed()
