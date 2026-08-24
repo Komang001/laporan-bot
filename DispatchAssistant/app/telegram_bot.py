@@ -497,58 +497,12 @@ class TelegramRemote:
         await update.message.reply_text(text, disable_web_page_preview=True)
 
     def _cekpiket_sync(self):
-        from app.services.report_service import (
-            DAY_NAMES,
-            MONTH_NAMES,
-            _current_shift,
-            _shift_people_tags,
-            _sheet_pic_map,
-        )
-        from config.settings import REPORT_SHIFTS, TELEGRAM_USERNAMES
+        from app.services.report_service import build_jadwal_piket_text
 
-        now = datetime.now()
-        shift = _current_shift(now)
-        name_by_tag = {v.strip().lower(): k for k, v in TELEGRAM_USERNAMES.items()}
-
-        def line(tag):
-            name = name_by_tag.get(str(tag).strip().lower())
-            if name:
-                return f"{name.title()} ({tag})"
-            return str(tag)
-
-        shift_label = f"{shift['label']} ({shift['start']} - {shift['end']})" if shift else "-"
-
-        tags_now = _shift_people_tags(now)
-        people_lines = [f"• {line(t)}" for t in tags_now] if tags_now else ["• (tidak ada)"]
-
-        pic_map = _sheet_pic_map(now)
-        pic_lines = []
-        if pic_map:
-            for s in REPORT_SHIFTS:
-                sh, sm = (int(x) for x in s["start"].split(":"))
-                tag = pic_map.get(sh * 60 + sm)
-                if tag:
-                    pic_lines.append(f"• {s['label']} ({s['start']} - {s['end']}): {line(tag)}")
-            if not pic_lines:
-                pic_lines.append("• (tidak ada PIC hijau hari ini)")
-        else:
-            pic_lines.append("• (tidak terbaca / tanggal di luar jadwal sheet)")
-
-        lines = [
-            "📋 Cek Piket",
-            f"Hari/Tanggal: {DAY_NAMES[now.weekday()]}, {now.day} {MONTH_NAMES[now.month - 1]} {now.year}",
-            "",
-            f"🕐 Shift aktif: {shift_label}",
-            "",
-            "👥 Piket di jam ini:",
-        ]
-        lines += people_lines
-        lines += [
-            "",
-            "✅ PIC hari ini (hijau di jadwal):",
-        ]
-        lines += pic_lines
-        return "\n".join(lines)
+        text = build_jadwal_piket_text(datetime.now())
+        if text is None:
+            return "⚠️ Gagal membaca jadwal piket dari Google Sheet."
+        return text
 
     async def _build_report_async(self):
         loop = asyncio.get_running_loop()
