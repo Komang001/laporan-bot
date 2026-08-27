@@ -2050,9 +2050,39 @@ class SygapService:
                             if "not found" in detail.lower() or "error" in detail.lower():
                                 log(f"    ⚠ /cekticket induk GAGAL verifikasi: '{detail}'")
                                 log(f"    ⚠ BUKA/KEMBALIKAN tab BISCUIT & pastikan SUDAH LOGIN (token mungkin expired/invalid). Bot akan retry otomatis.")
+                                continue
                             else:
-                                log(f"    Induk {parent_inc} bukan GAMAS ({detail}), SKIP relasi")
-                            continue
+                                log(f"    Induk {parent_inc} bukan GAMAS ({detail}), coba fallback /cekticket semua INC...")
+                                # Fallback: parser induk salah → cek semua INC di note/field untuk cari GAMAS yang benar
+                                all_incs_fb = re.findall(r'INC\d+', note or '', re.IGNORECASE)
+                                all_incs_fb = [i.upper() for i in all_incs_fb]
+                                for i in self.read_child_incs_from_field(ticket_page):
+                                    if i not in all_incs_fb:
+                                        all_incs_fb.append(i)
+                                if not all_incs_fb:
+                                    log(f"    Fallback: tidak ada INC di note/field. SKIP")
+                                    continue
+                                log(f"    Fallback cek {len(all_incs_fb)} INC via /cekticket: {','.join(all_incs_fb[:8])}...")
+                                fb_check = biscuit.check_children(all_incs_fb)
+                                for ex in fb_check["excluded"]:
+                                    log(f"    Fallback {ex['inc']} source={ex['source']} -> {ex['detail'][:90]}")
+                                fb_gamas = [ex["inc"] for ex in fb_check["excluded"] if ex["source"] == "GAMAS"]
+                                if len(fb_gamas) >= 2:
+                                    log(f"    Fallback: ditemukan {len(fb_gamas)} tiket GAMAS ({fb_gamas}); COMPLETE dengan reply.")
+                                    self._complete_gamas_reply(page, ticket_page, code, "Harap sertakan 1 tiket Induk Gamas saja", results, log)
+                                    continue
+                                elif len(fb_gamas) == 1:
+                                    parent_inc = fb_gamas[0]
+                                    log(f"    Fallback: induk GAMAS terdeteksi otomatis: {parent_inc} (ganti dari parser {check['detail'][:40]})")
+                                    child_incs = [i for i in fb_check["valid"] if i != parent_inc]
+                                    if not child_incs:
+                                        log(f"    Fallback: tidak ada child valid setelah koreksi. SKIP")
+                                        continue
+                                    log(f"    Fallback Child INCs ({len(child_incs)}): {','.join(child_incs[:5])}...")
+                                    # Lanjut ke pengecekan child di bawah (jangan continue, biarkan flow ke check child)
+                                else:
+                                    log(f"    Fallback: tidak ada tiket GAMAS di antara INC; SKIP (tidak ada induk).")
+                                    continue
 
                         log(f"    Checking {len(child_incs)} anak via /cekticket...")
                         child_check = biscuit.check_children(child_incs)
