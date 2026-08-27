@@ -31,12 +31,9 @@ from config.settings import (
     REPORT_TITLE,
     REPORT_PERSONNEL,
     REPORT_SHIFTS,
-    REPORT_REQUEST_CDP_PORT,
-    REPORT_CDP_PORT,
     TELEGRAM_SOLVER_IDS,
     TELEGRAM_USERNAMES,
 )
-from app.browser import BrowserManager
 logger = logging.getLogger(__name__)
 
 CATEGORY_LABELS = {"incident": "Incident", "request": "Request"}
@@ -82,45 +79,6 @@ def _normalize_row(raw, headers):
     return {}
 
 
-def safe_eval(page, expr, retries=3, wait_ms=1500):
-    """page.evaluate yang tahan race navigation.
-
-    Saat evaluate dijalankan, halaman bisa saja sedang navigasi (reload dari
-    bot fitur lain yang share Chrome 9222, atau user reload manual) ->
-    Playwright memunculkan 'Execution context was destroyed, most likely
-    because of a navigation'. Kita tunggu load-state lalu ulangi beberapa
-    kali sebelum menyerah, supaya report tidak gagal karena kebetulan
-    bentrok navigasi.
-    """
-    last_err = None
-    for attempt in range(1, retries + 1):
-        try:
-            try:
-                page.wait_for_load_state("domcontentloaded", timeout=8000)
-            except Exception:
-                pass
-            return page.evaluate(expr)
-        except Exception as e:  # noqa: BLE001
-            last_err = e
-            msg = str(e).lower()
-            nav_like = (
-                "execution context" in msg
-                or "context was destroyed" in msg
-                or "navigat" in msg
-            )
-            if nav_like and attempt < retries:
-                try:
-                    page.wait_for_timeout(wait_ms)
-                except Exception:
-                    pass
-                continue
-            # error selain navigasi -> langsung raise (biar caller tangani)
-            raise
-    if last_err:
-        raise last_err
-    return None
-
-
 # ==================================================
 # Report Service
 # ==================================================
@@ -129,13 +87,11 @@ def _current_shift(now=None):
     """Shift yang sedang aktif pada waktu tertentu (default: sekarang).
 
     Rule (sesuai Google Sheet jadwal):
-    - Interval shift: start <= jam < end (end "00:00" berarti akhir hari,
-      diproses sebagai 24:00, sehingga 00:00 = AWAL hari -> Shift 1).
+    - Interval shift: start <= jam < end (end "00:00" = lewat tengah malam).
     - Boundary: report tepat di jam AKHIR sebuah shift masih dihitung shift
-      itu (mis. 09:00 -> Shift 1, 16:30 -> Shift 2). Khusus 00:00 -> Shift 1
-      (bukan Shift 3), karena hari baru dimulai.
-    - Overlap: shift yang BERAKHIR paling awal menang (16:30 -> Shift 2,
-      09:00 -> Shift 1).
+      itu (mis. 09:00 -> Shift 1, 17:00 -> Shift 2, 00:00 -> Shift 3).
+    - Overlap (mis. 08:00-09:00 & 15:00-17:00): shift yang BERAKHIR paling
+      awal menang (15:00 -> Shift 2, 08:30 -> Shift 1).
     """
     now = now or datetime.now()
     minutes = now.hour * 60 + now.minute
@@ -145,8 +101,6 @@ def _current_shift(now=None):
         eh, em = (int(x) for x in s["end"].split(":"))
         start_m = sh * 60 + sm
         end_m = eh * 60 + em
-        if end_m == 0:
-            end_m = 24 * 60
         if end_m > start_m:
             inside = start_m <= minutes <= end_m
         else:
@@ -158,7 +112,7 @@ def _current_shift(now=None):
     for c in candidates:
         if c["end_m"] == minutes:
             return c
-    return min(candidates, key=lambda c: c["end_m"])
+    return min(candidates, key=lambda c: c["end_m"] if c["end_m"] else 24 * 60)
 
 
 class ReportService:
@@ -180,28 +134,15 @@ class ReportService:
             self.browser_manager.connect()
         return self.browser_manager
 
-    def _open_page(self, url, port=None):
+    def _open_page(self, url):
         """Buka halaman SYGAP dengan reuse sesi login yang sudah ada.
 
         1. Ada tab sygap yang sedang login -> buka tab baru langsung ke target
            (tidak mengganggu tab dashboard yang sedang dipakai fitur lain).
         2. Belum ada sesi -> buka base https://sygap.telkom.co.id// dulu
            (muncul halaman login), user login manual, lalu jalankan lagi.
-
-        Jika `port` diberi (mis. REPORT_REQUEST_CDP_PORT), halaman dibuka di
-        instance Chrome/profil terpisah (bukan profil TO) — dipakai untuk
-        Request Fulfillment yang hanya terlihat saat login sebagai agent di
-        profil DISPATCH.
         """
-        if port is not None:
-            if self.browser_manager is None:
-                self.browser_manager = BrowserManager(cdp_port=port)
-            else:
-                self.browser_manager.connect_to(port)
-            return self._open_on_manager(self.browser_manager, url)
-        return self._open_on_manager(self._browser(), url)
-
-    def _open_on_manager(self, bm, url):
+        bm = self._browser()
         path = re.sub(r"/{2,}", "/", re.sub(r"^https?://[^/]+", "", url).rstrip("/"))
 
         def _norm(u):
@@ -303,7 +244,7 @@ class ReportService:
     def _table_id(self, page):
         if page in self._table_cache:
             return self._table_cache[page]
-        table_id = safe_eval(page,"""
+        table_id = page.evaluate("""
             (() => {
                 var preferred = ['requestFulfillmentTable', 'incidentTable', 'dataTable'];
                 var tables = [];
@@ -323,7 +264,7 @@ class ReportService:
         return table_id
 
     def _headers(self, page, table_id):
-        return safe_eval(page,
+        return page.evaluate(
             "(() => {"
             "var h = [];"
             f"document.querySelectorAll('#{table_id} thead th').forEach(function (th) {{ h.push((th.innerText || '').trim()); }});"
@@ -333,7 +274,7 @@ class ReportService:
 
     def _page_info(self, page, table_id):
         try:
-            return safe_eval(page,f"""
+            return page.evaluate(f"""
                 (() => {{
                     var t = jQuery('#{table_id}').DataTable();
                     if (!t) return null;
@@ -346,7 +287,7 @@ class ReportService:
 
     def _rows_current(self, page, table_id, headers):
         """Ambil baris pada halaman aktif DataTable via API JS."""
-        data = safe_eval(page,f"""
+        data = page.evaluate(f"""
             (() => {{
                 var t = jQuery('#{table_id}').DataTable();
                 if (!t) return [];
@@ -376,14 +317,14 @@ class ReportService:
         page_idx = 0
         last_len = -1
         while page_idx < REPORT_MAX_PAGES:
-            info_now = safe_eval(page,f"""
+            info_now = page.evaluate(f"""
                 (() => {{
                     var t = jQuery('#{table_id}').DataTable();
                     var i = t.page.info();
                     return {{ records: i.recordsTotal, pages: i.pages, page: i.page, length: i.length }};
                 }})()
             """)
-            current = safe_eval(page,f"""
+            current = page.evaluate(f"""
                 (() => {{
                     var t = jQuery('#{table_id}').DataTable();
                     if (!t) return [];
@@ -406,7 +347,7 @@ class ReportService:
             if next_page > max_page:
                 break
             try:
-                safe_eval(page,f"jQuery('#{table_id}').DataTable().page({next_page}).draw();")
+                page.evaluate(f"jQuery('#{table_id}').DataTable().page({next_page}).draw();")
                 page.wait_for_timeout(2000)
             except Exception:
                 break
@@ -414,7 +355,7 @@ class ReportService:
 
         # Kembalikan tabel ke halaman pertama agar tab rapi
         try:
-            safe_eval(page,f"jQuery('#{table_id}').DataTable().page(0).draw(false);")
+            page.evaluate(f"jQuery('#{table_id}').DataTable().page(0).draw(false);")
         except Exception:
             pass
 
@@ -463,7 +404,7 @@ class ReportService:
             start_full = _full(start, "start")
             end_full = _full(end, "end")
             if field_value is not None:
-                safe_eval(page,f"""
+                page.evaluate(f"""
                     (() => {{
                         var b = document.getElementById('filterDateBtn');
                         if (b) {{
@@ -473,7 +414,7 @@ class ReportService:
                         }}
                     }})()
                 """)
-            safe_eval(page,f"""
+            page.evaluate(f"""
                 (() => {{
                     function setVal(id, v) {{
                         var e = document.getElementById(id);
@@ -499,7 +440,7 @@ class ReportService:
         """Klik tombol Apply via JS (Playwright locator click kadang tidak
         men-trigger reload saat panel filter tertutup)."""
         try:
-            ok = safe_eval(page,
+            ok = page.evaluate(
                 "(function(){var b=document.getElementById('btn_apply');"
                 "if(!b) return false; b.click(); return true;})()"
             )
@@ -514,7 +455,7 @@ class ReportService:
         """Set nilai <select> (termasuk select2) lalu trigger change via jQuery."""
         value = str(value or "")
         try:
-            safe_eval(page,f"""
+            page.evaluate(f"""
                 (() => {{
                     var el = document.getElementById('{select_id}');
                     if (!el) return;
@@ -531,7 +472,7 @@ class ReportService:
 
     def _set_solver_group(self, page, group_name):
         """Filter #solverGroupSearch ke nama group (MO-INSERA / MO-BIMA)."""
-        val = safe_eval(page,f"""
+        val = page.evaluate(f"""
             (() => {{
                 var s = document.getElementById('solverGroupSearch');
                 if (!s) return null;
@@ -557,7 +498,7 @@ class ReportService:
 
     def _solver_options(self, page):
         if self._solver_opts is None:
-            self._solver_opts = safe_eval(page,"""
+            self._solver_opts = page.evaluate("""
                 (() => {
                     var s = document.getElementById('solverSearch');
                     if (!s) return [];
@@ -814,7 +755,7 @@ class ReportService:
         utk status normal (RESOLVED/COMPLETED)."""
         select_id = self._status_select_id(category)
         try:
-            safe_eval(page,f"""
+            page.evaluate(f"""
                 (() => {{
                     var el = document.getElementById('{select_id}');
                     if (!el) return false;
@@ -832,7 +773,7 @@ class ReportService:
         set val, trigger change (tanpa destroy). Terbukti mengirim
         solverGroupSearch/solverSearch ke server saat Apply."""
         try:
-            safe_eval(page,f"""
+            page.evaluate(f"""
                 (() => {{
                     var $ = window.jQuery, s = $('#{select_id}');
                     if (!s.length) return;
@@ -850,7 +791,7 @@ class ReportService:
 
     def _clear_select2(self, page, select_id):
         try:
-            safe_eval(page,f"""
+            page.evaluate(f"""
                 (() => {{
                     var $ = window.jQuery;
                     $('#{select_id}').val(null).trigger('change');
@@ -858,213 +799,6 @@ class ReportService:
             """)
         except Exception:
             pass
-
-    # --------------------------------------------------
-    # Request Fulfillment: tabel plain HTML (#requestFulfillmentTable)
-    # --------------------------------------------------
-    # Di profil TO tabel ini kosong; dibaca dari profil DISPATCH (agent).
-    # Tabel BUKAN jQuery DataTable, sehingga harus diparsing dari DOM langsung
-    # (kolom: 0=checkbox,1=Request Code,2=Priority,3=Request Name,4=Owner,
-    # 5=Solver,6=Statusinfo,7=Created,8=User Confirmation).
-
-    _REQUEST_HEADERS = [
-        "checkbox", "request_code", "priority", "request_name", "owner",
-        "solver", "statusinfo", "created", "user_confirmation",
-    ]
-
-    @staticmethod
-    def _parse_request_created(text):
-        if not text:
-            return None
-        m = re.search(
-            r"([A-Z][a-z]+ \d{1,2}, \d{4},?\s*\d{1,2}:\d{2}(?::\d{2})?)",
-            text,
-        )
-        if not m:
-            return None
-        s = m.group(1).replace(",", ", ")
-        for fmt in ("%b %d, %Y, %H:%M:%S", "%b %d, %Y, %H:%M",
-                    "%b %d, %Y %H:%M:%S", "%b %d, %Y %H:%M"):
-            try:
-                return datetime.strptime(s, fmt)
-            except Exception:
-                continue
-        return None
-
-    def _read_request_table(self, page):
-        """Baca #requestFulfillmentTable sebagai list dict (bukan DataTable)."""
-        rows = safe_eval(page, """(() => {
-            var t = document.querySelector('#requestFulfillmentTable');
-            if (!t) return [];
-            var out = [];
-            for (var i = 1; i < t.rows.length; i++) {
-                var r = t.rows[i];
-                var cells = [];
-                for (var c = 0; c < r.cells.length; c++) {
-                    var cell = r.cells[c];
-                    var txt = (cell.innerText || '').replace(/\\s+/g, ' ').trim();
-                    var titles = [];
-                    var closedClass = '';
-                    cell.querySelectorAll('[title]').forEach(function (e) {
-                        var tt = e.getAttribute('title') || '';
-                        if (tt) titles.push(tt);
-                        if (tt.toLowerCase().indexOf('closed') >= 0) {
-                            closedClass = (e.getAttribute('class') || '');
-                        }
-                    });
-                    cells.push({ text: txt, titles: titles, closed_class: closedClass });
-                }
-                out.push(cells);
-            }
-            return out;
-        })()""")
-        result = []
-        for cells in (rows or []):
-            if len(cells) < len(self._REQUEST_HEADERS):
-                # baris placeholder ("No data available") -> abaikan
-                continue
-            d = {}
-            for idx, key in enumerate(self._REQUEST_HEADERS):
-                if idx < len(cells):
-                    d[key] = cells[idx]["text"]
-                    if key == "statusinfo":
-                        d["status_titles"] = cells[idx]["titles"]
-                        d["closed_class"] = cells[idx].get("closed_class", "")
-                else:
-                    d[key] = ""
-                    if key == "statusinfo":
-                        d["closed_class"] = ""
-            d["created_dt"] = self._parse_request_created(d.get("created", ""))
-            result.append(d)
-        return result
-
-    @staticmethod
-    def _request_is_completed(row):
-        # Request dianggap COMPLETED hanya bila step terakhir "Closed" sudah
-        # berwarna (text-success/text-primary). Jika class-nya "undefined"
-        # (abu-abu) berarti request masih OPEN/in-progress.
-        cls = (row.get("closed_class") or "").lower()
-        if not cls or "undefined" in cls:
-            return False
-        return "text-success" in cls or "text-primary" in cls
-
-    def _request_color(self, row):
-        dt = row.get("created_dt")
-        if not dt:
-            return "green"
-        age_h = (datetime.now() - dt).total_seconds() / 3600.0
-        if age_h > REPORT_SLA_YELLOW_HOURS:
-            return "red"
-        if age_h > REPORT_SLA_YELLOW_HOURS / 2.0:
-            return "yellow"
-        return "green"
-
-    def _collect_request(self, page):
-        # Tabel #requestFulfillmentTable bukan DataTable -> butuh waktu load
-        # (bukan 4s seperti DataTable). Tunggu hingga ada baris data ASLI
-        # (bukan placeholder "No data available" yang cuma punya 1 cell).
-        for _ in range(20):
-            try:
-                n = safe_eval(
-                    page,
-                    "(() => { var t = document.querySelector('#requestFulfillmentTable');"
-                    " if (!t) return 0; var real = 0;"
-                    " for (var i = 1; i < t.rows.length; i++) {"
-                    "   if (t.rows[i].cells.length >= 9) real++; }"
-                    " return real; })()",
-                )
-            except Exception:
-                n = 0
-            if n and n > 0:
-                break
-            page.wait_for_timeout(1000)
-        # Tabel ini server-side DataTable (~131 entri / belasan halaman).
-        # Baca SELURUH halaman supaya saldo/completed/per-person tidak cuma
-        # menghitung 1 halaman yang kebetulan tampil. Hindari page.len(-1)
-        # (merusak state SYGAP), pakai draw() per halaman seperti incident.
-        try:
-            page.wait_for_function(
-                "() => typeof jQuery!=='undefined' && jQuery('#requestFulfillmentTable').length "
-                "&& jQuery('#requestFulfillmentTable').hasClass('dataTable')",
-                timeout=15000,
-            )
-        except Exception:
-            pass
-        try:
-            pages = safe_eval(
-                page,
-                "(() => { try { return jQuery('#requestFulfillmentTable').DataTable().page.info().pages; } catch(e){ return 1; } })()",
-            )
-        except Exception:
-            pages = 1
-        pages = max(1, int(pages or 1))
-        all_rows = []
-        seen = set()
-        for p in range(pages):
-            try:
-                safe_eval(
-                    page,
-                    f"jQuery('#requestFulfillmentTable').DataTable().page({p}).draw(false);",
-                )
-            except Exception:
-                pass
-            page.wait_for_timeout(700)
-            for r in self._read_request_table(page):
-                key = (r.get("request_code") or "").strip()
-                if key:
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                all_rows.append(r)
-        rows = all_rows
-        today = datetime.now().date()
-        saldo = 0
-        colors = {"green": 0, "yellow": 0, "red": 0}
-        resolved = 0
-        for r in rows:
-            created_today = bool(r.get("created_dt")) and r["created_dt"].date() == today
-            completed = self._request_is_completed(r)
-            if not completed:
-                if created_today:
-                    saldo += 1
-                    col = self._request_color(r)
-                    if col:
-                        colors[col] += 1
-            else:
-                if created_today:
-                    resolved += 1
-        # Per person (hanya request COMPLETED): cocokkan kolom Solver dgn nama
-        # agent (substring kata ber-boundary).
-        agents = self._personnel_agents()
-        agent_counts = {a["name"].title(): 0 for a in agents}
-        for r in rows:
-            if not self._request_is_completed(r):
-                continue
-            solver = (r.get("solver") or "").lower()
-            for a in agents:
-                name = a["name"].title()
-                if re.search(r"\b" + re.escape(name.lower()) + r"\b", solver):
-                    agent_counts[name] += 1
-        return {
-            "category": {
-                "category": "request",
-                "label": CATEGORY_LABELS.get("request", "Request"),
-                "saldo": saldo,
-                "green": colors["green"],
-                "yellow": colors["yellow"],
-                "red": colors["red"],
-                "oldest": min(
-                    (r["created_dt"] for r in rows if r.get("created_dt")),
-                    default=None,
-                ),
-                "newest": max(
-                    (r["created_dt"] for r in rows if r.get("created_dt")),
-                    default=None,
-                ),
-                "resolved": resolved,
-            },
-            "agent_counts": agent_counts,
-        }
 
     def collect_all(self):
         """Kumpulkan semua data laporan (metode terkonfirmasi user).
@@ -1089,62 +823,7 @@ class ReportService:
             label = CATEGORY_LABELS.get(cat, cat)
             self.log(f"=== CATAL {label}: {url} ===")
 
-            if cat == "request":
-                # Request Fulfillment: tabel plain HTML di profil khusus
-                # REPORT_REQUEST (9229) yang login sebagai agent. Profil ini
-                # TERPISAH dari bot DISPATCH (9224) agar tidak kena auto-close
-                # tab asing milik dispatch. Buka tab baru lalu tutup setelahnya.
-                try:
-                    if self.browser_manager is None:
-                        self.browser_manager = BrowserManager(cdp_port=REPORT_CDP_PORT)
-                    # Pastikan Chrome 9229 (agent) menyala; kalau belum, launch
-                    # sekali (buka ke login SYGAP) lalu user login manual. Sesi
-                    # persist di profil C:\ChromeDebug_REPORT_REQUEST.
-                    try:
-                        self.browser_manager.connect_to(REPORT_REQUEST_CDP_PORT)
-                    except Exception:
-                        try:
-                            BrowserManager(cdp_port=REPORT_REQUEST_CDP_PORT).launch(
-                                log_callback=self.log
-                            )
-                            self.browser_manager.connect_to(REPORT_REQUEST_CDP_PORT)
-                        except Exception as e2:
-                            raise e2
-                    page = self.browser_manager.open_url(url)
-                    if page is None:
-                        raise Exception("gagal buka tab Request")
-                    try:
-                        page.bring_to_front()
-                    except Exception:
-                        pass
-                    try:
-                        res = self._collect_request(page)
-                    finally:
-                        try:
-                            page.close()
-                        except Exception:
-                            pass
-                    categories[cat] = res["category"]
-                    for a in agents:
-                        n = res["agent_counts"].get(a["name"].title(), 0)
-                        agent_detail[a["name"]][cat] = n
-                        agent_totals[a["name"]] += n
-                        self.log(f"  {a['name']} [{cat}]: {n}")
-                    self.log(
-                        f"  Saldo: {res['category']['saldo']} | "
-                        f"Completed: {res['category']['resolved']}"
-                    )
-                except Exception as e:
-                    self.log(
-                        f"  WARNING: gagal baca Request (profil 9229 belum jalan/"
-                        f"login?): {e}"
-                    )
-                    categories[cat] = self._empty_category(cat)
-                continue
-
-            if self.browser_manager is not None:
-                self.browser_manager.connect_to(REPORT_CDP_PORT)
-            page = self._open_on_manager(self._browser(), url)
+            page = self._open_page(url)
             table_id = self._table_id(page)
             if not table_id:
                 self.log(f"  WARNING: DataTable tidak ditemukan di {url}")
@@ -1331,24 +1010,7 @@ class ReportService:
         block += [
             "",
             f"📊 Total Resolved All Shift: {total_all_shift}",
-            "",
-            "",
         ]
-        pic_map = _sheet_pic_map(now)
-        if pic_map:
-            pic_line = None
-            if shift:
-                sh, sm = (int(x) for x in shift["start"].split(":"))
-                key = _match_shift_slot(pic_map, sh * 60 + sm)
-                tag = pic_map.get(key) if key is not None else None
-                if tag:
-                    pic_line = f"• PIC {shift['label']}: {tag}"
-            if pic_line:
-                block.append(pic_line)
-            else:
-                block.append("• (tidak ada PIC hijau di shift ini)")
-        else:
-            block.append("• (tidak terbaca / tanggal di luar jadwal sheet)")
 
         return "\n".join(block)
 
@@ -1461,21 +1123,6 @@ def _slot_to_minutes(slot):
         return None
 
 
-def _match_shift_slot(sheet_map, start_m):
-    """Pilih key slot sheet untuk jam mulai shift dari config.
-
-    Prioritas: key sama persis. Jika sheet memakai label jam yang berbeda
-    (mis. slot '08:00-17:00' untuk shift config 09:00-16:30), pilih slot
-    yang jam mulainya <= jam mulai shift (slot terakhir yang sudah mulai).
-    """
-    if not sheet_map:
-        return None
-    if start_m in sheet_map:
-        return start_m
-    starts = sorted(k for k in sheet_map if k <= start_m)
-    return starts[-1] if starts else None
-
-
 def _sheet_piket_map(date=None):
     """Piket L1 per shift (key: jam mulai shift dalam menit) pada tanggal
     tertentu dari Google Sheet jadwal. Di-cache per tanggal. None jika gagal
@@ -1512,7 +1159,7 @@ def _parse_sheet_tags(raw, date):
         if r[0] == "NAMA":
             start = i
             for j, h in enumerate(r):
-                if _cell_day(h, date.day):
+                if h == day_col:
                     col = j
                     break
             break
@@ -1553,9 +1200,7 @@ def _shift_people_tags(now=None):
         shift = _current_shift(now)
         if shift:
             sh, sm = (int(x) for x in shift["start"].split(":"))
-            key = _match_shift_slot(sheet_map, sh * 60 + sm)
-            if key is not None:
-                return sheet_map.get(key, [])
+            return sheet_map.get(sh * 60 + sm, [])
         return []
     return get_piket(now.strftime("%Y-%m-%d")) or REPORT_PERSONNEL
 
@@ -1568,13 +1213,6 @@ _sheet_pic_cache = {"date": None, "data": None}
 _sheet_pic_lock = threading.Lock()
 
 _GREEN_FILL = "FF00FF00"
-
-
-def _cell_day(value, day):
-    """Cocokkan header kolom tanggal (bisa int 24, float 24.0, atau str '24')."""
-    if value is None:
-        return False
-    return str(value).strip().split(".")[0] == str(day)
 
 
 def _sheet_xlsx_url():
@@ -1642,7 +1280,7 @@ def _parse_sheet_pic(raw, date):
             header_row = r
             for c in range(1, ws.max_column + 1):
                 v = ws.cell(r, c).value
-                if _cell_day(v, day):
+                if v is not None and str(v).strip() == str(day):
                     day_col = c
                     break
             break
@@ -1670,42 +1308,6 @@ def _parse_sheet_pic(raw, date):
             if tag and cur_shift_m not in result:
                 result[cur_shift_m] = tag
     return result or None
-
-
-def build_jadwal_piket_text(date=None):
-    """Susun blok 'Jadwal Piket Hari Ini' (piket semua shift + PIC hijau).
-
-    Format persis sama dengan scripts/send_daily_jadwal.py supaya /cekpiket
-    dan report konsisten. None jika sheet tidak terbaca.
-    """
-    date = date or datetime.now()
-    piket_map = _sheet_piket_map(date)
-    pic_map = _sheet_pic_map(date)
-    if piket_map is None and pic_map is None:
-        return None
-
-    lines = [
-        "📋 Jadwal Piket Hari Ini",
-        f"{DAY_NAMES[date.weekday()]}, {date.day} {MONTH_NAMES[date.month - 1]} {date.year}",
-        "",
-    ]
-    for s in REPORT_SHIFTS:
-        sh, sm = (int(x) for x in s["start"].split(":"))
-        start_m = sh * 60 + sm
-        key = _match_shift_slot(piket_map, start_m) if piket_map else None
-        tags = piket_map.get(key) if key is not None else None
-        lines.append(f"👥 {s['label']} ({s['start']} - {s['end']}):")
-        if not tags:
-            lines.append("• (tidak ada)")
-        else:
-            for t in tags:
-                pic_mark = (
-                    " — ⭐ PIC" if pic_map and key is not None and pic_map.get(key) == t else ""
-                )
-                lines.append(f"• {t}{pic_mark}")
-        lines.append("")
-    lines.append("Sumber: Google Sheet jadwal")
-    return "\n".join(lines)
 
 
 # ==================================================
