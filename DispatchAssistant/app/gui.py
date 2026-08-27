@@ -762,6 +762,19 @@ class DispatchAssistantGUI(ctk.CTk):
 
         ctk.CTkButton(
             header,
+            text="📊 Export Excel",
+            width=110,
+            height=26,
+            corner_radius=8,
+            fg_color="#107C41",
+            hover_color="#0B5E31",
+            text_color=WHITE,
+            font=(FONT_UI, 11, "bold"),
+            command=self._export_history,
+        ).pack(side="right", padx=(6, 0))
+
+        ctk.CTkButton(
+            header,
             text="📋 Salin",
             width=68,
             height=26,
@@ -900,6 +913,135 @@ class DispatchAssistantGUI(ctk.CTk):
             self.write_log("[gui] Log disalin ke clipboard.")
         except Exception as e:
             self.write_log(f"[gui] Gagal copy log: {e}")
+
+    def _export_history(self, days=30):
+        """Export history sebulan kebelakang ke Excel (tombol di header log)."""
+        try:
+            import csv
+            import os
+            from datetime import datetime, timedelta
+            from pathlib import Path
+
+            base = Path(__file__).resolve().parents[1]
+            history_all = base / "logs" / "history_all.csv"
+            history_dir = base / "logs"
+
+            if not history_all.exists():
+                self.write_log("[export] history_all.csv belum ada — bot belum log sejak aktivasi. Cek history_2026-07-15_to_2026-07-21.csv", channel="all")
+                return
+
+            end_dt = datetime.now()
+            start_dt = end_dt - timedelta(days=days)
+
+            # Baca & filter
+            rows = []
+            header = None
+            with open(history_all, newline="", encoding="utf-8-sig") as f:
+                reader = csv.DictReader(f)
+                header = reader.fieldnames
+                for r in reader:
+                    tgl_str = r.get("Waktu Proses") or r.get("Waktu") or r.get("Tanggal Selesai Dikerjakan") or ""
+                    try:
+                        dt = datetime.strptime(tgl_str[:10], "%Y-%m-%d")
+                    except Exception:
+                        continue
+                    if start_dt.date() <= dt.date() <= end_dt.date():
+                        rows.append(r)
+
+            if not rows:
+                self.write_log(f"[export] Tidak ada tiket dalam {days} hari terakhir ({start_dt.strftime('%Y-%m-%d')} s/d {end_dt.strftime('%Y-%m-%d')})", channel="all")
+                return
+
+            # Coba export Excel via openpyxl
+            try:
+                import openpyxl
+                from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+                from openpyxl.utils import get_column_letter
+                from openpyxl.formatting.rule import CellIsRule
+            except Exception as e:
+                # Fallback CSV filtered
+                out_csv = history_dir / f"History_{start_dt.strftime('%Y%m%d')}_to_{end_dt.strftime('%Y%m%d')}.csv"
+                with open(out_csv, "w", newline="", encoding="utf-8-sig") as f:
+                    w = csv.DictWriter(f, fieldnames=header)
+                    w.writeheader()
+                    w.writerows(rows)
+                self.write_log(f"[export] openpyxl tidak ada, export CSV: {out_csv} ({len(rows)} baris)", channel="all")
+                try:
+                    os.startfile(str(out_csv))
+                except Exception:
+                    pass
+                return
+
+            out = history_dir / f"History_{start_dt.strftime('%Y%m%d')}_to_{end_dt.strftime('%Y%m%d')}.xlsx"
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = f"History {days} Hari"
+            ws.merge_cells("A1:M1")
+            title = ws["A1"]
+            title.value = f"HISTORY TIKET SYGAP → INSERA — {start_dt.strftime('%d %b %Y')} s/d {end_dt.strftime('%d %b %Y')} ({len(rows)} tiket)"
+            title.font = Font(size=13, bold=True, color="1F4E78")
+            title.alignment = Alignment(horizontal="center", vertical="center")
+            ws.row_dimensions[1].height = 20
+            ws.merge_cells("A2:M2")
+            sub = ws["A2"]
+            sub.value = f"Sumber: {history_all.name} → filter Waktu Proses. File: {out.name}"
+            sub.font = Font(size=8, italic=True, color="5B7FA6")
+            sub.alignment = Alignment(horizontal="center")
+            ws.row_dimensions[2].height = 14
+
+            header_row = 4
+            header_font = Font(bold=True, color="FFFFFF", size=9)
+            header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+            thin_border = Border(left=Side(style="thin", color="B4C6E7"), right=Side(style="thin", color="B4C6E7"), top=Side(style="thin", color="B4C6E7"), bottom=Side(style="thin", color="B4C6E7"))
+            center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            left_wrap = Alignment(horizontal="left", vertical="center", wrap_text=True)
+            if not header:
+                header = ["Waktu Proses","Fitur","Tiket SYGAP (REQ)","No Tiket INSERA (INC)","Isi Note (500 char)","Tanggal Masuk SYGAP","Tanggal Selesai Dikerjakan","Owner Group/Inc/ServiceType","Reply SYGAP","BISCUIT Status","BISCUIT Message","Status","Solver ID"]
+            for col, h in enumerate(header, start=1):
+                c = ws.cell(row=header_row, column=col, value=h)
+                c.font = header_font
+                c.fill = header_fill
+                c.alignment = center
+                c.border = thin_border
+            ws.row_dimensions[header_row].height = 34
+            widths = [19,13,20,20,38,19,19,22,22,14,32,12,12]
+            for i,w in enumerate(widths, start=1):
+                ws.column_dimensions[get_column_letter(i)].width = w
+            ws.freeze_panes = "A5"
+            ws.auto_filter.ref = f"A{header_row}:M{header_row}"
+
+            for r_idx, r in enumerate(rows, start=5):
+                for c_idx, h in enumerate(header, start=1):
+                    val = r.get(h, "")
+                    c = ws.cell(row=r_idx, column=c_idx, value=val)
+                    c.font = Font(size=9)
+                    c.border = thin_border
+                    c.alignment = left_wrap if c_idx in (5,11) else center
+                    if c_idx in (1,6,7):
+                        c.number_format = "yyyy-mm-dd hh:mm:ss"
+                ws.row_dimensions[r_idx].height = 18
+                if r_idx % 2 == 0:
+                    for c_idx in range(1, len(header)+1):
+                        ws.cell(row=r_idx, column=c_idx).fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+
+            green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+            red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+            ws.conditional_formatting.add(f"L5:L{5+len(rows)}", CellIsRule(operator="equal", formula=['"SUCCESS"'], fill=green_fill, font=Font(color="006100")))
+            ws.conditional_formatting.add(f"L5:L{5+len(rows)}", CellIsRule(operator="equal", formula=['"FAILED"'], fill=red_fill, font=Font(color="9C0006")))
+            ws.sheet_properties.pageSetUpPr.fitToPage = True
+            ws.page_setup.orientation = "landscape"
+            ws.page_setup.paperSize = ws.PAPERSIZE_A3
+            ws.page_setup.fitToWidth = 1
+            ws.print_title_rows = f"{header_row}:{header_row}"
+            wb.save(out)
+            self.write_log(f"[export] Excel tersimpan: {out} ({len(rows)} tiket, {days} hari) -> {out.parent}", channel="all")
+            try:
+                os.startfile(str(out))
+                self.write_log(f"[export] Membuka file Excel...", channel="all")
+            except Exception:
+                pass
+        except Exception as e:
+            self.write_log(f"[export] Gagal export history: {e}", channel="all")
 
     # =================================================
     # Footer
