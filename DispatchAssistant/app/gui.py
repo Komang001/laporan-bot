@@ -1025,63 +1025,97 @@ class DispatchAssistantGUI(ctk.CTk):
             from openpyxl.utils import get_column_letter
             from openpyxl.formatting.rule import CellIsRule
             out = history_dir / f"History_{start_dt.strftime('%Y%m%d')}_to_{end_dt.strftime('%Y%m%d')}.xlsx"
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            ws.title = f"History {days} Hari"
-            ws.merge_cells("A1:M1")
-            title = ws["A1"]
-            title.value = f"HISTORY TIKET SYGAP → INSERA — {start_dt.strftime('%d %b %Y')} s/d {end_dt.strftime('%d %b %Y')} ({len(rows)} tiket)"
-            title.font = Font(size=13, bold=True, color="1F4E78")
-            title.alignment = Alignment(horizontal="center", vertical="center")
-            ws.row_dimensions[1].height = 20
-            ws.merge_cells("A2:M2")
-            sub = ws["A2"]
-            sub.value = f"Sumber: {history_all.name} — {start_str} s/d {end_str}"
-            sub.font = Font(size=8, italic=True, color="5B7FA6")
-            sub.alignment = Alignment(horizontal="center")
-            ws.row_dimensions[2].height = 14
-            header_row = 4
-            header_font = Font(bold=True, color="FFFFFF", size=9)
-            header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-            thin_border = Border(left=Side(style="thin", color="B4C6E7"), right=Side(style="thin", color="B4C6E7"), top=Side(style="thin", color="B4C6E7"), bottom=Side(style="thin", color="B4C6E7"))
-            center = Alignment(horizontal="center", vertical="center", wrap_text=True)
-            left_wrap = Alignment(horizontal="left", vertical="center", wrap_text=True)
-            for col, h in enumerate(header, start=1):
-                c = ws.cell(row=header_row, column=col, value=h)
-                c.font = header_font
-                c.fill = header_fill
-                c.alignment = center
-                c.border = thin_border
-            ws.row_dimensions[header_row].height = 34
-            widths = [19,13,20,20,38,19,19,22,22,14,32,12,12]
-            for i,w in enumerate(widths, start=1):
-                ws.column_dimensions[get_column_letter(i)].width = w
-            ws.freeze_panes = "A5"
-            ws.auto_filter.ref = f"A{header_row}:M{header_row}"
-            for r_idx, r in enumerate(rows, start=5):
-                for c_idx, h in enumerate(header, start=1):
-                    val = r.get(h, "")
-                    c = ws.cell(row=r_idx, column=c_idx, value=val)
-                    c.font = Font(size=9)
+            # --- Build per-fitur sheets ---
+            from collections import defaultdict
+            grouped = defaultdict(list)
+            for r in rows:
+                fitur = (r.get("Fitur") or "UNKNOWN").strip().upper()
+                if fitur not in ["CANCLWORK","DISPATCH","DISPATCH_INCIDENT","GAMAS","CHANGE_SERVICE_ID","REPORT"]:
+                    fitur = "LAINNYA"
+                grouped[fitur].append(r)
+
+            def _make_sheet(wb, title, rows_sub, header, start_str, end_str, is_summary=False):
+                ws = wb.create_sheet(title=title) if not is_summary else wb.active
+                if is_summary:
+                    ws.title = title
+                ws.sheet_properties.pageSetUpPr.fitToPage = True
+                ws.page_setup.fitToWidth = 1
+                ws.page_setup.fitToHeight = 0
+                ws.page_setup.orientation = "landscape"
+                ws.page_setup.paperSize = ws.PAPERSIZE_A3
+                ws.merge_cells("A1:M1")
+                t = ws["A1"]
+                t.value = f"{'RINGKASAN' if is_summary else title} — {start_str} s/d {end_str} ({len(rows_sub)} tiket)" if not is_summary else f"HISTORY TIKET SYGAP → INSERA — {start_dt.strftime('%d %b %Y')} s/d {end_dt.strftime('%d %b %Y')} ({len(rows)} tiket) | Per sheet = per fitur"
+                t.font = Font(size=12 if is_summary else 11, bold=True, color="1F4E78")
+                t.alignment = Alignment(horizontal="center", vertical="center")
+                ws.row_dimensions[1].height = 20
+                ws.merge_cells("A2:M2")
+                s = ws["A2"]
+                s.value = f"Sumber: {history_all.name} — {start_str} s/d {end_str} | Sheet per fitur, jangan campur" if is_summary else f"Fitur: {title} — {len(rows_sub)} tiket"
+                s.font = Font(size=8, italic=True, color="5B7FA6")
+                s.alignment = Alignment(horizontal="center")
+                ws.row_dimensions[2].height = 14
+                header_row = 4
+                header_font = Font(bold=True, color="FFFFFF", size=9)
+                header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+                thin_border = Border(left=Side(style="thin", color="B4C6E7"), right=Side(style="thin", color="B4C6E7"), top=Side(style="thin", color="B4C6E7"), bottom=Side(style="thin", color="B4C6E7"))
+                center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                left_wrap = Alignment(horizontal="left", vertical="center", wrap_text=True)
+                for col, h in enumerate(header, start=1):
+                    c = ws.cell(row=header_row, column=col, value=h)
+                    c.font = header_font
+                    c.fill = header_fill
+                    c.alignment = center
                     c.border = thin_border
-                    c.alignment = left_wrap if c_idx in (5,11) else center
-                    if c_idx in (1,6,7):
-                        c.number_format = "yyyy-mm-dd hh:mm:ss"
-                ws.row_dimensions[r_idx].height = 18
-                if r_idx % 2 == 0:
-                    for c_idx in range(1, len(header)+1):
-                        ws.cell(row=r_idx, column=c_idx).fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
-            green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
-            red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
-            ws.conditional_formatting.add(f"L5:L{5+len(rows)}", CellIsRule(operator="equal", formula=['"SUCCESS"'], fill=green_fill, font=Font(color="006100")))
-            ws.conditional_formatting.add(f"L5:L{5+len(rows)}", CellIsRule(operator="equal", formula=['"FAILED"'], fill=red_fill, font=Font(color="9C0006")))
-            ws.sheet_properties.pageSetUpPr.fitToPage = True
-            ws.page_setup.orientation = "landscape"
-            ws.page_setup.paperSize = ws.PAPERSIZE_A3
-            ws.page_setup.fitToWidth = 1
-            ws.print_title_rows = f"{header_row}:{header_row}"
+                ws.row_dimensions[header_row].height = 34
+                widths = [19,13,20,20,38,19,19,22,22,14,32,12,12]
+                for i,w in enumerate(widths, start=1):
+                    ws.column_dimensions[get_column_letter(i)].width = w
+                ws.freeze_panes = "A5"
+                ws.auto_filter.ref = f"A{header_row}:M{header_row}"
+                if not rows_sub:
+                    ws.merge_cells("A5:M5")
+                    c = ws["A5"]
+                    c.value = "Tidak ada tiket untuk fitur ini di rentang tanggal tersebut."
+                    c.font = Font(size=9, italic=True, color="7F7F7F")
+                    c.alignment = center
+                    ws.row_dimensions[5].height = 22
+                else:
+                    for r_idx, r in enumerate(rows_sub, start=5):
+                        for c_idx, h in enumerate(header, start=1):
+                            val = r.get(h, "")
+                            c = ws.cell(row=r_idx, column=c_idx, value=val)
+                            c.font = Font(size=9)
+                            c.border = thin_border
+                            c.alignment = left_wrap if c_idx in (5,11) else center
+                            if c_idx in (1,6,7):
+                                c.number_format = "yyyy-mm-dd hh:mm:ss"
+                        ws.row_dimensions[r_idx].height = 18
+                        if r_idx % 2 == 0:
+                            for c_idx in range(1, len(header)+1):
+                                ws.cell(row=r_idx, column=c_idx).fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+                    green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+                    red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+                    ws.conditional_formatting.add(f"L5:L{5+len(rows_sub)}", CellIsRule(operator="equal", formula=['"SUCCESS"'], fill=green_fill, font=Font(color="006100")))
+                    ws.conditional_formatting.add(f"L5:L{5+len(rows_sub)}", CellIsRule(operator="equal", formula=['"FAILED"'], fill=red_fill, font=Font(color="9C0006")))
+                ws.sheet_properties.pageSetUpPr.fitToPage = True
+                ws.page_setup.orientation = "landscape"
+                ws.page_setup.paperSize = ws.PAPERSIZE_A3
+                ws.page_setup.fitToWidth = 1
+                ws.print_title_rows = f"{header_row}:{header_row}"
+                return ws
+
+            wb = openpyxl.Workbook()
+            # Summary first
+            _make_sheet(wb, "RINGKASAN", rows, header, start_str, end_str, is_summary=True)
+            # Per fitur sheets in order
+            order = ["DISPATCH","DISPATCH_INCIDENT","CANCLWORK","GAMAS","CHANGE_SERVICE_ID","REPORT","LAINNYA"]
+            for fitur in order:
+                if fitur in grouped or fitur in ["DISPATCH","GAMAS","CANCLWORK"]:  # selalu buat sheet utama walau kosong
+                    _make_sheet(wb, fitur, grouped.get(fitur, []), header, start_str, end_str, is_summary=False)
+            # Hapus sheet default jika ada duplikat
             wb.save(out)
-            self.write_log(f"[export] Excel tersimpan: {out} ({len(rows)} tiket, {start_str} s/d {end_str})", channel="all")
+            self.write_log(f"[export] Excel per-fitur tersimpan: {out} ({len(rows)} tiket, {len(grouped)} fitur) — sheets: RINGKASAN + {', '.join([k for k in order if k in grouped])} | {start_str} s/d {end_str}", channel="all")
             try:
                 os.startfile(str(out))
             except Exception:
@@ -1148,68 +1182,94 @@ class DispatchAssistantGUI(ctk.CTk):
                 return
 
             out = history_dir / f"History_{start_dt.strftime('%Y%m%d')}_to_{end_dt.strftime('%Y%m%d')}.xlsx"
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            ws.title = f"History {days} Hari"
-            ws.merge_cells("A1:M1")
-            title = ws["A1"]
-            title.value = f"HISTORY TIKET SYGAP → INSERA — {start_dt.strftime('%d %b %Y')} s/d {end_dt.strftime('%d %b %Y')} ({len(rows)} tiket)"
-            title.font = Font(size=13, bold=True, color="1F4E78")
-            title.alignment = Alignment(horizontal="center", vertical="center")
-            ws.row_dimensions[1].height = 20
-            ws.merge_cells("A2:M2")
-            sub = ws["A2"]
-            sub.value = f"Sumber: {history_all.name} → filter Waktu Proses. File: {out.name}"
-            sub.font = Font(size=8, italic=True, color="5B7FA6")
-            sub.alignment = Alignment(horizontal="center")
-            ws.row_dimensions[2].height = 14
+            # --- Build per-fitur sheets (RINGKASAN + per fitur) ---
+            from collections import defaultdict
+            grouped = defaultdict(list)
+            for r in rows:
+                fitur = (r.get("Fitur") or "UNKNOWN").strip().upper()
+                if fitur not in ["CANCLWORK","DISPATCH","DISPATCH_INCIDENT","GAMAS","CHANGE_SERVICE_ID","REPORT"]:
+                    fitur = "LAINNYA"
+                grouped[fitur].append(r)
 
-            header_row = 4
-            header_font = Font(bold=True, color="FFFFFF", size=9)
-            header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-            thin_border = Border(left=Side(style="thin", color="B4C6E7"), right=Side(style="thin", color="B4C6E7"), top=Side(style="thin", color="B4C6E7"), bottom=Side(style="thin", color="B4C6E7"))
-            center = Alignment(horizontal="center", vertical="center", wrap_text=True)
-            left_wrap = Alignment(horizontal="left", vertical="center", wrap_text=True)
-            if not header:
-                header = ["Waktu Proses","Fitur","Tiket SYGAP (REQ)","No Tiket INSERA (INC)","Isi Note (500 char)","Tanggal Masuk SYGAP","Tanggal Selesai Dikerjakan","Owner Group/Inc/ServiceType","Reply SYGAP","BISCUIT Status","BISCUIT Message","Status","Solver ID"]
-            for col, h in enumerate(header, start=1):
-                c = ws.cell(row=header_row, column=col, value=h)
-                c.font = header_font
-                c.fill = header_fill
-                c.alignment = center
-                c.border = thin_border
-            ws.row_dimensions[header_row].height = 34
-            widths = [19,13,20,20,38,19,19,22,22,14,32,12,12]
-            for i,w in enumerate(widths, start=1):
-                ws.column_dimensions[get_column_letter(i)].width = w
-            ws.freeze_panes = "A5"
-            ws.auto_filter.ref = f"A{header_row}:M{header_row}"
-
-            for r_idx, r in enumerate(rows, start=5):
-                for c_idx, h in enumerate(header, start=1):
-                    val = r.get(h, "")
-                    c = ws.cell(row=r_idx, column=c_idx, value=val)
-                    c.font = Font(size=9)
+            def _make_sheet2(wb, title, rows_sub, header, start_dt, end_dt, is_summary=False):
+                ws = wb.create_sheet(title=title) if not is_summary else wb.active
+                if is_summary:
+                    ws.title = title
+                ws.sheet_properties.pageSetUpPr.fitToPage = True
+                ws.page_setup.fitToWidth = 1
+                ws.page_setup.fitToHeight = 0
+                ws.page_setup.orientation = "landscape"
+                ws.page_setup.paperSize = ws.PAPERSIZE_A3
+                ws.merge_cells("A1:M1")
+                t = ws["A1"]
+                t.value = f"{'RINGKASAN' if is_summary else title} — {start_dt.strftime('%d %b %Y')} s/d {end_dt.strftime('%d %b %Y')} ({len(rows_sub)} tiket)" if not is_summary else f"HISTORY TIKET SYGAP → INSERA — {start_dt.strftime('%d %b %Y')} s/d {end_dt.strftime('%d %b %Y')} ({len(rows)} tiket) | Per sheet = per fitur"
+                t.font = Font(size=12 if is_summary else 11, bold=True, color="1F4E78")
+                t.alignment = Alignment(horizontal="center", vertical="center")
+                ws.row_dimensions[1].height = 20
+                ws.merge_cells("A2:M2")
+                s = ws["A2"]
+                s.value = f"Sumber: {history_all.name} — {start_dt.strftime('%Y-%m-%d')} s/d {end_dt.strftime('%Y-%m-%d')} | Sheet per fitur, jangan campur" if is_summary else f"Fitur: {title} — {len(rows_sub)} tiket"
+                s.font = Font(size=8, italic=True, color="5B7FA6")
+                s.alignment = Alignment(horizontal="center")
+                ws.row_dimensions[2].height = 14
+                header_row = 4
+                header_font = Font(bold=True, color="FFFFFF", size=9)
+                header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+                thin_border = Border(left=Side(style="thin", color="B4C6E7"), right=Side(style="thin", color="B4C6E7"), top=Side(style="thin", color="B4C6E7"), bottom=Side(style="thin", color="B4C6E7"))
+                center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                left_wrap = Alignment(horizontal="left", vertical="center", wrap_text=True)
+                for col, h in enumerate(header, start=1):
+                    c = ws.cell(row=header_row, column=col, value=h)
+                    c.font = header_font
+                    c.fill = header_fill
+                    c.alignment = center
                     c.border = thin_border
-                    c.alignment = left_wrap if c_idx in (5,11) else center
-                    if c_idx in (1,6,7):
-                        c.number_format = "yyyy-mm-dd hh:mm:ss"
-                ws.row_dimensions[r_idx].height = 18
-                if r_idx % 2 == 0:
-                    for c_idx in range(1, len(header)+1):
-                        ws.cell(row=r_idx, column=c_idx).fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+                ws.row_dimensions[header_row].height = 34
+                widths = [19,13,20,20,38,19,19,22,22,14,32,12,12]
+                for i,w in enumerate(widths, start=1):
+                    ws.column_dimensions[get_column_letter(i)].width = w
+                ws.freeze_panes = "A5"
+                ws.auto_filter.ref = f"A{header_row}:M{header_row}"
+                if not rows_sub:
+                    ws.merge_cells("A5:M5")
+                    c = ws["A5"]
+                    c.value = "Tidak ada tiket untuk fitur ini di rentang tanggal tersebut."
+                    c.font = Font(size=9, italic=True, color="7F7F7F")
+                    c.alignment = center
+                    ws.row_dimensions[5].height = 22
+                else:
+                    for r_idx, r in enumerate(rows_sub, start=5):
+                        for c_idx, h in enumerate(header, start=1):
+                            val = r.get(h, "")
+                            c = ws.cell(row=r_idx, column=c_idx, value=val)
+                            c.font = Font(size=9)
+                            c.border = thin_border
+                            c.alignment = left_wrap if c_idx in (5,11) else center
+                            if c_idx in (1,6,7):
+                                c.number_format = "yyyy-mm-dd hh:mm:ss"
+                        ws.row_dimensions[r_idx].height = 18
+                        if r_idx % 2 == 0:
+                            for c_idx in range(1, len(header)+1):
+                                ws.cell(row=r_idx, column=c_idx).fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+                    green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+                    red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+                    ws.conditional_formatting.add(f"L5:L{5+len(rows_sub)}", CellIsRule(operator="equal", formula=['"SUCCESS"'], fill=green_fill, font=Font(color="006100")))
+                    ws.conditional_formatting.add(f"L5:L{5+len(rows_sub)}", CellIsRule(operator="equal", formula=['"FAILED"'], fill=red_fill, font=Font(color="9C0006")))
+                ws.sheet_properties.pageSetUpPr.fitToPage = True
+                ws.page_setup.orientation = "landscape"
+                ws.page_setup.paperSize = ws.PAPERSIZE_A3
+                ws.page_setup.fitToWidth = 1
+                ws.print_title_rows = f"{header_row}:{header_row}"
+                return ws
 
-            green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
-            red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
-            ws.conditional_formatting.add(f"L5:L{5+len(rows)}", CellIsRule(operator="equal", formula=['"SUCCESS"'], fill=green_fill, font=Font(color="006100")))
-            ws.conditional_formatting.add(f"L5:L{5+len(rows)}", CellIsRule(operator="equal", formula=['"FAILED"'], fill=red_fill, font=Font(color="9C0006")))
-            ws.sheet_properties.pageSetUpPr.fitToPage = True
-            ws.page_setup.orientation = "landscape"
-            ws.page_setup.paperSize = ws.PAPERSIZE_A3
-            ws.page_setup.fitToWidth = 1
-            ws.print_title_rows = f"{header_row}:{header_row}"
+            wb = openpyxl.Workbook()
+            _make_sheet2(wb, "RINGKASAN", rows, header, start_dt, end_dt, is_summary=True)
+            order = ["DISPATCH","DISPATCH_INCIDENT","CANCLWORK","GAMAS","CHANGE_SERVICE_ID","REPORT","LAINNYA"]
+            for fitur in order:
+                if fitur in grouped or fitur in ["DISPATCH","GAMAS","CANCLWORK"]:
+                    _make_sheet2(wb, fitur, grouped.get(fitur, []), header, start_dt, end_dt, is_summary=False)
             wb.save(out)
-            self.write_log(f"[export] Excel tersimpan: {out} ({len(rows)} tiket, {days} hari) -> {out.parent}", channel="all")
+            self.write_log(f"[export] Excel per-fitur tersimpan: {out} ({len(rows)} tiket, {len(grouped)} fitur) — sheets: RINGKASAN + {', '.join([k for k in order if k in grouped])} | {start_dt.strftime('%Y-%m-%d')} s/d {end_dt.strftime('%Y-%m-%d')}", channel="all")
             try:
                 os.startfile(str(out))
                 self.write_log(f"[export] Membuka file Excel...", channel="all")
