@@ -500,6 +500,89 @@ class SygapService:
         # bukan nomer ticket BISCUIT. Field Ticket ID di atas adalah sumber tunggal.
         return None
 
+    def read_ticket_created_date(self, ticket_page):
+        """Baca Tanggal Masuk SYGAP (Created Date / Submit Date) dari form tiket. Return string YYYY-MM-DD HH:MM:SS atau ''."""
+        # Coba cari input dengan value format tanggal
+        date_pat = re.compile(r'\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}(:\d{2})?')
+        selectors = [
+            "input[value*='-']",
+        ]
+        # 1) Cari input yang valuenya match tanggal dan dekat label Created/Submit
+        try:
+            for lbl_text in ["Created Date", "Submit Date", "Created", "Tanggal Masuk"]:
+                labs = ticket_page.locator(f"label:has-text('{lbl_text}')")
+                for idx in range(labs.count()):
+                    try:
+                        lab = labs.nth(idx)
+                        cont = lab.locator("xpath=ancestor::div[contains(@class,'form') or contains(@class,'group') or contains(@class,'row')][1]")
+                        inp = cont.locator("input")
+                        for j in range(inp.count()):
+                            v = inp.nth(j).input_value().strip()
+                            if date_pat.search(v):
+                                return v
+                            # juga cek value attr
+                            av = inp.nth(j).get_attribute("value") or ""
+                            if date_pat.search(av):
+                                return av.strip()
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        # 2) Fallback: scan semua input dengan value tanggal, ambil yang paling awal (biasanya Created)
+        try:
+            all_inputs = ticket_page.locator("input")
+            candidates = []
+            for i in range(all_inputs.count()):
+                try:
+                    v = all_inputs.nth(i).input_value().strip()
+                except Exception:
+                    try:
+                        v = all_inputs.nth(i).get_attribute("value") or ""
+                    except Exception:
+                        v = ""
+                if date_pat.search(v):
+                    candidates.append(v.strip())
+            if candidates:
+                # Urutkan, ambil paling awal (terkecil)
+                try:
+                    candidates_sorted = sorted(candidates)
+                    return candidates_sorted[0]
+                except Exception:
+                    return candidates[0]
+        except Exception:
+            pass
+        # 3) Fallback: cari di body text
+        try:
+            body = ticket_page.locator("body").inner_text(timeout=3000)
+            m = date_pat.search(body)
+            if m:
+                return m.group(0)
+        except Exception:
+            pass
+        return ""
+
+    def read_ticket_selesai_date(self, ticket_page):
+        """Tanggal selesai = sekarang (waktu bot menyelesaikan). Coba baca Actual End Date jika sudah terisi, fallback ke now."""
+        date_pat = re.compile(r'\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}(:\d{2})?')
+        try:
+            for lbl_text in ["Actual End Date", "End Date", "Resolution Date"]:
+                labs = ticket_page.locator(f"label:has-text('{lbl_text}')")
+                for idx in range(labs.count()):
+                    try:
+                        lab = labs.nth(idx)
+                        cont = lab.locator("xpath=ancestor::div[contains(@class,'form') or contains(@class,'group') or contains(@class,'row')][1]")
+                        inp = cont.locator("input")
+                        for j in range(inp.count()):
+                            v = inp.nth(j).input_value().strip()
+                            if date_pat.search(v):
+                                return v
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        from datetime import datetime as _dt
+        return _dt.now().strftime("%Y-%m-%d %H:%M:%S")
+
     def extract_parent_gamas_from_note(self, note):
         """Extract parent GAMAS INC from note.
         
@@ -1398,7 +1481,7 @@ class SygapService:
                     })
                     self.processed_ids.add(code)
                     try:
-                        log_history(feature="CANCLWORK", ticket_code=code, ticket_id=wo_number, owner_group=wo_number, note=note, reply_sygap=complete_note if 'complete_note' in locals() else "", biscuit_status=response.status if 'response' in locals() and hasattr(response, 'status') else "", biscuit_message=response.message if 'response' in locals() and hasattr(response, 'message') else "", status=response.status if 'response' in locals() and hasattr(response, 'status') else "SUCCESS", solver_id=USER_ID)
+                        log_history(feature="CANCLWORK", ticket_code=code, ticket_id=wo_number, owner_group=wo_number, note=note, reply_sygap=complete_note if 'complete_note' in locals() else "", biscuit_status=response.status if 'response' in locals() and hasattr(response, 'status') else "", biscuit_message=response.message if 'response' in locals() and hasattr(response, 'message') else "", status=response.status if 'response' in locals() and hasattr(response, 'status') else "SUCCESS", solver_id=USER_ID, tgl_masuk=self.read_ticket_created_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "", tgl_selesai=self.read_ticket_selesai_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "")
                     except Exception:
                         pass
 
@@ -1734,7 +1817,7 @@ class SygapService:
             self.processed_ids.add(code)
             try:
                 _n = note if 'note' in locals() else ""
-                log_history(feature="GAMAS", ticket_code=code, ticket_id="", owner_group="", note=_n, reply_sygap=note if 'note' in locals() else "", biscuit_status="", biscuit_message="", status="SUCCESS", solver_id=USER_ID)
+                log_history(feature="GAMAS", ticket_code=code, ticket_id="", owner_group="", note=_n, reply_sygap=note if 'note' in locals() else "", biscuit_status="", biscuit_message="", status="SUCCESS", solver_id=USER_ID, tgl_masuk=self.read_ticket_created_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "", tgl_selesai=self.read_ticket_selesai_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "")
             except Exception:
                 pass
         else:
@@ -2060,7 +2143,7 @@ class SygapService:
                         # agar tiket yg gagal complete tidak skip selamanya (loop).
                         self.processed_ids.add(code)
                         try:
-                            log_history(feature="GAMAS", ticket_code=code, ticket_id=parent_inc if 'parent_inc' in locals() else "", owner_group=",".join(child_incs[:3]) if 'child_incs' in locals() else "", note=note if 'note' in locals() else "", reply_sygap="Cek Kembali", biscuit_status="SUCCESS", biscuit_message=f"Parent:{parent_inc if 'parent_inc' in locals() else ''} Child:{','.join(child_incs[:3]) if 'child_incs' in locals() else ''}", status="SUCCESS", solver_id=USER_ID)
+                            log_history(feature="GAMAS", ticket_code=code, ticket_id=parent_inc if 'parent_inc' in locals() else "", owner_group=",".join(child_incs[:3]) if 'child_incs' in locals() else "", note=note if 'note' in locals() else "", reply_sygap="Cek Kembali", biscuit_status="SUCCESS", biscuit_message=f"Parent:{parent_inc if 'parent_inc' in locals() else ''} Child:{','.join(child_incs[:3]) if 'child_incs' in locals() else ''}", status="SUCCESS", solver_id=USER_ID, tgl_masuk=self.read_ticket_created_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "", tgl_selesai=self.read_ticket_selesai_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "")
                         except Exception:
                             pass
                     else:
@@ -2240,7 +2323,7 @@ class SygapService:
                                 })
                                 self.processed_ids.add(code)
                                 try:
-                                    log_history(feature="DISPATCH", ticket_code=code, ticket_id=bulk_og if 'bulk_og' in locals() else "", owner_group=bulk_og if 'bulk_og' in locals() else "C4_CONSUMER", note=note, reply_sygap="untuk permintaan dispatch ke C4_CONSUMER silahkan koordinasikan ke OG terkait", biscuit_status="", biscuit_message="", status="SUCCESS", solver_id=USER_ID)
+                                    log_history(feature="DISPATCH", ticket_code=code, ticket_id=bulk_og if 'bulk_og' in locals() else "", owner_group=bulk_og if 'bulk_og' in locals() else "C4_CONSUMER", note=note, reply_sygap="untuk permintaan dispatch ke C4_CONSUMER silahkan koordinasikan ke OG terkait", biscuit_status="", biscuit_message="", status="SUCCESS", solver_id=USER_ID, tgl_masuk=self.read_ticket_created_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "", tgl_selesai=self.read_ticket_selesai_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "")
                                 except Exception:
                                     pass
                             else:
@@ -2349,7 +2432,7 @@ class SygapService:
                                 })
                                 self.processed_ids.add(code)
                                 try:
-                                    log_history(feature="DISPATCH", ticket_code=code, ticket_id=",".join(bulk_incs[:3]) if 'bulk_incs' in locals() else "", owner_group=bulk_og if 'bulk_og' in locals() else "", note=note if 'note' in locals() else "", reply_sygap=complete_note if 'complete_note' in locals() else "", biscuit_status="SUCCESS" if 'all_success' in locals() and all_success else "FAILED", biscuit_message=complete_note if 'complete_note' in locals() else "", status="SUCCESS", solver_id=USER_ID)
+                                    log_history(feature="DISPATCH", ticket_code=code, ticket_id=",".join(bulk_incs[:3]) if 'bulk_incs' in locals() else "", owner_group=bulk_og if 'bulk_og' in locals() else "", note=note if 'note' in locals() else "", reply_sygap=complete_note if 'complete_note' in locals() else "", biscuit_status="SUCCESS" if 'all_success' in locals() and all_success else "FAILED", biscuit_message=complete_note if 'complete_note' in locals() else "", status="SUCCESS", solver_id=USER_ID, tgl_masuk=self.read_ticket_created_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "", tgl_selesai=self.read_ticket_selesai_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "")
                                 except Exception:
                                     pass
                             else:
@@ -2394,7 +2477,7 @@ class SygapService:
                                 })
                                 self.processed_ids.add(code)
                                 try:
-                                    log_history(feature="DISPATCH", ticket_code=code, ticket_id=owner_group if 'owner_group' in locals() else "", owner_group=owner_group if 'owner_group' in locals() else "", note=note, reply_sygap="untuk permintaan dispatch ke C4_CONSUMER silahkan koordinasikan ke OG terkait", biscuit_status="", biscuit_message="", status="SUCCESS", solver_id=USER_ID)
+                                    log_history(feature="DISPATCH", ticket_code=code, ticket_id=owner_group if 'owner_group' in locals() else "", owner_group=owner_group if 'owner_group' in locals() else "", note=note, reply_sygap="untuk permintaan dispatch ke C4_CONSUMER silahkan koordinasikan ke OG terkait", biscuit_status="", biscuit_message="", status="SUCCESS", solver_id=USER_ID, tgl_masuk=self.read_ticket_created_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "", tgl_selesai=self.read_ticket_selesai_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "")
                                 except Exception:
                                     pass
                             else:
@@ -2498,7 +2581,7 @@ class SygapService:
                         })
                         self.processed_ids.add(code)
                         try:
-                            log_history(feature="DISPATCH", ticket_code=code, ticket_id=inc_number if 'inc_number' in locals() else "", owner_group=owner_group if 'owner_group' in locals() else "", note=note, reply_sygap=complete_note if 'complete_note' in locals() else "", biscuit_status=response.status if 'response' in locals() and hasattr(response, 'status') else "", biscuit_message=response.message if 'response' in locals() and hasattr(response, 'message') else "", status=response.status if 'response' in locals() and hasattr(response, 'status') else "SUCCESS", solver_id=USER_ID)
+                            log_history(feature="DISPATCH", ticket_code=code, ticket_id=inc_number if 'inc_number' in locals() else "", owner_group=owner_group if 'owner_group' in locals() else "", note=note, reply_sygap=complete_note if 'complete_note' in locals() else "", biscuit_status=response.status if 'response' in locals() and hasattr(response, 'status') else "", biscuit_message=response.message if 'response' in locals() and hasattr(response, 'message') else "", status=response.status if 'response' in locals() and hasattr(response, 'status') else "SUCCESS", solver_id=USER_ID, tgl_masuk=self.read_ticket_created_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "", tgl_selesai=self.read_ticket_selesai_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "")
                         except Exception:
                             pass
 
@@ -2537,7 +2620,7 @@ class SygapService:
                             })
                             self.processed_ids.add(code)
                             try:
-                                log_history(feature="DISPATCH", ticket_code=code, ticket_id="", owner_group="C4", note=note, reply_sygap="untuk permintaan dispatch ke C4_CONSUMER silahkan koordinasikan ke OG terkait", biscuit_status="", biscuit_message="", status="SUCCESS", solver_id=USER_ID)
+                                log_history(feature="DISPATCH", ticket_code=code, ticket_id="", owner_group="C4", note=note, reply_sygap="untuk permintaan dispatch ke C4_CONSUMER silahkan koordinasikan ke OG terkait", biscuit_status="", biscuit_message="", status="SUCCESS", solver_id=USER_ID, tgl_masuk=self.read_ticket_created_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "", tgl_selesai=self.read_ticket_selesai_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "")
                             except Exception:
                                 pass
                         else:
@@ -2733,7 +2816,7 @@ class SygapService:
                                 results.append({"request_code": code, "type": "C4_COMPLETE", "note": note})
                                 try:
                                     _rr = response if 'response' in locals() and hasattr(response, 'status') else None
-                                    log_history(feature="DISPATCH_INCIDENT", ticket_code=code, ticket_id=locals().get("wo_number","") or locals().get("inc_number","") or locals().get("ticket_id","") or locals().get("service_id","") or "", owner_group=locals().get("owner_group","") or locals().get("bulk_og","") or "", note=locals().get("note",""), reply_sygap=locals().get("complete_note","") or locals().get("reply_note","") or "Cek Kembali", biscuit_status=_rr.status if _rr else "", biscuit_message=_rr.message if _rr else "", status="SUCCESS", solver_id=USER_ID)
+                                    log_history(feature="DISPATCH_INCIDENT", ticket_code=code, ticket_id=locals().get("wo_number","") or locals().get("inc_number","") or locals().get("ticket_id","") or locals().get("service_id","") or "", owner_group=locals().get("owner_group","") or locals().get("bulk_og","") or "", note=locals().get("note",""), reply_sygap=locals().get("complete_note","") or locals().get("reply_note","") or "Cek Kembali", biscuit_status=_rr.status if _rr else "", biscuit_message=_rr.message if _rr else "", status="SUCCESS", solver_id=USER_ID, tgl_masuk=self.read_ticket_created_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "", tgl_selesai=self.read_ticket_selesai_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "")
                                 except Exception:
                                     pass
                                 self.processed_ids.add(code)
@@ -2828,7 +2911,7 @@ class SygapService:
                                 results.append({"request_code": code, "type": "BULK_OG_CHANGE", "bulk_og": bulk_og, "total_incs": len(bulk_incs), "failed_incs": len(failed_incs)})
                                 try:
                                     _rr = response if 'response' in locals() and hasattr(response, 'status') else None
-                                    log_history(feature="DISPATCH_INCIDENT", ticket_code=code, ticket_id=locals().get("wo_number","") or locals().get("inc_number","") or locals().get("ticket_id","") or locals().get("service_id","") or "", owner_group=locals().get("owner_group","") or locals().get("bulk_og","") or "", note=locals().get("note",""), reply_sygap=locals().get("complete_note","") or locals().get("reply_note","") or "Cek Kembali", biscuit_status=_rr.status if _rr else "", biscuit_message=_rr.message if _rr else "", status="SUCCESS", solver_id=USER_ID)
+                                    log_history(feature="DISPATCH_INCIDENT", ticket_code=code, ticket_id=locals().get("wo_number","") or locals().get("inc_number","") or locals().get("ticket_id","") or locals().get("service_id","") or "", owner_group=locals().get("owner_group","") or locals().get("bulk_og","") or "", note=locals().get("note",""), reply_sygap=locals().get("complete_note","") or locals().get("reply_note","") or "Cek Kembali", biscuit_status=_rr.status if _rr else "", biscuit_message=_rr.message if _rr else "", status="SUCCESS", solver_id=USER_ID, tgl_masuk=self.read_ticket_created_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "", tgl_selesai=self.read_ticket_selesai_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "")
                                 except Exception:
                                     pass
                                 self.processed_ids.add(code)
@@ -2866,7 +2949,7 @@ class SygapService:
                                 results.append({"request_code": code, "type": "C4_COMPLETE", "note": note})
                                 try:
                                     _rr = response if 'response' in locals() and hasattr(response, 'status') else None
-                                    log_history(feature="DISPATCH_INCIDENT", ticket_code=code, ticket_id=locals().get("wo_number","") or locals().get("inc_number","") or locals().get("ticket_id","") or locals().get("service_id","") or "", owner_group=locals().get("owner_group","") or locals().get("bulk_og","") or "", note=locals().get("note",""), reply_sygap=locals().get("complete_note","") or locals().get("reply_note","") or "Cek Kembali", biscuit_status=_rr.status if _rr else "", biscuit_message=_rr.message if _rr else "", status="SUCCESS", solver_id=USER_ID)
+                                    log_history(feature="DISPATCH_INCIDENT", ticket_code=code, ticket_id=locals().get("wo_number","") or locals().get("inc_number","") or locals().get("ticket_id","") or locals().get("service_id","") or "", owner_group=locals().get("owner_group","") or locals().get("bulk_og","") or "", note=locals().get("note",""), reply_sygap=locals().get("complete_note","") or locals().get("reply_note","") or "Cek Kembali", biscuit_status=_rr.status if _rr else "", biscuit_message=_rr.message if _rr else "", status="SUCCESS", solver_id=USER_ID, tgl_masuk=self.read_ticket_created_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "", tgl_selesai=self.read_ticket_selesai_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "")
                                 except Exception:
                                     pass
                                 self.processed_ids.add(code)
@@ -2953,7 +3036,7 @@ class SygapService:
                         results.append({"request_code": code, "owner_group": owner_group, "note": note, "biscuit_status": response.status})
                         try:
                             _rr = response if 'response' in locals() and hasattr(response, 'status') else None
-                            log_history(feature="DISPATCH_INCIDENT", ticket_code=code, ticket_id=locals().get("wo_number","") or locals().get("inc_number","") or locals().get("ticket_id","") or locals().get("service_id","") or "", owner_group=locals().get("owner_group","") or locals().get("bulk_og","") or "", note=locals().get("note",""), reply_sygap=locals().get("complete_note","") or locals().get("reply_note","") or "Cek Kembali", biscuit_status=_rr.status if _rr else "", biscuit_message=_rr.message if _rr else "", status="SUCCESS", solver_id=USER_ID)
+                            log_history(feature="DISPATCH_INCIDENT", ticket_code=code, ticket_id=locals().get("wo_number","") or locals().get("inc_number","") or locals().get("ticket_id","") or locals().get("service_id","") or "", owner_group=locals().get("owner_group","") or locals().get("bulk_og","") or "", note=locals().get("note",""), reply_sygap=locals().get("complete_note","") or locals().get("reply_note","") or "Cek Kembali", biscuit_status=_rr.status if _rr else "", biscuit_message=_rr.message if _rr else "", status="SUCCESS", solver_id=USER_ID, tgl_masuk=self.read_ticket_created_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "", tgl_selesai=self.read_ticket_selesai_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "")
                         except Exception:
                             pass
                         self.processed_ids.add(code)
@@ -2985,7 +3068,7 @@ class SygapService:
                             results.append({"request_code": code, "type": "C4_COMPLETE", "note": note})
                             try:
                                 _rr = response if 'response' in locals() and hasattr(response, 'status') else None
-                                log_history(feature="DISPATCH_INCIDENT", ticket_code=code, ticket_id=locals().get("wo_number","") or locals().get("inc_number","") or locals().get("ticket_id","") or locals().get("service_id","") or "", owner_group=locals().get("owner_group","") or locals().get("bulk_og","") or "", note=locals().get("note",""), reply_sygap=locals().get("complete_note","") or locals().get("reply_note","") or "Cek Kembali", biscuit_status=_rr.status if _rr else "", biscuit_message=_rr.message if _rr else "", status="SUCCESS", solver_id=USER_ID)
+                                log_history(feature="DISPATCH_INCIDENT", ticket_code=code, ticket_id=locals().get("wo_number","") or locals().get("inc_number","") or locals().get("ticket_id","") or locals().get("service_id","") or "", owner_group=locals().get("owner_group","") or locals().get("bulk_og","") or "", note=locals().get("note",""), reply_sygap=locals().get("complete_note","") or locals().get("reply_note","") or "Cek Kembali", biscuit_status=_rr.status if _rr else "", biscuit_message=_rr.message if _rr else "", status="SUCCESS", solver_id=USER_ID, tgl_masuk=self.read_ticket_created_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "", tgl_selesai=self.read_ticket_selesai_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "")
                             except Exception:
                                 pass
                             self.processed_ids.add(code)
@@ -3233,7 +3316,7 @@ class SygapService:
                     })
                     try:
                         _rr = response if 'response' in locals() and hasattr(response, 'status') else None
-                        log_history(feature="CHANGE_SERVICE_ID", ticket_code=code, ticket_id=locals().get("wo_number","") or locals().get("inc_number","") or locals().get("ticket_id","") or locals().get("service_id","") or "", owner_group=locals().get("owner_group","") or locals().get("bulk_og","") or "", note=locals().get("note",""), reply_sygap=locals().get("complete_note","") or locals().get("reply_note","") or "Cek Kembali", biscuit_status=_rr.status if _rr else "", biscuit_message=_rr.message if _rr else "", status="SUCCESS", solver_id=USER_ID)
+                        log_history(feature="CHANGE_SERVICE_ID", ticket_code=code, ticket_id=locals().get("wo_number","") or locals().get("inc_number","") or locals().get("ticket_id","") or locals().get("service_id","") or "", owner_group=locals().get("owner_group","") or locals().get("bulk_og","") or "", note=locals().get("note",""), reply_sygap=locals().get("complete_note","") or locals().get("reply_note","") or "Cek Kembali", biscuit_status=_rr.status if _rr else "", biscuit_message=_rr.message if _rr else "", status="SUCCESS", solver_id=USER_ID, tgl_masuk=self.read_ticket_created_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "", tgl_selesai=self.read_ticket_selesai_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "")
                     except Exception:
                         pass
                     self.processed_ids.add(code)

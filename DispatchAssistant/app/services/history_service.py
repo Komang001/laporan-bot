@@ -10,12 +10,14 @@ HISTORY_DIR = os.path.join(BASE_DIR, "logs")
 _lock = threading.Lock()
 
 HEADER = [
-    "Waktu",
+    "Waktu Proses",
     "Fitur",
-    "Ticket Code",
-    "Ticket ID/WO/ServiceID",
+    "Tiket SYGAP (REQ)",
+    "No Tiket INSERA (INC)",
+    "Isi Note (500 char)",
+    "Tanggal Masuk SYGAP",
+    "Tanggal Selesai Dikerjakan",
     "Owner Group/Inc/ServiceType",
-    "Note (500 char)",
     "Reply SYGAP",
     "BISCUIT Status",
     "BISCUIT Message",
@@ -38,6 +40,8 @@ def log_history(
     biscuit_message="",
     status="",
     solver_id="",
+    tgl_masuk="",
+    tgl_selesai="",
 ):
     """Tulis 1 baris history harian. Aman untuk dipanggil dari thread manapun."""
     try:
@@ -46,6 +50,9 @@ def log_history(
         need_header = not os.path.exists(path) or os.path.getsize(path) == 0
 
         waktu = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # Tanggal selesai default = waktu proses jika tidak diisi
+        if not tgl_selesai:
+            tgl_selesai = waktu
         # Sanitasi note: 1 baris, max 500 char, tanpa newline
         note_clean = " ".join((note or "").split())[:500]
         reply_clean = " ".join((reply_sygap or "").split())[:200]
@@ -56,8 +63,10 @@ def log_history(
             feature,
             ticket_code,
             ticket_id or service_id or "",
-            owner_group or service_id or "",
             note_clean,
+            tgl_masuk or "",
+            tgl_selesai,
+            owner_group or service_id or "",
             reply_clean,
             biscuit_status,
             biscuit_msg_clean,
