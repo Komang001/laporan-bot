@@ -20,6 +20,9 @@ class SygapService:
 
     def __init__(self, browser_manager=None, stop_check=None):
         self.processed_ids = set()
+        self.related_ids = set()      # tiket yg relasi GAMAS-nya sudah di-submit (cegah duplikat)
+        self.gamas_fail_count = {}    # code -> jumlah gagal complete (batas retry)
+        self.skipped_ids = {}         # code -> timestamp terakhir di-SKIP (cooldown LOOP_INTERVAL)
         self.browser_manager = browser_manager
         self.stop_check = stop_check
 
@@ -399,8 +402,26 @@ class SygapService:
                 continue
         return None
 
-    def read_ticket_inc(self, ticket_page):
-        """Read INC number from ticket page (header, input, or text content)"""
+    def read_own_incident_code(self, ticket_page):
+        """Baca incident_code milik halaman ini sendiri (SYGAP code, BUKAN ticket BISCUIT)."""
+        try:
+            for sel in ["#incident_code", "input[name='incident_code']", "input[id='incident_code']"]:
+                loc = ticket_page.locator(sel)
+                if loc.count() > 0:
+                    val = loc.first.input_value().strip()
+                    m = re.search(r'INC\d+', val, re.IGNORECASE)
+                    if m:
+                        return m.group(0).upper()
+        except Exception:
+            pass
+        return None
+
+    def read_ticket_inc(self, ticket_page, exclude=None):
+        """Read INC number from ticket page (header, input, or text content).
+
+        exclude: nilai yg TIDAK boleh dikembalikan (biasanya incident_code halaman
+        sendiri, karena itu SYGAP code bukan nomer ticket BISCUIT).
+        """
 
         selectors = [
             "input[name$='_ticket_no']",
@@ -420,16 +441,18 @@ class SygapService:
                     val = loc.first.input_value().strip()
                     if val:
                         m = re.search(r'INC\d+', val, re.IGNORECASE)
-                        if m:
+                        if m and m.group(0).upper() != exclude:
                             return m.group(0).upper()
             except Exception:
                 continue
 
         try:
             body_text = ticket_page.locator("body").inner_text(timeout=5000)
-            m = re.search(r'INC\d+', body_text)
-            if m:
-                return m.group(0).upper()
+            # Ambil INC pertama yg BUKAN incident_code halaman sendiri
+            for m in re.finditer(r'INC\d+', body_text, re.IGNORECASE):
+                cand = m.group(0).upper()
+                if cand != exclude:
+                    return cand
         except Exception:
             pass
 
@@ -481,19 +504,21 @@ class SygapService:
 
         return None
 
-    def wait_for_ticket_inc(self, ticket_page, timeout=15):
+    def wait_for_ticket_inc(self, ticket_page, timeout=20):
         """Poll INC number dari halaman tiket dengan retry.
 
-        Dynamic content (e.g. 'INSERA - Ticket ID And User ID' -> Ticket ID)
-        diisi asinkron setelah page load, jadi perlu ditunggu beberapa detik.
+        SESUAI INSTRUKSI: kalau note tidak ada nomer tiket, langsung baca
+        field 'Ticket ID' (input *_ticket_id, contoh 3556174_4237379_ticket_id).
+        Field ini diisi ASINKRON setelah page load, jadi di-poll sampai terisi.
+
+        TIDAK menggunakan fallback body-text karena body berisi incident_code
+        SYGAP (bukan nomer ticket BISCUIT) -> bisa salah dispatch.
         """
         start = time.time()
+        own_code = self.read_own_incident_code(ticket_page)
         while time.time() - start < timeout:
-            inc = self.read_ticket_inc(ticket_page)
-            if inc:
-                return inc
-            inc = self.read_ticket_id_from_field(ticket_page)
-            if inc:
+            inc = self.read_ticket_id_from_field(ticket_page, exclude=own_code)
+            if inc and inc != own_code:
                 return inc
             try:
                 ticket_page.wait_for_load_state("domcontentloaded", timeout=5000)
@@ -502,7 +527,7 @@ class SygapService:
             ticket_page.wait_for_timeout(2000)
         return None
 
-    def read_ticket_id_from_field(self, ticket_page):
+    def read_ticket_id_from_field(self, ticket_page, exclude=None):
         """Read Ticket ID/INC from form field below note (e.g. 'INSERA - Ticket ID')"""
 
         selectors = [
@@ -518,7 +543,7 @@ class SygapService:
                     val = loc.first.input_value().strip()
                     if val:
                         m = re.search(r'INC\d+', val, re.IGNORECASE)
-                        if m:
+                        if m and m.group(0).upper() != exclude:
                             return m.group(0).upper()
             except Exception:
                 continue
@@ -533,19 +558,13 @@ class SygapService:
                     val = inp.first.input_value().strip()
                     if val:
                         m = re.search(r'INC\d+', val, re.IGNORECASE)
-                        if m:
+                        if m and m.group(0).upper() != exclude:
                             return m.group(0).upper()
         except Exception:
             pass
 
-        try:
-            body_text = ticket_page.locator("body").inner_text(timeout=5000)
-            m = re.search(r'INC\d+', body_text)
-            if m:
-                return m.group(0).upper()
-        except Exception:
-            pass
-
+        # TIDAK ada fallback body-text: body berisi incident_code SYGAP,
+        # bukan nomer ticket BISCUIT. Field Ticket ID di atas adalah sumber tunggal.
         return None
 
     def extract_parent_gamas_from_note(self, note):
@@ -572,6 +591,11 @@ class SygapService:
             return match.group(1).upper()
         # Pattern 2b: INDUKAN (kata populer: 'INDUKAN INC...', 'INDUKAN : INC...')
         match = re.search(r'\bINDUKAN\s*[:;]?\s*(INC\d+)', note, re.IGNORECASE)
+        if match:
+            return match.group(1).upper()
+        # Pattern 2c: "ke induk INC..." atau "induk INC..." (induk ditandai eksplisit,
+        # biasanya anak-gamas disebutkan dulu lalu "ke induk <INC>")
+        match = re.search(r'(?:\bke\s+)?\binduk\s*[:;]?\s*(INC\d+)', note, re.IGNORECASE)
         if match:
             return match.group(1).upper()
         # Pattern 3: GAMAS ... : or ; INC — but NOT if preceded by ANAK/AG
@@ -989,92 +1013,161 @@ class SygapService:
             ticket_page.wait_for_load_state("domcontentloaded", timeout=10000)
             ticket_page.wait_for_timeout(2000)
 
-            # REQUEST: Complete / INCIDENT: Resolve / Close Incident
-            btn = ticket_page.locator("button:has-text('Complete')")
-            if btn.count() == 0:
-                btn = ticket_page.locator("a:has-text('Complete')")
-            if btn.count() == 0:
-                btn = ticket_page.locator("button:has-text('COMPLETED')")
-            if btn.count() == 0:
-                btn = ticket_page.locator("button:has-text('completed')")
-            if btn.count() == 0:
-                btn = ticket_page.locator("button:has-text('Completed')")
-            if btn.count() == 0:
-                btn = ticket_page.locator("#btn_resolve_inc")
-            if btn.count() == 0:
-                btn = ticket_page.locator("#btn_close_inc")
-            if btn.count() == 0:
-                btn = ticket_page.locator("button:has-text('Resolve')")
-            if btn.count() == 0:
-                btn = ticket_page.locator("button:has-text('Close Incident')")
-            if btn.count() > 0:
-                log(f"    [COMPLETE] Clicking Complete button...")
-                btn.first.scroll_into_view_if_needed()
-                ticket_page.wait_for_timeout(500)
-                btn.first.click()
-                ticket_page.wait_for_timeout(4000)
+            # INCIDENT: Resolve (#btn_resolved -> #resolve-modal) -> REQUEST: Complete
+            btn = None
+            for sel in [
+                "#btn_resolved",
+                "#btn_resolve_note",
+                "#btn_resolve_inc",
+                "button:has-text('Resolve')",
+                "button:has-text('Complete')",
+                "a:has-text('Complete')",
+                "button:has-text('COMPLETED')",
+                "button:has-text('Completed')",
+                "#btn_close_inc",
+                "button:has-text('Close Incident')",
+            ]:
+                loc = ticket_page.locator(sel)
+                if loc.count() > 0:
+                    btn = loc.first
+                    log(f"    [COMPLETE] Found action button: {sel}")
+                    break
 
-                if note:
-                    log(f"    [COMPLETE] Looking for textbox in dialog...")
-                    note_box = None
+            if btn is None:
+                log(f"    [COMPLETE] Resolve/Complete button NOT found on ticket page!")
+                return False
 
-                    selectors = [
-                        ".modal.show .ck-editor__editable",
-                        ".modal.show [contenteditable='true']",
-                        ".modal.show textarea",
-                        ".modal .ck-editor__editable:visible",
-                        ".modal [contenteditable='true']:visible",
-                        ".modal textarea:visible",
-                        "[role='dialog'] .ck-editor__editable:visible",
-                        "[role='dialog'] [contenteditable='true']:visible",
-                        "[role='dialog'] textarea:visible",
-                        ".ck-editor__editable:visible",
-                        "[contenteditable='true']:visible",
-                        "textarea:visible",
-                    ]
+            btn.scroll_into_view_if_needed()
+            ticket_page.wait_for_timeout(500)
+            btn.click()
+            ticket_page.wait_for_timeout(3500)
 
-                    for sel in selectors:
-                        try:
-                            loc = ticket_page.locator(sel)
-                            if loc.count() > 0:
-                                note_box = loc.last
-                                log(f"    [COMPLETE] Found textbox with: {sel}")
-                                break
-                        except Exception:
-                            continue
-
-                    if note_box:
-                        note_box.click()
-                        ticket_page.wait_for_timeout(500)
+            # Isi Resolution Note ("Cek Kembali")
+            if note:
+                filled = False
+                # 1) Prioritaskan CKEditor editable (field sering di-wrap CKEditor)
+                ck = ticket_page.locator("#resolve-modal .ck-editor__editable, .modal.show .ck-editor__editable, .ck-editor__editable:visible")
+                if ck.count() > 0:
+                    try:
+                        box = ck.last
+                        box.scroll_into_view_if_needed()
+                        box.click()
                         ticket_page.keyboard.press("Control+a")
                         ticket_page.keyboard.press("Backspace")
                         ticket_page.wait_for_timeout(300)
                         ticket_page.keyboard.type(note, delay=30)
                         ticket_page.wait_for_timeout(500)
-                        log(f"    [COMPLETE] Typed note: {note}")
-                    else:
-                        log(f"    [COMPLETE] Textbox NOT found in modal!")
-                        return False
+                        filled = True
+                        log(f"    [COMPLETE] Typed note into CKEditor: {note}")
+                    except Exception as e:
+                        log(f"    [COMPLETE] CKEditor type failed: {e}")
+                # 2) Fallback: textarea #resolution (plain)
+                if not filled:
+                    ta = ticket_page.locator("#resolution")
+                    if ta.count() > 0:
+                        try:
+                            ta.first.scroll_into_view_if_needed()
+                            ta.first.click()
+                            ticket_page.keyboard.press("Control+a")
+                            ticket_page.keyboard.press("Backspace")
+                            ticket_page.wait_for_timeout(300)
+                            ticket_page.keyboard.type(note, delay=30)
+                            ticket_page.wait_for_timeout(500)
+                            filled = True
+                            log(f"    [COMPLETE] Typed note into #resolution: {note}")
+                        except Exception as e:
+                            log(f"    [COMPLETE] #resolution type failed: {e}")
+                # 3) Backup: paksa set value #resolution via JS (pastikan form value terisi)
+                try:
+                    ticket_page.evaluate(
+                        "(n) => { const el=document.getElementById('resolution'); if(el){ el.value=n; el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); } }",
+                        note,
+                    )
+                except Exception:
+                    pass
+                # 4) Last resort: cari textarea/contenteditable mana pun yg terlihat di modal
+                if not filled:
+                    note_box = None
+                    for sel in [".modal.show textarea", "[role='dialog'] textarea:visible", "textarea:visible", "[contenteditable='true']:visible"]:
+                        loc = ticket_page.locator(sel)
+                        if loc.count() > 0:
+                            note_box = loc.last
+                            break
+                    if note_box:
+                        try:
+                            note_box.click()
+                            ticket_page.keyboard.press("Control+a")
+                            ticket_page.keyboard.press("Backspace")
+                            ticket_page.wait_for_timeout(300)
+                            ticket_page.keyboard.type(note, delay=30)
+                            ticket_page.wait_for_timeout(400)
+                            filled = True
+                            log(f"    [COMPLETE] Typed note (last resort)")
+                        except Exception:
+                            pass
+                if not filled:
+                    log(f"    [COMPLETE] GAGAL isi note, tidak lanjut submit")
+                    return False
 
-                submit_btn = ticket_page.locator("#btn_submit_complete")
-                log(f"    [COMPLETE] Submit button found: {submit_btn.count()}")
-                if submit_btn.count() > 0:
-                    submit_btn.scroll_into_view_if_needed()
-                    ticket_page.wait_for_timeout(500)
-                    if submit_btn.is_visible():
-                        submit_btn.click()
-                        log(f"    [COMPLETE] Submit clicked")
+            # Pastikan select required terisi (incident resolve)
+            try:
+                ticket_page.evaluate("""() => {
+                    ['optimum_resolution','resolution_status_reason'].forEach(id => {
+                        const sel=document.getElementById(id);
+                        if(sel && !sel.value){
+                            for(let i=0;i<sel.options.length;i++){
+                                if(sel.options[i].value && sel.options[i].text!=='Select Resolution Message' && sel.options[i].text!=='Select Status Reason'){
+                                    sel.selectedIndex=i;
+                                    if(window.jQuery) jQuery(sel).trigger('change');
+                                    break;
+                                }
+                            }
+                        }
+                    });
+                }""")
+            except Exception as e:
+                log(f"    [COMPLETE] ensure selects err: {e}")
+
+            # Submit - coba banyak selector sampai ketemu
+            submitted = False
+            submit_selectors = [
+                "#btn_resolve_inc",
+                "#btn_submit_complete",
+                "#resolve-modal button[type='submit']",
+                "button[type='submit']",
+                "#resolve-modal button:has-text('Submit')",
+                "#resolve-modal button:has-text('Resolve')",
+                "button:has-text('Submit')",
+                "button:has-text('Yes')",
+                "button:has-text('OK')",
+                "button:has-text('Confirm')",
+            ]
+            for ssel in submit_selectors:
+                try:
+                    sb = ticket_page.locator(ssel)
+                    if sb.count() > 0 and sb.first.is_visible():
+                        log(f"    [COMPLETE] Clicking submit: {ssel}")
+                        sb.first.scroll_into_view_if_needed()
+                        ticket_page.wait_for_timeout(500)
+                        sb.first.click()
                         ticket_page.wait_for_timeout(3000)
-                        return True
-                log(f"    [COMPLETE] Submit not found/visible, trying fallback...")
-                confirm = ticket_page.locator("button:has-text('Yes'), button:has-text('OK'), button:has-text('Confirm'), button:has-text('Submit')")
-                log(f"    [COMPLETE] Fallback buttons found: {confirm.count()}")
-                if confirm.count() > 0:
-                    confirm.first.click()
-                    ticket_page.wait_for_timeout(3000)
-                    return True
+                        submitted = True
+                        break
+                except Exception:
+                    continue
+
+            if not submitted:
+                log(f"    [COMPLETE] Submit button TIDAK ditemukan, batal")
+                return False
+
+            # Verifikasi status benar-benar RESOLVED/COMPLETED sebelum return
+            log(f"    [COMPLETE] Verifying status changed...")
+            ok = self.wait_for_completed(ticket_page, timeout=30)
+            if ok:
+                log(f"    [COMPLETE] Status sudah RESOLVED/COMPLETED")
             else:
-                log(f"    [COMPLETE] Complete button NOT found on ticket page!")
+                log(f"    [COMPLETE] Status BELUM berubah setelah submit!")
+            return ok
         except Exception as e:
             log(f"    [COMPLETE] Error: {e}")
         return False
@@ -1169,6 +1262,8 @@ class SygapService:
                 except Exception as e:
                     log(f"    Error: {e}")
                 finally:
+                    if code not in self.processed_ids and code not in self.related_ids:
+                        self.skipped_ids[code] = time.time()
                     try:
                         if not ticket_page.is_closed():
                             ticket_page.close()
@@ -1490,6 +1585,8 @@ class SygapService:
                 except Exception as e:
                     log(f"    Error: {e}")
                 finally:
+                    if code not in self.processed_ids and code not in self.related_ids:
+                        self.skipped_ids[code] = time.time()
                     try:
                         if not ticket_page.is_closed():
                             ticket_page.close()
@@ -1794,6 +1891,34 @@ class SygapService:
         except Exception as e:
             print(f"Filter GAMAS RELATIONS error: {e}")
 
+    def _complete_gamas_reply(self, page, ticket_page, code, note, results, log):
+        """Complete tiket GAMAS relations dengan reply note (tanpa membuat relasi)."""
+        page.bring_to_front()
+        page.wait_for_timeout(1000)
+        self.browser_manager.activate_page(ticket_page)
+        try:
+            ticket_page.reload(wait_until="domcontentloaded", timeout=15000)
+        except Exception:
+            pass
+        ticket_page.wait_for_timeout(3000)
+
+        completed = self.complete_ticket(ticket_page, note=note)
+        if completed:
+            is_completed = self.wait_for_completed(ticket_page)
+            if is_completed:
+                log(f"    Ticket {code} -> COMPLETED (reply: {note})")
+            else:
+                log(f"    Ticket {code} status belum COMPLETED")
+            results.append({"request_code": code, "reply_note": note})
+            # Tandai processed agar tidak di-retry (relasi memang tidak dibuat)
+            self.processed_ids.add(code)
+        else:
+            log(f"    Gagal complete ticket {code} (reply)")
+            self.gamas_fail_count[code] = self.gamas_fail_count.get(code, 0) + 1
+            if self.gamas_fail_count[code] >= 3:
+                log(f"    Complete gagal {self.gamas_fail_count[code]}x, tandai processed (give up)")
+                self.processed_ids.add(code)
+
     def process_gamas_relations_tickets(self, log_callback=None):
         log = log_callback or (lambda msg: None)
         results = []
@@ -1898,12 +2023,17 @@ class SygapService:
                     log(f"  [{i+1}] {code} - SKIP (already processed)")
                     continue
 
+                if code in self.skipped_ids and (time.time() - self.skipped_ids[code]) < LOOP_INTERVAL:
+                    log(f"  [{i+1}] {code} - SKIP (recently skipped, tunggu {LOOP_INTERVAL}s)")
+                    continue
+
                 total_processed += 1
                 log(f"  [{i+1}/{len(rows)}] Opening {code}...")
 
                 ticket_page = self.click_ticket(page, row_info, skip_close=True)
                 if ticket_page is None:
                     log(f"    Failed to open {code}")
+                    self.skipped_ids[code] = time.time()
                     continue
 
                 try:
@@ -1933,20 +2063,52 @@ class SygapService:
                     if note:
                         note_one_line = " ".join(note.split())[:500]
                         log(f"    Note: {note_one_line}")
+
+                    from app.services.biscuit_service import BiscuitService
+                    biscuit = BiscuitService(browser_manager=self.browser_manager)
+
                     parent_inc = self.extract_parent_gamas_from_note(note)
+                    parser_found_parent = bool(parent_inc)
                     if parent_inc:
                         log(f"    Parent INC from note: {parent_inc}")
                     else:
                         parent_inc = self.find_parent_from_ticket_id_field(ticket_page, note)
                         if parent_inc:
                             log(f"    Parent INC from Ticket ID field: {parent_inc}")
+                            parser_found_parent = True
+
+                    if parser_found_parent:
+                        # Parser menemukan induk -> anak diambil dari note/field (existing behavior)
+                        child_incs = self.extract_child_incs_excluding_parent(note)
+                        if not child_incs:
+                            child_incs = self.read_child_incs_from_field(ticket_page)
+                    else:
+                        # FALLBACK: bot TIDAK menemukan parser induk -> deteksi otomatis by source.
+                        all_incs = re.findall(r'INC\d+', note or '', re.IGNORECASE)
+                        all_incs = [i.upper() for i in all_incs]
+                        for i in self.read_child_incs_from_field(ticket_page):
+                            if i not in all_incs:
+                                all_incs.append(i)
+                        if not all_incs:
+                            log(f"    Tidak ada INC di note/field. SKIP")
+                            continue
+                        log(f"    FALLBACK deteksi by source untuk {len(all_incs)} INC: {','.join(all_incs[:8])}...")
+                        child_check = biscuit.check_children(all_incs)
+                        for ex in child_check["excluded"]:
+                            log(f"    {ex['inc']} source={ex['source']} -> {ex['detail'][:90]}")
+                        gamas_incs = [ex["inc"] for ex in child_check["excluded"] if ex["source"] == "GAMAS"]
+                        if len(gamas_incs) >= 2:
+                            log(f"    Ditemukan {len(gamas_incs)} tiket GAMAS ({gamas_incs}); COMPLETE dgn reply.")
+                            self._complete_gamas_reply(page, ticket_page, code, "Harap sertakan 1 tiket Induk Gamas saja", results, log)
+                            continue
+                        elif len(gamas_incs) == 1:
+                            parent_inc = gamas_incs[0]
+                            log(f"    Induk GAMAS terdeteksi otomatis by source: {parent_inc}")
+                            child_incs = [i for i in child_check["valid"] if i != parent_inc]
                         else:
-                            log(f"    GAMAS parent INC tidak ditemukan di note. SKIP (hindari relasi salah).")
+                            log(f"    Tidak ada tiket GAMAS di antara INC; SKIP (tidak ada induk).")
                             continue
 
-                    child_incs = self.extract_child_incs_excluding_parent(note)
-                    if not child_incs:
-                        child_incs = self.read_child_incs_from_field(ticket_page)
                     if not child_incs:
                         log(f"    No child INCs found, SKIP")
                         continue
@@ -1959,83 +2121,93 @@ class SygapService:
                         continue
                     log(f"    Child INCs ({len(child_incs)}): {','.join(child_incs[:5])}...")
 
-                    from app.services.biscuit_service import BiscuitService
-                    biscuit = BiscuitService(browser_manager=self.browser_manager)
                     if not biscuit.open():
-                        log(f"    Tab BISCUIT tidak ada di browser ini, pakai token cache...")
+                        log(f"    ⚠ Tab BISCUIT TIDAK TERBUKA -> pakai token cache. Jika /cekticket gagal, BUKA tab BISCUIT & LOGIN agar relasi bisa diverifikasi.")
 
-                    log(f"    Checking induk {parent_inc} via /cekticket...")
-                    check = biscuit.check_ticket(parent_inc)
-                    log(f"    Cek induk {parent_inc}: {check['detail']}")
-                    if not check["found"]:
-                        log(f"    Induk {parent_inc} tidak sesuai, SKIP relasi")
-                        continue
-
-                    log(f"    Checking {len(child_incs)} anak via /cekticket...")
-                    child_check = biscuit.check_children(child_incs)
-                    for ex in child_check["excluded"]:
-                        log(f"    Anak {ex['inc']} source={ex['source']} -> jangan di-input ({ex['detail'][:90]})")
-                    child_incs = child_check["valid"]
-                    if not child_incs:
-                        log(f"    Semua anak tidak valid (bukan CUSTOMER), SKIP relasi")
-                        continue
-                    child_str = ",".join(child_incs)
-                    log(f"    Child INCs valid ({len(child_incs)}): {child_str[:100]}...")
-
-                    from app.services.insera_gamas_service import InseraGamasService
-                    insera = InseraGamasService(browser_manager=self.browser_manager, log_callback=log)
-                    if not insera.open():
-                        log(f"    Tab INSERA tidak ditemukan, coba API langsung (cookie profil)...")
+                    if code in self.related_ids:
+                        # Relasi GAMAS sudah pernah di-submit (mis. complete gagal lalu di-retry).
+                        # JANGAN submit ulang (hindari relasi dobel), langsung ke complete.
+                        log(f"    Relasi GAMAS sudah pernah di-submit, lewati submit INSERA -> langsung complete")
                     else:
-                        max_nav_retries = 3
-                        nav_ok = False
-                        for nav_attempt in range(1, max_nav_retries + 1):
-                            if not insera.navigate_to_relations():
-                                log(f"    Failed navigate to Gamas Relations (attempt {nav_attempt})")
-                                if nav_attempt < max_nav_retries:
-                                    insera.get_page().wait_for_timeout(5000)
-                                continue
+                        log(f"    Checking induk {parent_inc} via /cekticket...")
+                        check = biscuit.check_ticket(parent_inc)
+                        log(f"    Cek induk {parent_inc}: {check['detail']}")
+                        if not check["found"]:
+                            detail = check.get("detail", "")
+                            if "not found" in detail.lower() or "error" in detail.lower():
+                                log(f"    ⚠ /cekticket induk GAGAL verifikasi: '{detail}'")
+                                log(f"    ⚠ BUKA/KEMBALIKAN tab BISCUIT & pastikan SUDAH LOGIN (token mungkin expired/invalid). Bot akan retry otomatis.")
+                            else:
+                                log(f"    Induk {parent_inc} bukan GAMAS ({detail}), SKIP relasi")
+                            continue
 
-                            page_url = insera.get_page().url.lower()
-                            page_content = ""
-                            try:
-                                page_content = insera.get_page().content().lower()
-                            except Exception:
-                                pass
+                        log(f"    Checking {len(child_incs)} anak via /cekticket...")
+                        child_check = biscuit.check_children(child_incs)
+                        for ex in child_check["excluded"]:
+                            log(f"    Anak {ex['inc']} source={ex['source']} -> jangan di-input ({ex['detail'][:90]})")
+                        child_incs = child_check["valid"]
+                        if not child_incs:
+                            log(f"    Semua anak tidak valid (bukan CUSTOMER), SKIP relasi")
+                            continue
+                        child_str = ",".join(child_incs)
+                        log(f"    Child INCs valid ({len(child_incs)}): {child_str[:100]}...")
 
-                            if "login" in page_url:
-                                log(f"    INSERA belum login! Login manual dulu.")
-                                break
+                        from app.services.insera_gamas_service import InseraGamasService
+                        insera = InseraGamasService(browser_manager=self.browser_manager, log_callback=log)
+                        if not insera.open():
+                            log(f"    Tab INSERA tidak ditemukan, coba API langsung (cookie profil)...")
+                        else:
+                            max_nav_retries = 3
+                            nav_ok = False
+                            for nav_attempt in range(1, max_nav_retries + 1):
+                                if not insera.navigate_to_relations():
+                                    log(f"    Failed navigate to Gamas Relations (attempt {nav_attempt})")
+                                    if nav_attempt < max_nav_retries:
+                                        insera.get_page().wait_for_timeout(5000)
+                                    continue
 
-                            is_error = "system error" in page_content or (
-                                "unintended error" in page_content
-                            )
-                            if is_error:
-                                log(f"    Joget error at: {page_url[:60]}")
-                                if nav_attempt < max_nav_retries:
-                                    log(f"    Retrying in 10s... (attempt {nav_attempt}/{max_nav_retries})")
-                                    insera.get_page().wait_for_timeout(10000)
-                                    insera.navigate_to_relations()
-                                continue
+                                page_url = insera.get_page().url.lower()
+                                page_content = ""
+                                try:
+                                    page_content = insera.get_page().content().lower()
+                                except Exception:
+                                    pass
 
-                            if "gamasrelations" in page_url:
-                                nav_ok = True
-                                break
+                                if "login" in page_url:
+                                    log(f"    INSERA belum login! Login manual dulu.")
+                                    break
 
-                        if not nav_ok:
-                            log(f"    Navigasi INSERA gagal, tetap coba API langsung...")
+                                is_error = "system error" in page_content or (
+                                    "unintended error" in page_content
+                                )
+                                if is_error:
+                                    log(f"    Joget error at: {page_url[:60]}")
+                                    if nav_attempt < max_nav_retries:
+                                        log(f"    Retrying in 10s... (attempt {nav_attempt}/{max_nav_retries})")
+                                        insera.get_page().wait_for_timeout(10000)
+                                        insera.navigate_to_relations()
+                                    continue
 
-                    log(f"    Parent: {parent_inc}")
-                    log(f"    Child: {child_str[:100]}...")
+                                if "gamasrelations" in page_url:
+                                    nav_ok = True
+                                    break
 
-                    log(f"    Submitting relasi GAMAS...")
-                    response = insera.submit_relation(parent_inc, child_str)
-                    log(f"    INSERA response: {response.status} - {response.message}")
-                    if response.status != "SUCCESS":
-                        log(f"    INSERA FAILED, SKIP complete")
-                        continue
+                            if not nav_ok:
+                                log(f"    Navigasi INSERA gagal, tetap coba API langsung...")
 
-                    log(f"    INSERA save OK, completing ticket...")
+                        log(f"    Parent: {parent_inc}")
+                        log(f"    Child: {child_str[:100]}...")
+
+                        log(f"    Submitting relasi GAMAS...")
+                        response = insera.submit_relation(parent_inc, child_str)
+                        log(f"    INSERA response: {response.status} - {response.message}")
+                        if response.status != "SUCCESS":
+                            log(f"    INSERA FAILED, SKIP complete")
+                            continue
+
+                        # Tandai relasi sudah di-submit agar tidak dobel saat retry
+                        self.related_ids.add(code)
+                        log(f"    INSERA save OK, completing ticket...")
 
                     page.bring_to_front()
                     page.wait_for_timeout(1000)
@@ -2054,19 +2226,30 @@ class SygapService:
                             log(f"    Ticket {code} -> COMPLETED")
                         else:
                             log(f"    Ticket {code} status belum COMPLETED")
+                        results.append({
+                            "request_code": code,
+                            "parent_inc": parent_inc,
+                            "child_incs": child_incs,
+                        })
+                        # HANYA tandai processed bila benar-benar COMPLETED,
+                        # agar tiket yg gagal complete tidak skip selamanya (loop).
+                        self.processed_ids.add(code)
                     else:
                         log(f"    Gagal complete ticket {code}")
-
-                    results.append({
-                        "request_code": code,
-                        "parent_inc": parent_inc,
-                        "child_incs": child_incs,
-                    })
-                    self.processed_ids.add(code)
+                        # Batas retry: kalau complete gagal terus-menerus, tandai processed
+                        # agar tidak spin tiap loop (relasi sudah aman di related_ids).
+                        self.gamas_fail_count[code] = self.gamas_fail_count.get(code, 0) + 1
+                        if self.gamas_fail_count[code] >= 3:
+                            log(f"    Complete gagal {self.gamas_fail_count[code]}x, tandai processed (give up) agar tidak spin")
+                            self.processed_ids.add(code)
 
                 except Exception as e:
                     log(f"    Error: {e}")
                 finally:
+                    # Catat tiket yg di-SKIP (bukan yg berhasil di-process/relasi)
+                    # agar tidak dibuka berulang dalam sesi yang sama (cooldown LOOP_INTERVAL).
+                    if code not in self.processed_ids and code not in self.related_ids:
+                        self.skipped_ids[code] = time.time()
                     try:
                         if not ticket_page.is_closed():
                             ticket_page.close()
@@ -2142,6 +2325,10 @@ class SygapService:
                     log(f"  [{i+1}] {code} - SKIP (already processed)")
                     continue
 
+                if code in self.skipped_ids and (time.time() - self.skipped_ids[code]) < LOOP_INTERVAL:
+                    log(f"  [{i+1}] {code} - SKIP (recently skipped, tunggu {LOOP_INTERVAL}s)")
+                    continue
+
                 total_processed += 1
                 processed_this_round += 1
                 log(f"  [{i+1}/{len(rows)}] Opening {code}...")
@@ -2149,6 +2336,7 @@ class SygapService:
                 ticket_page = self.click_ticket(page, row_info)
                 if ticket_page is None:
                     log(f"    Failed to open {code}")
+                    self.skipped_ids[code] = time.time()
                     continue
 
                 try:
@@ -2396,8 +2584,11 @@ class SygapService:
                                 continue
                             log(f"    TO CONFIRMED: {code}")
 
-                        if not inc_number:
-                            log(f"    INC not in note, reading from ticket page...")
+                        own_code = self.read_own_incident_code(ticket_page)
+                        if not inc_number or inc_number == own_code:
+                            if inc_number == own_code:
+                                log(f"    INC from note == incident_code, abaikan (bukan ticket BISCUIT)")
+                            log(f"    INC not in note (atau == incident_code), reading from Ticket ID field...")
                             inc_number = self.wait_for_ticket_inc(ticket_page)
                             if inc_number:
                                 log(f"    INC from page: {inc_number}")
@@ -2510,6 +2701,8 @@ class SygapService:
                 except Exception as e:
                     log(f"    Error: {e}")
                 finally:
+                    if code not in self.processed_ids and code not in self.related_ids:
+                        self.skipped_ids[code] = time.time()
                     try:
                         if not ticket_page.is_closed():
                             ticket_page.close()
@@ -2612,6 +2805,10 @@ class SygapService:
                     log(f"  [{i+1}] {code} - SKIP (already processed)")
                     continue
 
+                if code in self.skipped_ids and (time.time() - self.skipped_ids[code]) < LOOP_INTERVAL:
+                    log(f"  [{i+1}] {code} - SKIP (recently skipped, tunggu {LOOP_INTERVAL}s)")
+                    continue
+
                 total_processed += 1
                 processed_this_round += 1
                 log(f"  [{i+1}/{len(rows)}] Opening {code} [INCIDENT]...")
@@ -2619,6 +2816,7 @@ class SygapService:
                 ticket_page = self.click_ticket(page, row_info)
                 if ticket_page is None:
                     log(f"    Failed to open {code}")
+                    self.skipped_ids[code] = time.time()
                     continue
 
                 try:
@@ -2832,8 +3030,11 @@ class SygapService:
                                 log(f"    TO FAILED: {code}")
                                 continue
                             log(f"    TO CONFIRMED: {code}")
-                        if not inc_number:
-                            log(f"    INC not in note, reading from ticket page...")
+                        own_code = self.read_own_incident_code(ticket_page)
+                        if not inc_number or inc_number == own_code:
+                            if inc_number == own_code:
+                                log(f"    INC from note == incident_code, abaikan (bukan ticket BISCUIT)")
+                            log(f"    INC not in note (atau == incident_code), reading from Ticket ID field...")
                             inc_number = self.wait_for_ticket_inc(ticket_page)
                             if inc_number:
                                 log(f"    INC from page: {inc_number}")
@@ -2922,6 +3123,8 @@ class SygapService:
                 except Exception as e:
                     log(f"    Error: {e}")
                 finally:
+                    if code not in self.processed_ids and code not in self.related_ids:
+                        self.skipped_ids[code] = time.time()
                     try:
                         if not ticket_page.is_closed():
                             ticket_page.close()
@@ -3159,6 +3362,8 @@ class SygapService:
                 except Exception as e:
                     log(f"    Error: {e}")
                 finally:
+                    if code not in self.processed_ids and code not in self.related_ids:
+                        self.skipped_ids[code] = time.time()
                     try:
                         if not ticket_page.is_closed():
                             ticket_page.close()

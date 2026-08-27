@@ -272,6 +272,10 @@ class BiscuitService:
             return response
 
         print("BISCUIT API gagal, fallback ke UI...")
+        return self.execute_ui(command, page_scope)
+
+    def execute_ui(self, command, page_scope="INSERA"):
+        """Kirim command murni via UI Biscuit (tanpa melalui HTTP API)."""
         if not self.open():
             return Response(status="UNKNOWN", message="BISCUIT tab not found")
         if not self.focus_command():
@@ -358,9 +362,10 @@ class BiscuitService:
         """Verifikasi anak gamas via /cekticket.
 
         Semua anak dicek dalam SATU panggilan API (dipisah koma).
-        Hanya anak dengan source_ticket 'CUSTOMER' yang valid.
-        Anak dengan source selain itu (GAMAS/lain), tidak ditemukan, atau tidak
-        terverifikasi (API gagal) -> dibuang (jangan di-input).
+        Anak yang TIDAK boleh di-relasikan ke induk GAMAS hanya yg bersumber
+        'GAMAS'. Sisanya (CUSTOMER, PROACTIVE, INTERNAL, dll) BOLEH di-relasikan.
+        Anak yg sumbernya tidak terverifikasi (UNVERIFIED/PARSE_ERROR/UNKNOWN,
+        mis. API gagal) -> dibuang demi aman (tidak bisa dipastikan bukan GAMAS).
 
         Return: {"valid": [INC...], "excluded": [{"inc", "source", "detail"}]}
         """
@@ -414,12 +419,16 @@ class BiscuitService:
         valid, excluded = [], []
         for inc in child_incs:
             info = results.get(inc)
-            if info and info.get("source") == "CUSTOMER":
+            source = (info or {}).get("source")
+            # Hanya sumber GAMAS yang dilarang di-relasikan ke induk GAMAS.
+            # Sisanya (CUSTOMER, PROACTIVE, INTERNAL, dll) boleh.
+            # Jika tidak terverifikasi (UNVERIFIED/PARSE_ERROR/UNKNOWN) -> skip aman.
+            if info and source and source != "GAMAS" and source not in ("UNVERIFIED", "PARSE_ERROR", "UNKNOWN"):
                 valid.append(inc)
             else:
                 excluded.append({
                     "inc": inc,
-                    "source": (info or {}).get("source", "UNKNOWN"),
+                    "source": source or "UNKNOWN",
                     "detail": (info or {}).get("detail", ""),
                 })
 

@@ -53,36 +53,40 @@ def parse_owner_group(note: str):
             # Berhenti jika bukan UPPERCASE atau angka INC
             if w.startswith("INC") or w.startswith("Req") or w.startswith("REQ"):
                 break
+            # Bersihkan tanda baca trailing (koma, titik, pagar) sebelum cek
+            w_clean = w.strip(".,;:#")
+            if not w_clean:
+                break
             # Skip angka standalone di awal (bukan bagian OG)
-            if w.isdigit():
+            if w_clean.isdigit():
                 if og_words:
-                    og_words.append(w)
+                    og_words.append(w_clean)
                 else:
                     break
             # Uppercase dengan huruf, angka, atau tanda hubung (misal MO-INSERA, TIF ASR FBB AREA 2)
-            elif w.replace("-", "").replace("_", "").isalpha() and w == w.upper() and len(w) > 0:
-                og_words.append(w)
-            elif w.replace("-", "").replace("_", "").isalnum() and w == w.upper() and len(w) > 0:
-                og_words.append(w)
+            elif w_clean.replace("-", "").replace("_", "").isalpha() and w_clean == w_clean.upper() and len(w_clean) > 0:
+                og_words.append(w_clean)
+            elif w_clean.replace("-", "").replace("_", "").isalnum() and w_clean == w_clean.upper() and len(w_clean) > 0:
+                og_words.append(w_clean)
             # Title-Case (huruf besar di awal, sisanya kecil) - bagian OG campur
             elif (
-                len(w) > 1
-                and w[0].isupper()
-                and w[1:].islower()
-                and w.replace("-", "").replace("_", "").isalnum()
+                len(w_clean) > 1
+                and w_clean[0].isupper()
+                and w_clean[1:].islower()
+                and w_clean.replace("-", "").replace("_", "").isalnum()
             ):
-                og_words.append(w)
+                og_words.append(w_clean)
             else:
                 break
 
         result = " ".join(og_words).strip()
 
-        # Hapus suffix
+        # Hapus suffix (case-insensitive)
         for suffix in REMOVE_SUFFIX:
             if suffix in result.lower():
-                result = result.split(suffix)[0].strip()
+                result = re.split(re.escape(suffix), result, flags=re.IGNORECASE)[0].strip()
 
-        result = result.rstrip(".,;:")
+        result = result.rstrip(".,;:#")
 
         if result:
             return result.upper()

@@ -43,7 +43,7 @@ def clean_error_message(message):
         if re.match(r"^\d{1,2}:\d{2}\s*(AM|PM)?$", line, re.IGNORECASE):
             continue
         if re.search(r"gagal|berhasil|failed|successfully", lower) and \
-           re.search(r"dispatch|pushmass|canclwork|compwork|ticket", lower):
+           re.search(r"dispatch|pushmass|canclwork|compwork|changeserviceid|change_service_id|ticket", lower):
             continue
         if lower in ("alasan:", "alasan"):
             continue
@@ -90,7 +90,8 @@ class ResponseService:
                 continue
             if re.match(r'^\d{2}:\d{2}\s*(AM|PM)?$', line, re.IGNORECASE):
                 continue
-            if "dispatchticket" in line.lower() and ("gagal" in line.lower() or "berhasil" in line.lower()):
+            if any(cmd in line.lower() for cmd in ["dispatchticket", "changeserviceid", "canclwork", "compwork"]) and \
+               ("gagal" in line.lower() or "berhasil" in line.lower()):
                 continue
             if line.lower() == "alasan:":
                 continue
