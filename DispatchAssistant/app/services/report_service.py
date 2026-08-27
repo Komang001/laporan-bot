@@ -978,7 +978,45 @@ class ReportService:
             if n and n > 0:
                 break
             page.wait_for_timeout(1000)
-        rows = self._read_request_table(page)
+        # Tabel ini server-side DataTable (~131 entri / belasan halaman).
+        # Baca SELURUH halaman supaya saldo/completed/per-person tidak cuma
+        # menghitung 1 halaman yang kebetulan tampil. Hindari page.len(-1)
+        # (merusak state SYGAP), pakai draw() per halaman seperti incident.
+        try:
+            page.wait_for_function(
+                "() => typeof jQuery!=='undefined' && jQuery('#requestFulfillmentTable').length "
+                "&& jQuery('#requestFulfillmentTable').hasClass('dataTable')",
+                timeout=15000,
+            )
+        except Exception:
+            pass
+        try:
+            pages = safe_eval(
+                page,
+                "(() => { try { return jQuery('#requestFulfillmentTable').DataTable().page.info().pages; } catch(e){ return 1; } })()",
+            )
+        except Exception:
+            pages = 1
+        pages = max(1, int(pages or 1))
+        all_rows = []
+        seen = set()
+        for p in range(pages):
+            try:
+                safe_eval(
+                    page,
+                    f"jQuery('#requestFulfillmentTable').DataTable().page({p}).draw(false);",
+                )
+            except Exception:
+                pass
+            page.wait_for_timeout(700)
+            for r in self._read_request_table(page):
+                key = (r.get("request_code") or "").strip()
+                if key:
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                all_rows.append(r)
+        rows = all_rows
         today = datetime.now().date()
         saldo = 0
         colors = {"green": 0, "yellow": 0, "red": 0}
@@ -995,10 +1033,13 @@ class ReportService:
             else:
                 if created_today:
                     resolved += 1
-        # Per person: cocokkan kolom Solver dengan nama agent (substring kata).
+        # Per person (hanya request COMPLETED): cocokkan kolom Solver dgn nama
+        # agent (substring kata ber-boundary).
         agents = self._personnel_agents()
         agent_counts = {a["name"].title(): 0 for a in agents}
         for r in rows:
+            if not self._request_is_completed(r):
+                continue
             solver = (r.get("solver") or "").lower()
             for a in agents:
                 name = a["name"].title()
@@ -1055,9 +1096,20 @@ class ReportService:
                 # tab asing milik dispatch. Buka tab baru lalu tutup setelahnya.
                 try:
                     if self.browser_manager is None:
-                        self.browser_manager = BrowserManager(cdp_port=REPORT_REQUEST_CDP_PORT)
-                    else:
+                        self.browser_manager = BrowserManager(cdp_port=REPORT_CDP_PORT)
+                    # Pastikan Chrome 9229 (agent) menyala; kalau belum, launch
+                    # sekali (buka ke login SYGAP) lalu user login manual. Sesi
+                    # persist di profil C:\ChromeDebug_REPORT_REQUEST.
+                    try:
                         self.browser_manager.connect_to(REPORT_REQUEST_CDP_PORT)
+                    except Exception:
+                        try:
+                            BrowserManager(cdp_port=REPORT_REQUEST_CDP_PORT).launch(
+                                log_callback=self.log
+                            )
+                            self.browser_manager.connect_to(REPORT_REQUEST_CDP_PORT)
+                        except Exception as e2:
+                            raise e2
                     page = self.browser_manager.open_url(url)
                     if page is None:
                         raise Exception("gagal buka tab Request")
