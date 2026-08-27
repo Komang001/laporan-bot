@@ -284,8 +284,6 @@ class TelegramRemote:
         self.app.add_handler(CommandHandler("report", self._cmd_report))
         self.app.add_handler(CommandHandler("piket", self._cmd_piket))
         self.app.add_handler(CommandHandler("cekpiket", self._cmd_cekpiket))
-        self.app.add_handler(CommandHandler("to_insera", self._cmd_start_to_insera))
-        self.app.add_handler(CommandHandler("to_bima", self._cmd_start_to_bima))
         self.app.add_handler(CommandHandler("canclwork", self._cmd_start_canclwork))
         self.app.add_handler(CommandHandler("dispatch", self._cmd_start_dispatch))
         self.app.add_handler(CommandHandler("dispatch_incident", self._cmd_start_dispatch_incident))
@@ -314,8 +312,6 @@ class TelegramRemote:
             BotCommand("report", "Kirim laporan harian sekarang"),
             BotCommand("piket", "Set/lihat piket (@nama1 @nama2 ...)"),
             BotCommand("cekpiket", "Cek piket shift aktif & PIC hari ini"),
-            BotCommand("to_insera", "Start TO MO-INSERA"),
-            BotCommand("to_bima", "Start TO MO-BIMA"),
             BotCommand("canclwork", "Start CANCLWORK WO"),
             BotCommand("dispatch", "Start DISPATCH"),
             BotCommand("dispatch_incident", "Start DISPATCH INCIDENT"),
@@ -585,8 +581,6 @@ class TelegramRemote:
             "/help     - Lihat semua perintah",
             "",
             "Mulai fitur:",
-            "/to_insera  - Start TO MO-INSERA",
-            "/to_bima    - Start TO MO-BIMA",
             "/canclwork  - Start CANCLWORK WO",
             "/dispatch   - Start DISPATCH",
             "/dispatch_incident - Start DISPATCH INCIDENT",
@@ -632,10 +626,8 @@ class TelegramRemote:
             return
 
         lines = ["Status Fitur:", ""]
-        features = ["to_insera", "to_bima", "canclwork", "dispatch", "dispatch_incident", "gamas_relations"]
+        features = ["canclwork", "dispatch", "dispatch_incident", "gamas_relations"]
         labels = {
-            "to_insera": "TO MO-INSERA",
-            "to_bima": "TO MO-BIMA",
             "canclwork": "CANCLWORK WO",
             "dispatch": "DISPATCH",
             "dispatch_incident": "DISPATCH INCIDENT",
@@ -667,18 +659,6 @@ class TelegramRemote:
             text = text[-4000:]
 
         await update.message.reply_text(text)
-
-    async def _cmd_start_to_insera(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-        if not self._is_authorized(update):
-            await update.message.reply_text("Akses ditolak.")
-            return
-        await self._start_feature(update, "to_insera", "MO-INSERA", INSERA_GROUP_ID)
-
-    async def _cmd_start_to_bima(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-        if not self._is_authorized(update):
-            await update.message.reply_text("Akses ditolak.")
-            return
-        await self._start_feature(update, "to_bima", "MO-BIMA", None)
 
     async def _cmd_start_canclwork(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not self._is_authorized(update):
@@ -714,14 +694,12 @@ class TelegramRemote:
             return
 
         port_key_map = {
-            "to_insera": "TO",
-            "to_bima": "TO",
             "canclwork": "CANCLWORK",
             "dispatch": "DISPATCH",
             "dispatch_incident": "DISPATCH_INCIDENT",
             "gamas_relations": "GAMAS",
         }
-        port = CHROME_PORTS.get(port_key_map.get(key, "TO"), 9222)
+        port = CHROME_PORTS.get(port_key_map.get(key, ""), 9222)
 
         from app.controller import DispatchController
 
@@ -732,11 +710,7 @@ class TelegramRemote:
         ctrl.on_complete = lambda k=key: self.gui._on_feature_complete(k)
         self.gui.controllers[key] = ctrl
 
-        if key == "to_insera":
-            ctrl.start_auto(group_label=group_label, group_id=group_id)
-        elif key == "to_bima":
-            ctrl.start_auto(group_label=group_label, group_id=group_id)
-        elif key == "canclwork":
+        if key == "canclwork":
             ctrl.start_canclwork()
         elif key == "dispatch":
             ctrl.start_dispatch()
@@ -746,6 +720,3 @@ class TelegramRemote:
             ctrl.start_gamas_relations()
 
         await update.message.reply_text(f"Started: {key}")
-
-
-from config.settings import INSERA_GROUP_ID

@@ -8,7 +8,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.controller import DispatchController
 from config.settings import (
-    INSERA_GROUP_ID,
     CHROME_PORTS,
     TELEGRAM_BOT_TOKEN,
     REPORT_CDP_PORT,
@@ -108,26 +107,6 @@ FONT_MONO = "Consolas"
 
 FEATURES = [
     {
-        "key": "to_insera",
-        "label": "TO MO-INSERA",
-        "icon": "\U0001F916",
-        "desc": "Take Ownership tiket group MO-INSERA",
-        "tag": "MO-INSERA #32",
-        "color": "#7C3AED",
-        "hover": "#6D28D9",
-        "port_key": "TO",
-    },
-    {
-        "key": "to_bima",
-        "label": "TO MO-BIMA",
-        "icon": "\U0001F3ED",
-        "desc": "Take Ownership tiket group MO-BIMA",
-        "tag": "MO-BIMA Auto",
-        "color": "#0284C7",
-        "hover": "#0369A1",
-        "port_key": "TO",
-    },
-    {
         "key": "canclwork",
         "label": "CANCLWORK WO",
         "icon": "\U0001F527",
@@ -191,8 +170,6 @@ FEATURES = [
 
 # Channel log dari tiap fitur -> tab tujuan
 CHANNEL_TAB_MAP = {
-    "to_insera": "TO",
-    "to_bima": "TO",
     "canclwork": "CANCLWORK",
     "dispatch": "DISPATCH",
     "dispatch_incident": "DISPATCH",
@@ -201,7 +178,7 @@ CHANNEL_TAB_MAP = {
     "report": "REPORT",
 }
 
-LOG_TABS = ["SEMUA", "TO", "CANCLWORK", "DISPATCH", "SERVICE_ID", "GAMAS", "REPORT"]
+LOG_TABS = ["SEMUA", "CANCLWORK", "DISPATCH", "SERVICE_ID", "GAMAS", "REPORT"]
 
 STATUS_COLORS = {
     "READY": ("#059669", "#34D399"),
@@ -637,10 +614,6 @@ class DispatchAssistantGUI(ctk.CTk):
         if key == "report":
             ctrl.on_report = self._telegram_send_report
             ctrl.start_report()
-        elif key == "to_insera":
-            ctrl.start_auto(group_label="MO-INSERA", group_id=INSERA_GROUP_ID)
-        elif key == "to_bima":
-            ctrl.start_auto(group_label="MO-BIMA", group_id=None)
         elif key == "canclwork":
             ctrl.start_canclwork()
         elif key == "dispatch":
@@ -848,7 +821,6 @@ class DispatchAssistantGUI(ctk.CTk):
         self.write_log("=== MULTI-CHROME CDP MODE ===")
         self.write_log("Setiap fitur terisolasi pada Chrome CDP terpisah.")
         self.write_log("Daftar alokasi port:")
-        self.write_log(f"  TO                -> port {CHROME_PORTS['TO']}")
         self.write_log(f"  CANCLWORK         -> port {CHROME_PORTS['CANCLWORK']}")
         self.write_log(f"  DISPATCH          -> port {CHROME_PORTS['DISPATCH']}")
         self.write_log(f"  DISPATCH INCIDENT -> port {CHROME_PORTS['DISPATCH_INCIDENT']}")
@@ -1400,8 +1372,6 @@ class DispatchAssistantGUI(ctk.CTk):
 
         _section_label(scroll_feat, "🚀  Auto-Start saat Launch")
         _FEATURE_KEYS = [
-            ("to_insera", "TO MO-INSERA"),
-            ("to_bima", "TO MO-BIMA"),
             ("canclwork", "CANCLWORK WO"),
             ("dispatch", "DISPATCH"),
             ("change_service_id", "CHANGE SERVICE ID"),
