@@ -12,6 +12,7 @@ from app.parser import (
     extract_service_type,
 )
 from config.settings import USER_ID, USER_NAME, SKIP_COORDINATOR_USER_IDS
+from app.services.history_service import log_history
 
 LOOP_INTERVAL = 180
 
@@ -1396,6 +1397,10 @@ class SygapService:
                         "biscuit_status": response.status,
                     })
                     self.processed_ids.add(code)
+                    try:
+                        log_history(feature="CANCLWORK", ticket_code=code, ticket_id=wo_number, owner_group=wo_number, note=note, reply_sygap=complete_note if 'complete_note' in locals() else "", biscuit_status=response.status if 'response' in locals() and hasattr(response, 'status') else "", biscuit_message=response.message if 'response' in locals() and hasattr(response, 'message') else "", status=response.status if 'response' in locals() and hasattr(response, 'status') else "SUCCESS", solver_id=USER_ID)
+                    except Exception:
+                        pass
 
                 except Exception as e:
                     log(f"    Error: {e}")
@@ -1727,6 +1732,11 @@ class SygapService:
             results.append({"request_code": code, "reply_note": note})
             # Tandai processed agar tidak di-retry (relasi memang tidak dibuat)
             self.processed_ids.add(code)
+            try:
+                _n = note if 'note' in locals() else ""
+                log_history(feature="GAMAS", ticket_code=code, ticket_id="", owner_group="", note=_n, reply_sygap=note if 'note' in locals() else "", biscuit_status="", biscuit_message="", status="SUCCESS", solver_id=USER_ID)
+            except Exception:
+                pass
         else:
             log(f"    Gagal complete ticket {code} (reply)")
             self.gamas_fail_count[code] = self.gamas_fail_count.get(code, 0) + 1
@@ -2049,6 +2059,10 @@ class SygapService:
                         # HANYA tandai processed bila benar-benar COMPLETED,
                         # agar tiket yg gagal complete tidak skip selamanya (loop).
                         self.processed_ids.add(code)
+                        try:
+                            log_history(feature="GAMAS", ticket_code=code, ticket_id=parent_inc if 'parent_inc' in locals() else "", owner_group=",".join(child_incs[:3]) if 'child_incs' in locals() else "", note=note if 'note' in locals() else "", reply_sygap="Cek Kembali", biscuit_status="SUCCESS", biscuit_message=f"Parent:{parent_inc if 'parent_inc' in locals() else ''} Child:{','.join(child_incs[:3]) if 'child_incs' in locals() else ''}", status="SUCCESS", solver_id=USER_ID)
+                        except Exception:
+                            pass
                     else:
                         log(f"    Gagal complete ticket {code}")
                         # Batas retry: kalau complete gagal terus-menerus, tandai processed
@@ -2225,6 +2239,10 @@ class SygapService:
                                     "note": note,
                                 })
                                 self.processed_ids.add(code)
+                                try:
+                                    log_history(feature="DISPATCH", ticket_code=code, ticket_id=bulk_og if 'bulk_og' in locals() else "", owner_group=bulk_og if 'bulk_og' in locals() else "C4_CONSUMER", note=note, reply_sygap="untuk permintaan dispatch ke C4_CONSUMER silahkan koordinasikan ke OG terkait", biscuit_status="", biscuit_message="", status="SUCCESS", solver_id=USER_ID)
+                                except Exception:
+                                    pass
                             else:
                                 log(f"    Gagal complete ticket {code} (C4)")
                             continue
@@ -2330,6 +2348,10 @@ class SygapService:
                                     "failed_incs": len(failed_incs),
                                 })
                                 self.processed_ids.add(code)
+                                try:
+                                    log_history(feature="DISPATCH", ticket_code=code, ticket_id=",".join(bulk_incs[:3]) if 'bulk_incs' in locals() else "", owner_group=bulk_og if 'bulk_og' in locals() else "", note=note if 'note' in locals() else "", reply_sygap=complete_note if 'complete_note' in locals() else "", biscuit_status="SUCCESS" if 'all_success' in locals() and all_success else "FAILED", biscuit_message=complete_note if 'complete_note' in locals() else "", status="SUCCESS", solver_id=USER_ID)
+                                except Exception:
+                                    pass
                             else:
                                 log(f"    Gagal complete ticket {code}")
                         continue
@@ -2371,6 +2393,10 @@ class SygapService:
                                     "note": note,
                                 })
                                 self.processed_ids.add(code)
+                                try:
+                                    log_history(feature="DISPATCH", ticket_code=code, ticket_id=owner_group if 'owner_group' in locals() else "", owner_group=owner_group if 'owner_group' in locals() else "", note=note, reply_sygap="untuk permintaan dispatch ke C4_CONSUMER silahkan koordinasikan ke OG terkait", biscuit_status="", biscuit_message="", status="SUCCESS", solver_id=USER_ID)
+                                except Exception:
+                                    pass
                             else:
                                 log(f"    Gagal complete ticket {code} (C4)")
                             continue
@@ -2471,6 +2497,10 @@ class SygapService:
                             "biscuit_status": response.status,
                         })
                         self.processed_ids.add(code)
+                        try:
+                            log_history(feature="DISPATCH", ticket_code=code, ticket_id=inc_number if 'inc_number' in locals() else "", owner_group=owner_group if 'owner_group' in locals() else "", note=note, reply_sygap=complete_note if 'complete_note' in locals() else "", biscuit_status=response.status if 'response' in locals() and hasattr(response, 'status') else "", biscuit_message=response.message if 'response' in locals() and hasattr(response, 'message') else "", status=response.status if 'response' in locals() and hasattr(response, 'status') else "SUCCESS", solver_id=USER_ID)
+                        except Exception:
+                            pass
 
                     elif "C4" in note_upper:
                         log(f"    No OG but C4 found -> TO dulu...")
@@ -2506,6 +2536,10 @@ class SygapService:
                                 "note": note,
                             })
                             self.processed_ids.add(code)
+                            try:
+                                log_history(feature="DISPATCH", ticket_code=code, ticket_id="", owner_group="C4", note=note, reply_sygap="untuk permintaan dispatch ke C4_CONSUMER silahkan koordinasikan ke OG terkait", biscuit_status="", biscuit_message="", status="SUCCESS", solver_id=USER_ID)
+                            except Exception:
+                                pass
                         else:
                             log(f"    Gagal complete ticket {code} (C4)")
 
@@ -2697,6 +2731,11 @@ class SygapService:
                                 else:
                                     log(f"    Ticket {code} status belum COMPLETED")
                                 results.append({"request_code": code, "type": "C4_COMPLETE", "note": note})
+                                try:
+                                    _rr = response if 'response' in locals() and hasattr(response, 'status') else None
+                                    log_history(feature="DISPATCH_INCIDENT", ticket_code=code, ticket_id=locals().get("wo_number","") or locals().get("inc_number","") or locals().get("ticket_id","") or locals().get("service_id","") or "", owner_group=locals().get("owner_group","") or locals().get("bulk_og","") or "", note=locals().get("note",""), reply_sygap=locals().get("complete_note","") or locals().get("reply_note","") or "Cek Kembali", biscuit_status=_rr.status if _rr else "", biscuit_message=_rr.message if _rr else "", status="SUCCESS", solver_id=USER_ID)
+                                except Exception:
+                                    pass
                                 self.processed_ids.add(code)
                             else:
                                 log(f"    Gagal complete ticket {code} (C4)")
@@ -2787,6 +2826,11 @@ class SygapService:
                                 else:
                                     log(f"    Ticket {code} status belum COMPLETED")
                                 results.append({"request_code": code, "type": "BULK_OG_CHANGE", "bulk_og": bulk_og, "total_incs": len(bulk_incs), "failed_incs": len(failed_incs)})
+                                try:
+                                    _rr = response if 'response' in locals() and hasattr(response, 'status') else None
+                                    log_history(feature="DISPATCH_INCIDENT", ticket_code=code, ticket_id=locals().get("wo_number","") or locals().get("inc_number","") or locals().get("ticket_id","") or locals().get("service_id","") or "", owner_group=locals().get("owner_group","") or locals().get("bulk_og","") or "", note=locals().get("note",""), reply_sygap=locals().get("complete_note","") or locals().get("reply_note","") or "Cek Kembali", biscuit_status=_rr.status if _rr else "", biscuit_message=_rr.message if _rr else "", status="SUCCESS", solver_id=USER_ID)
+                                except Exception:
+                                    pass
                                 self.processed_ids.add(code)
                             else:
                                 log(f"    Gagal complete ticket {code}")
@@ -2820,6 +2864,11 @@ class SygapService:
                                 else:
                                     log(f"    Ticket {code} status belum COMPLETED")
                                 results.append({"request_code": code, "type": "C4_COMPLETE", "note": note})
+                                try:
+                                    _rr = response if 'response' in locals() and hasattr(response, 'status') else None
+                                    log_history(feature="DISPATCH_INCIDENT", ticket_code=code, ticket_id=locals().get("wo_number","") or locals().get("inc_number","") or locals().get("ticket_id","") or locals().get("service_id","") or "", owner_group=locals().get("owner_group","") or locals().get("bulk_og","") or "", note=locals().get("note",""), reply_sygap=locals().get("complete_note","") or locals().get("reply_note","") or "Cek Kembali", biscuit_status=_rr.status if _rr else "", biscuit_message=_rr.message if _rr else "", status="SUCCESS", solver_id=USER_ID)
+                                except Exception:
+                                    pass
                                 self.processed_ids.add(code)
                             else:
                                 log(f"    Gagal complete ticket {code} (C4)")
@@ -2902,6 +2951,11 @@ class SygapService:
                                 log(f"    Gagal complete ticket {code}")
                         total_processed += 1
                         results.append({"request_code": code, "owner_group": owner_group, "note": note, "biscuit_status": response.status})
+                        try:
+                            _rr = response if 'response' in locals() and hasattr(response, 'status') else None
+                            log_history(feature="DISPATCH_INCIDENT", ticket_code=code, ticket_id=locals().get("wo_number","") or locals().get("inc_number","") or locals().get("ticket_id","") or locals().get("service_id","") or "", owner_group=locals().get("owner_group","") or locals().get("bulk_og","") or "", note=locals().get("note",""), reply_sygap=locals().get("complete_note","") or locals().get("reply_note","") or "Cek Kembali", biscuit_status=_rr.status if _rr else "", biscuit_message=_rr.message if _rr else "", status="SUCCESS", solver_id=USER_ID)
+                        except Exception:
+                            pass
                         self.processed_ids.add(code)
                     elif "C4" in note_upper:
                         log(f"    No OG but C4 found -> TO dulu...")
@@ -2929,6 +2983,11 @@ class SygapService:
                             else:
                                 log(f"    Ticket {code} status belum COMPLETED")
                             results.append({"request_code": code, "type": "C4_COMPLETE", "note": note})
+                            try:
+                                _rr = response if 'response' in locals() and hasattr(response, 'status') else None
+                                log_history(feature="DISPATCH_INCIDENT", ticket_code=code, ticket_id=locals().get("wo_number","") or locals().get("inc_number","") or locals().get("ticket_id","") or locals().get("service_id","") or "", owner_group=locals().get("owner_group","") or locals().get("bulk_og","") or "", note=locals().get("note",""), reply_sygap=locals().get("complete_note","") or locals().get("reply_note","") or "Cek Kembali", biscuit_status=_rr.status if _rr else "", biscuit_message=_rr.message if _rr else "", status="SUCCESS", solver_id=USER_ID)
+                            except Exception:
+                                pass
                             self.processed_ids.add(code)
                         else:
                             log(f"    Gagal complete ticket {code} (C4)")
@@ -3172,6 +3231,11 @@ class SygapService:
                         "note": note,
                         "status": response.status if response else "FAILED",
                     })
+                    try:
+                        _rr = response if 'response' in locals() and hasattr(response, 'status') else None
+                        log_history(feature="CHANGE_SERVICE_ID", ticket_code=code, ticket_id=locals().get("wo_number","") or locals().get("inc_number","") or locals().get("ticket_id","") or locals().get("service_id","") or "", owner_group=locals().get("owner_group","") or locals().get("bulk_og","") or "", note=locals().get("note",""), reply_sygap=locals().get("complete_note","") or locals().get("reply_note","") or "Cek Kembali", biscuit_status=_rr.status if _rr else "", biscuit_message=_rr.message if _rr else "", status="SUCCESS", solver_id=USER_ID)
+                    except Exception:
+                        pass
                     self.processed_ids.add(code)
 
                 except Exception as e:
