@@ -601,8 +601,13 @@ class SygapService:
         match = re.search(r'\bIG\s*[:;]\s*(INC\d+)', note, re.IGNORECASE)
         if match:
             return match.group(1).upper()
-        # Pattern 2: INDUK GAMAS (explicit parent label)
-        match = re.search(r'\bINDUK\s+GAMAS\s*[:;]?\s*(INC\d+)', note, re.IGNORECASE)
+        # Pattern 2: INDUK GAMAS dengan ":"/" ;" eksplisit — prioritas utama (mis. "INDUK GAMAS : INC...")
+        # Jika ada lebih dari 1, ambil yang TERAKHIR (biasanya yang paling eksplisit di akhir note, spt kasus tiket_relasi + INDUK GAMAS : INC...)
+        matches = list(re.finditer(r'\bINDUK\s+GAMAS\s*[:;]\s*(INC\d+)', note, re.IGNORECASE))
+        if matches:
+            return matches[-1].group(1).upper()
+        # Pattern 2 fallback: INDUK GAMAS tanpa ":" (mis. "INDUK GAMAS INC...")
+        match = re.search(r'\bINDUK\s+GAMAS\s+(INC\d+)', note, re.IGNORECASE)
         if match:
             return match.group(1).upper()
         # Pattern 2b: INDUKAN (kata populer: 'INDUKAN INC...', 'INDUKAN : INC...')
@@ -610,7 +615,7 @@ class SygapService:
         if match:
             return match.group(1).upper()
         # Pattern 2c: "ke induk INC..." atau "induk INC..." (induk ditandai eksplisit,
-        # biasanya anak-gamas disebutkan dulu lalu "ke induk <INC>")
+        # biasanya anak-gamas disebutkan dulu lalu "ke induk <INC>") — hanya jika tidak ada INDUK GAMAS eksplisit di atas
         match = re.search(r'(?:\bke\s+)?\binduk\s*[:;]?\s*(INC\d+)', note, re.IGNORECASE)
         if match:
             return match.group(1).upper()
