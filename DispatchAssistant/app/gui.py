@@ -770,7 +770,7 @@ class DispatchAssistantGUI(ctk.CTk):
             hover_color="#0B5E31",
             text_color=WHITE,
             font=(FONT_UI, 11, "bold"),
-            command=self._export_history,
+            command=self._show_export_dialog,
         ).pack(side="right", padx=(6, 0))
 
         ctk.CTkButton(
@@ -913,6 +913,181 @@ class DispatchAssistantGUI(ctk.CTk):
             self.write_log("[gui] Log disalin ke clipboard.")
         except Exception as e:
             self.write_log(f"[gui] Gagal copy log: {e}")
+
+    def _show_export_dialog(self):
+        """Dialog pilih rentang tanggal untuk export (dari kapan sampai kapan) — record mulai hari ini."""
+        from datetime import datetime, timedelta
+
+        dlg = ctk.CTkToplevel(self)
+        dlg.title("Export History — Pilih Tanggal")
+        dlg.geometry("420x320")
+        dlg.resizable(False, False)
+        dlg.configure(fg_color=BG_HEADER)
+        dlg.transient(self)
+        dlg.grab_set()
+
+        # Header
+        hdr = ctk.CTkFrame(dlg, fg_color="transparent")
+        hdr.pack(fill="x", padx=20, pady=(14, 6))
+        ctk.CTkLabel(hdr, text="📊 Export History Excel", font=(FONT_UI, 16, "bold"), text_color=TEXT_MAIN).pack(anchor="w")
+        ctk.CTkLabel(hdr, text="Record mulai hari ini (27 Agu 2026). Pilih rentang tanggal untuk export.", font=(FONT_UI, 10), text_color=TEXT_DIM, wraplength=380, justify="left").pack(anchor="w", pady=(2,0))
+
+        body = ctk.CTkFrame(dlg, fg_color="transparent")
+        body.pack(fill="both", expand=True, padx=20, pady=6)
+
+        # Default 30 hari: mulai hari ini 00:00, akhir hari ini
+        today = datetime.now()
+        default_start = (today - timedelta(days=29)).strftime("%Y-%m-%d")
+        default_end = today.strftime("%Y-%m-%d")
+
+        ctk.CTkLabel(body, text="Tanggal Mulai (YYYY-MM-DD):", font=(FONT_UI, 11, "bold"), text_color=TEXT_MAIN).pack(anchor="w", pady=(6,2))
+        e_start = ctk.CTkEntry(body, height=32, font=(FONT_MONO, 11), fg_color=BG_INPUT, border_color=BORDER_SUBTLE, text_color=TEXT_MAIN)
+        e_start.insert(0, default_start)
+        e_start.pack(fill="x")
+
+        ctk.CTkLabel(body, text="Tanggal Akhir (YYYY-MM-DD):", font=(FONT_UI, 11, "bold"), text_color=TEXT_MAIN).pack(anchor="w", pady=(8,2))
+        e_end = ctk.CTkEntry(body, height=32, font=(FONT_MONO, 11), fg_color=BG_INPUT, border_color=BORDER_SUBTLE, text_color=TEXT_MAIN)
+        e_end.insert(0, default_end)
+        e_end.pack(fill="x")
+
+        # Quick buttons
+        quick = ctk.CTkFrame(body, fg_color="transparent")
+        quick.pack(fill="x", pady=(10, 4))
+        def _set_range(d):
+            s = (today - timedelta(days=d-1)).strftime("%Y-%m-%d") if d>0 else today.strftime("%Y-%m-%d")
+            e = today.strftime("%Y-%m-%d")
+            e_start.delete(0, "end"); e_start.insert(0, s)
+            e_end.delete(0, "end"); e_end.insert(0, e)
+
+        for label, d in [("Hari Ini",1), ("7 Hari",7), ("30 Hari",30)]:
+            ctk.CTkButton(quick, text=label, width=70, height=26, corner_radius=7, fg_color=BG_BTN_SECONDARY, hover_color=BG_BTN_SECONDARY_HOVER, text_color=TEXT_MAIN, font=(FONT_UI, 10, "bold"), command=lambda v=d: _set_range(v)).pack(side="left", padx=(0,6))
+
+        info = ctk.CTkLabel(body, text="Kosong sebelum 27 Agu → hanya 27 Agu ke depan yang ada. File: logs/history_YYYY-MM-DD.csv + history_all.csv", font=(FONT_UI, 9), text_color=TEXT_DIM, wraplength=380, justify="left")
+        info.pack(anchor="w", pady=(8,0))
+
+        btn_row = ctk.CTkFrame(dlg, fg_color="transparent")
+        btn_row.pack(fill="x", padx=20, pady=(10, 14))
+
+        def _do_export():
+            s = e_start.get().strip()
+            e = e_end.get().strip()
+            # Validasi format
+            try:
+                from datetime import datetime as _dt
+                sd = _dt.strptime(s, "%Y-%m-%d")
+                ed = _dt.strptime(e, "%Y-%m-%d")
+                if ed < sd:
+                    raise ValueError("Tanggal akhir < mulai")
+                days = (ed - sd).days + 1
+                dlg.destroy()
+                # Panggil export dengan range eksplisit
+                self._export_history_range(s, e, days)
+            except Exception as ex:
+                self.write_log(f"[export] Format tanggal salah: {ex} (pakai YYYY-MM-DD)", channel="all")
+
+        ctk.CTkButton(btn_row, text="⬇ Export", width=110, height=32, corner_radius=8, fg_color="#107C41", hover_color="#0B5E31", text_color=WHITE, font=(FONT_UI, 11, "bold"), command=_do_export).pack(side="left")
+        ctk.CTkButton(btn_row, text="Batal", width=80, height=32, corner_radius=8, fg_color=BG_BTN_SECONDARY, hover_color=BG_BTN_SECONDARY_HOVER, text_color=TEXT_MAIN, font=(FONT_UI, 11, "bold"), command=dlg.destroy).pack(side="left", padx=(8,0))
+
+    def _export_history_range(self, start_str, end_str, days):
+        """Helper untuk dialog: export dengan start/end eksplisit."""
+        try:
+            import csv
+            import os
+            from datetime import datetime, timedelta
+            from pathlib import Path
+            base = Path(__file__).resolve().parents[1]
+            history_all = base / "logs" / "history_all.csv"
+            history_dir = base / "logs"
+            if not history_all.exists():
+                self.write_log("[export] history_all.csv belum ada", channel="all")
+                return
+            start_dt = datetime.strptime(start_str, "%Y-%m-%d")
+            end_dt = datetime.strptime(end_str, "%Y-%m-%d")
+            rows = []
+            header = None
+            with open(history_all, newline="", encoding="utf-8-sig") as f:
+                reader = csv.DictReader(f)
+                header = reader.fieldnames
+                for r in reader:
+                    tgl_str = r.get("Waktu Proses") or r.get("Tanggal Selesai Dikerjakan") or ""
+                    try:
+                        dt = datetime.strptime(tgl_str[:10], "%Y-%m-%d")
+                    except Exception:
+                        continue
+                    if start_dt.date() <= dt.date() <= end_dt.date():
+                        rows.append(r)
+            if not rows:
+                self.write_log(f"[export] Tidak ada tiket {start_str} s/d {end_str}", channel="all")
+                return
+            # Reuse logic export Excel (duplikat dari _export_history agar dialog mandiri)
+            import openpyxl
+            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+            from openpyxl.utils import get_column_letter
+            from openpyxl.formatting.rule import CellIsRule
+            out = history_dir / f"History_{start_dt.strftime('%Y%m%d')}_to_{end_dt.strftime('%Y%m%d')}.xlsx"
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = f"History {days} Hari"
+            ws.merge_cells("A1:M1")
+            title = ws["A1"]
+            title.value = f"HISTORY TIKET SYGAP → INSERA — {start_dt.strftime('%d %b %Y')} s/d {end_dt.strftime('%d %b %Y')} ({len(rows)} tiket)"
+            title.font = Font(size=13, bold=True, color="1F4E78")
+            title.alignment = Alignment(horizontal="center", vertical="center")
+            ws.row_dimensions[1].height = 20
+            ws.merge_cells("A2:M2")
+            sub = ws["A2"]
+            sub.value = f"Sumber: {history_all.name} — {start_str} s/d {end_str}"
+            sub.font = Font(size=8, italic=True, color="5B7FA6")
+            sub.alignment = Alignment(horizontal="center")
+            ws.row_dimensions[2].height = 14
+            header_row = 4
+            header_font = Font(bold=True, color="FFFFFF", size=9)
+            header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
+            thin_border = Border(left=Side(style="thin", color="B4C6E7"), right=Side(style="thin", color="B4C6E7"), top=Side(style="thin", color="B4C6E7"), bottom=Side(style="thin", color="B4C6E7"))
+            center = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            left_wrap = Alignment(horizontal="left", vertical="center", wrap_text=True)
+            for col, h in enumerate(header, start=1):
+                c = ws.cell(row=header_row, column=col, value=h)
+                c.font = header_font
+                c.fill = header_fill
+                c.alignment = center
+                c.border = thin_border
+            ws.row_dimensions[header_row].height = 34
+            widths = [19,13,20,20,38,19,19,22,22,14,32,12,12]
+            for i,w in enumerate(widths, start=1):
+                ws.column_dimensions[get_column_letter(i)].width = w
+            ws.freeze_panes = "A5"
+            ws.auto_filter.ref = f"A{header_row}:M{header_row}"
+            for r_idx, r in enumerate(rows, start=5):
+                for c_idx, h in enumerate(header, start=1):
+                    val = r.get(h, "")
+                    c = ws.cell(row=r_idx, column=c_idx, value=val)
+                    c.font = Font(size=9)
+                    c.border = thin_border
+                    c.alignment = left_wrap if c_idx in (5,11) else center
+                    if c_idx in (1,6,7):
+                        c.number_format = "yyyy-mm-dd hh:mm:ss"
+                ws.row_dimensions[r_idx].height = 18
+                if r_idx % 2 == 0:
+                    for c_idx in range(1, len(header)+1):
+                        ws.cell(row=r_idx, column=c_idx).fill = PatternFill(start_color="F2F2F2", end_color="F2F2F2", fill_type="solid")
+            green_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+            red_fill = PatternFill(start_color="FFC7CE", end_color="FFC7CE", fill_type="solid")
+            ws.conditional_formatting.add(f"L5:L{5+len(rows)}", CellIsRule(operator="equal", formula=['"SUCCESS"'], fill=green_fill, font=Font(color="006100")))
+            ws.conditional_formatting.add(f"L5:L{5+len(rows)}", CellIsRule(operator="equal", formula=['"FAILED"'], fill=red_fill, font=Font(color="9C0006")))
+            ws.sheet_properties.pageSetUpPr.fitToPage = True
+            ws.page_setup.orientation = "landscape"
+            ws.page_setup.paperSize = ws.PAPERSIZE_A3
+            ws.page_setup.fitToWidth = 1
+            ws.print_title_rows = f"{header_row}:{header_row}"
+            wb.save(out)
+            self.write_log(f"[export] Excel tersimpan: {out} ({len(rows)} tiket, {start_str} s/d {end_str})", channel="all")
+            try:
+                os.startfile(str(out))
+            except Exception:
+                pass
+        except Exception as e:
+            self.write_log(f"[export] Gagal export range: {e}", channel="all")
 
     def _export_history(self, days=30):
         """Export history sebulan kebelakang ke Excel (tombol di header log)."""
