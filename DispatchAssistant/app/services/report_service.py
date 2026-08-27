@@ -79,6 +79,45 @@ def _normalize_row(raw, headers):
     return {}
 
 
+def safe_eval(page, expr, retries=3, wait_ms=1500):
+    """page.evaluate yang tahan race navigation.
+
+    Saat evaluate dijalankan, halaman bisa saja sedang navigasi (reload dari
+    bot fitur lain yang share Chrome 9222, atau user reload manual) ->
+    Playwright memunculkan 'Execution context was destroyed, most likely
+    because of a navigation'. Kita tunggu load-state lalu ulangi beberapa
+    kali sebelum menyerah, supaya report tidak gagal karena kebetulan
+    bentrok navigasi.
+    """
+    last_err = None
+    for attempt in range(1, retries + 1):
+        try:
+            try:
+                page.wait_for_load_state("domcontentloaded", timeout=8000)
+            except Exception:
+                pass
+            return page.evaluate(expr)
+        except Exception as e:  # noqa: BLE001
+            last_err = e
+            msg = str(e).lower()
+            nav_like = (
+                "execution context" in msg
+                or "context was destroyed" in msg
+                or "navigat" in msg
+            )
+            if nav_like and attempt < retries:
+                try:
+                    page.wait_for_timeout(wait_ms)
+                except Exception:
+                    pass
+                continue
+            # error selain navigasi -> langsung raise (biar caller tangani)
+            raise
+    if last_err:
+        raise last_err
+    return None
+
+
 # ==================================================
 # Report Service
 # ==================================================
@@ -87,11 +126,13 @@ def _current_shift(now=None):
     """Shift yang sedang aktif pada waktu tertentu (default: sekarang).
 
     Rule (sesuai Google Sheet jadwal):
-    - Interval shift: start <= jam < end (end "00:00" = lewat tengah malam).
+    - Interval shift: start <= jam < end (end "00:00" berarti akhir hari,
+      diproses sebagai 24:00, sehingga 00:00 = AWAL hari -> Shift 1).
     - Boundary: report tepat di jam AKHIR sebuah shift masih dihitung shift
-      itu (mis. 09:00 -> Shift 1, 17:00 -> Shift 2, 00:00 -> Shift 3).
-    - Overlap (mis. 08:00-09:00 & 15:00-17:00): shift yang BERAKHIR paling
-      awal menang (15:00 -> Shift 2, 08:30 -> Shift 1).
+      itu (mis. 09:00 -> Shift 1, 16:30 -> Shift 2). Khusus 00:00 -> Shift 1
+      (bukan Shift 3), karena hari baru dimulai.
+    - Overlap: shift yang BERAKHIR paling awal menang (16:30 -> Shift 2,
+      09:00 -> Shift 1).
     """
     now = now or datetime.now()
     minutes = now.hour * 60 + now.minute
@@ -101,6 +142,8 @@ def _current_shift(now=None):
         eh, em = (int(x) for x in s["end"].split(":"))
         start_m = sh * 60 + sm
         end_m = eh * 60 + em
+        if end_m == 0:
+            end_m = 24 * 60
         if end_m > start_m:
             inside = start_m <= minutes <= end_m
         else:
@@ -112,7 +155,7 @@ def _current_shift(now=None):
     for c in candidates:
         if c["end_m"] == minutes:
             return c
-    return min(candidates, key=lambda c: c["end_m"] if c["end_m"] else 24 * 60)
+    return min(candidates, key=lambda c: c["end_m"])
 
 
 class ReportService:
@@ -244,7 +287,7 @@ class ReportService:
     def _table_id(self, page):
         if page in self._table_cache:
             return self._table_cache[page]
-        table_id = page.evaluate("""
+        table_id = safe_eval(page,"""
             (() => {
                 var preferred = ['requestFulfillmentTable', 'incidentTable', 'dataTable'];
                 var tables = [];
@@ -264,7 +307,7 @@ class ReportService:
         return table_id
 
     def _headers(self, page, table_id):
-        return page.evaluate(
+        return safe_eval(page,
             "(() => {"
             "var h = [];"
             f"document.querySelectorAll('#{table_id} thead th').forEach(function (th) {{ h.push((th.innerText || '').trim()); }});"
@@ -274,7 +317,7 @@ class ReportService:
 
     def _page_info(self, page, table_id):
         try:
-            return page.evaluate(f"""
+            return safe_eval(page,f"""
                 (() => {{
                     var t = jQuery('#{table_id}').DataTable();
                     if (!t) return null;
@@ -287,7 +330,7 @@ class ReportService:
 
     def _rows_current(self, page, table_id, headers):
         """Ambil baris pada halaman aktif DataTable via API JS."""
-        data = page.evaluate(f"""
+        data = safe_eval(page,f"""
             (() => {{
                 var t = jQuery('#{table_id}').DataTable();
                 if (!t) return [];
@@ -317,14 +360,14 @@ class ReportService:
         page_idx = 0
         last_len = -1
         while page_idx < REPORT_MAX_PAGES:
-            info_now = page.evaluate(f"""
+            info_now = safe_eval(page,f"""
                 (() => {{
                     var t = jQuery('#{table_id}').DataTable();
                     var i = t.page.info();
                     return {{ records: i.recordsTotal, pages: i.pages, page: i.page, length: i.length }};
                 }})()
             """)
-            current = page.evaluate(f"""
+            current = safe_eval(page,f"""
                 (() => {{
                     var t = jQuery('#{table_id}').DataTable();
                     if (!t) return [];
@@ -347,7 +390,7 @@ class ReportService:
             if next_page > max_page:
                 break
             try:
-                page.evaluate(f"jQuery('#{table_id}').DataTable().page({next_page}).draw();")
+                safe_eval(page,f"jQuery('#{table_id}').DataTable().page({next_page}).draw();")
                 page.wait_for_timeout(2000)
             except Exception:
                 break
@@ -355,7 +398,7 @@ class ReportService:
 
         # Kembalikan tabel ke halaman pertama agar tab rapi
         try:
-            page.evaluate(f"jQuery('#{table_id}').DataTable().page(0).draw(false);")
+            safe_eval(page,f"jQuery('#{table_id}').DataTable().page(0).draw(false);")
         except Exception:
             pass
 
@@ -404,7 +447,7 @@ class ReportService:
             start_full = _full(start, "start")
             end_full = _full(end, "end")
             if field_value is not None:
-                page.evaluate(f"""
+                safe_eval(page,f"""
                     (() => {{
                         var b = document.getElementById('filterDateBtn');
                         if (b) {{
@@ -414,7 +457,7 @@ class ReportService:
                         }}
                     }})()
                 """)
-            page.evaluate(f"""
+            safe_eval(page,f"""
                 (() => {{
                     function setVal(id, v) {{
                         var e = document.getElementById(id);
@@ -440,7 +483,7 @@ class ReportService:
         """Klik tombol Apply via JS (Playwright locator click kadang tidak
         men-trigger reload saat panel filter tertutup)."""
         try:
-            ok = page.evaluate(
+            ok = safe_eval(page,
                 "(function(){var b=document.getElementById('btn_apply');"
                 "if(!b) return false; b.click(); return true;})()"
             )
@@ -455,7 +498,7 @@ class ReportService:
         """Set nilai <select> (termasuk select2) lalu trigger change via jQuery."""
         value = str(value or "")
         try:
-            page.evaluate(f"""
+            safe_eval(page,f"""
                 (() => {{
                     var el = document.getElementById('{select_id}');
                     if (!el) return;
@@ -472,7 +515,7 @@ class ReportService:
 
     def _set_solver_group(self, page, group_name):
         """Filter #solverGroupSearch ke nama group (MO-INSERA / MO-BIMA)."""
-        val = page.evaluate(f"""
+        val = safe_eval(page,f"""
             (() => {{
                 var s = document.getElementById('solverGroupSearch');
                 if (!s) return null;
@@ -498,7 +541,7 @@ class ReportService:
 
     def _solver_options(self, page):
         if self._solver_opts is None:
-            self._solver_opts = page.evaluate("""
+            self._solver_opts = safe_eval(page,"""
                 (() => {
                     var s = document.getElementById('solverSearch');
                     if (!s) return [];
@@ -755,7 +798,7 @@ class ReportService:
         utk status normal (RESOLVED/COMPLETED)."""
         select_id = self._status_select_id(category)
         try:
-            page.evaluate(f"""
+            safe_eval(page,f"""
                 (() => {{
                     var el = document.getElementById('{select_id}');
                     if (!el) return false;
@@ -773,7 +816,7 @@ class ReportService:
         set val, trigger change (tanpa destroy). Terbukti mengirim
         solverGroupSearch/solverSearch ke server saat Apply."""
         try:
-            page.evaluate(f"""
+            safe_eval(page,f"""
                 (() => {{
                     var $ = window.jQuery, s = $('#{select_id}');
                     if (!s.length) return;
@@ -791,7 +834,7 @@ class ReportService:
 
     def _clear_select2(self, page, select_id):
         try:
-            page.evaluate(f"""
+            safe_eval(page,f"""
                 (() => {{
                     var $ = window.jQuery;
                     $('#{select_id}').val(null).trigger('change');
@@ -1010,7 +1053,24 @@ class ReportService:
         block += [
             "",
             f"📊 Total Resolved All Shift: {total_all_shift}",
+            "",
+            "",
         ]
+        pic_map = _sheet_pic_map(now)
+        if pic_map:
+            pic_line = None
+            if shift:
+                sh, sm = (int(x) for x in shift["start"].split(":"))
+                key = _match_shift_slot(pic_map, sh * 60 + sm)
+                tag = pic_map.get(key) if key is not None else None
+                if tag:
+                    pic_line = f"• PIC {shift['label']}: {tag}"
+            if pic_line:
+                block.append(pic_line)
+            else:
+                block.append("• (tidak ada PIC hijau di shift ini)")
+        else:
+            block.append("• (tidak terbaca / tanggal di luar jadwal sheet)")
 
         return "\n".join(block)
 
@@ -1123,6 +1183,21 @@ def _slot_to_minutes(slot):
         return None
 
 
+def _match_shift_slot(sheet_map, start_m):
+    """Pilih key slot sheet untuk jam mulai shift dari config.
+
+    Prioritas: key sama persis. Jika sheet memakai label jam yang berbeda
+    (mis. slot '08:00-17:00' untuk shift config 09:00-16:30), pilih slot
+    yang jam mulainya <= jam mulai shift (slot terakhir yang sudah mulai).
+    """
+    if not sheet_map:
+        return None
+    if start_m in sheet_map:
+        return start_m
+    starts = sorted(k for k in sheet_map if k <= start_m)
+    return starts[-1] if starts else None
+
+
 def _sheet_piket_map(date=None):
     """Piket L1 per shift (key: jam mulai shift dalam menit) pada tanggal
     tertentu dari Google Sheet jadwal. Di-cache per tanggal. None jika gagal
@@ -1159,7 +1234,7 @@ def _parse_sheet_tags(raw, date):
         if r[0] == "NAMA":
             start = i
             for j, h in enumerate(r):
-                if h == day_col:
+                if _cell_day(h, date.day):
                     col = j
                     break
             break
@@ -1200,7 +1275,9 @@ def _shift_people_tags(now=None):
         shift = _current_shift(now)
         if shift:
             sh, sm = (int(x) for x in shift["start"].split(":"))
-            return sheet_map.get(sh * 60 + sm, [])
+            key = _match_shift_slot(sheet_map, sh * 60 + sm)
+            if key is not None:
+                return sheet_map.get(key, [])
         return []
     return get_piket(now.strftime("%Y-%m-%d")) or REPORT_PERSONNEL
 
@@ -1213,6 +1290,13 @@ _sheet_pic_cache = {"date": None, "data": None}
 _sheet_pic_lock = threading.Lock()
 
 _GREEN_FILL = "FF00FF00"
+
+
+def _cell_day(value, day):
+    """Cocokkan header kolom tanggal (bisa int 24, float 24.0, atau str '24')."""
+    if value is None:
+        return False
+    return str(value).strip().split(".")[0] == str(day)
 
 
 def _sheet_xlsx_url():
@@ -1280,7 +1364,7 @@ def _parse_sheet_pic(raw, date):
             header_row = r
             for c in range(1, ws.max_column + 1):
                 v = ws.cell(r, c).value
-                if v is not None and str(v).strip() == str(day):
+                if _cell_day(v, day):
                     day_col = c
                     break
             break
@@ -1308,6 +1392,42 @@ def _parse_sheet_pic(raw, date):
             if tag and cur_shift_m not in result:
                 result[cur_shift_m] = tag
     return result or None
+
+
+def build_jadwal_piket_text(date=None):
+    """Susun blok 'Jadwal Piket Hari Ini' (piket semua shift + PIC hijau).
+
+    Format persis sama dengan scripts/send_daily_jadwal.py supaya /cekpiket
+    dan report konsisten. None jika sheet tidak terbaca.
+    """
+    date = date or datetime.now()
+    piket_map = _sheet_piket_map(date)
+    pic_map = _sheet_pic_map(date)
+    if piket_map is None and pic_map is None:
+        return None
+
+    lines = [
+        "📋 Jadwal Piket Hari Ini",
+        f"{DAY_NAMES[date.weekday()]}, {date.day} {MONTH_NAMES[date.month - 1]} {date.year}",
+        "",
+    ]
+    for s in REPORT_SHIFTS:
+        sh, sm = (int(x) for x in s["start"].split(":"))
+        start_m = sh * 60 + sm
+        key = _match_shift_slot(piket_map, start_m) if piket_map else None
+        tags = piket_map.get(key) if key is not None else None
+        lines.append(f"👥 {s['label']} ({s['start']} - {s['end']}):")
+        if not tags:
+            lines.append("• (tidak ada)")
+        else:
+            for t in tags:
+                pic_mark = (
+                    " — ⭐ PIC" if pic_map and key is not None and pic_map.get(key) == t else ""
+                )
+                lines.append(f"• {t}{pic_mark}")
+        lines.append("")
+    lines.append("Sumber: Google Sheet jadwal")
+    return "\n".join(lines)
 
 
 # ==================================================

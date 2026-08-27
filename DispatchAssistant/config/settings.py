@@ -26,7 +26,6 @@ CHROME_PORTS = {
     "REPORT": 9226,
     "CHANGE_SERVICE_ID": 9227,
     "DISPATCH_INCIDENT": 9228,
-    "REPORT_REQUEST": 9229,
 }
 
 CHROME_PROFILES = {
@@ -37,7 +36,6 @@ CHROME_PROFILES = {
     9226: r"C:\ChromeDebug_REPORT",
     9227: r"C:\ChromeDebug_CHANGE_SERVICE_ID",
     9228: r"C:\ChromeDebug_INCIDENT",
-    9229: r"C:\ChromeDebug_REPORT_REQUEST",
 }
 
 
@@ -130,14 +128,6 @@ SKIP_COORDINATOR_USER_IDS = ["55652"]
 # Alternatif terisolasi: set ke 9226 (profil C:\ChromeDebug_REPORT) tapi
 # harus login sekali manual di Chrome port 9226.
 REPORT_CDP_PORT = CHROME_PORTS["TO"]
-# Request Fulfillment dibaca dari profil AGENT khusus (port 9229, profil
-# C:\ChromeDebug_REPORT_REQUEST) agar bot bisa melihat antrian Request TIM
-# penuh (100+ completed) — akun requestor (TO/9222) cuma dikasih ~4 request
-# sendiri oleh server. Profil ini TERPISAH dari bot DISPATCH (9224) supaya
-# tidak kena auto-close tab asing milik dispatch.
-# WAJIB: jalankan start_browser_request.bat sekali, login SYGAP sebagai AGENT,
-# lalu biarkan Chrome 9229 tetap menyala (sesi persist di profil).
-REPORT_REQUEST_CDP_PORT = CHROME_PORTS["REPORT_REQUEST"]
 
 # Chat ID channel/grup tujuan report (misal @hdsigmaniwbis).
 # Untuk channel: ID negatif, dapat via @getidsbot atau forward pesan ke bot.
