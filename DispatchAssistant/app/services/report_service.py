@@ -31,9 +31,12 @@ from config.settings import (
     REPORT_TITLE,
     REPORT_PERSONNEL,
     REPORT_SHIFTS,
+    REPORT_REQUEST_CDP_PORT,
+    REPORT_CDP_PORT,
     TELEGRAM_SOLVER_IDS,
     TELEGRAM_USERNAMES,
 )
+from app.browser import BrowserManager
 logger = logging.getLogger(__name__)
 
 CATEGORY_LABELS = {"incident": "Incident", "request": "Request"}
@@ -177,15 +180,28 @@ class ReportService:
             self.browser_manager.connect()
         return self.browser_manager
 
-    def _open_page(self, url):
+    def _open_page(self, url, port=None):
         """Buka halaman SYGAP dengan reuse sesi login yang sudah ada.
 
         1. Ada tab sygap yang sedang login -> buka tab baru langsung ke target
            (tidak mengganggu tab dashboard yang sedang dipakai fitur lain).
         2. Belum ada sesi -> buka base https://sygap.telkom.co.id// dulu
            (muncul halaman login), user login manual, lalu jalankan lagi.
+
+        Jika `port` diberi (mis. REPORT_REQUEST_CDP_PORT), halaman dibuka di
+        instance Chrome/profil terpisah (bukan profil TO) — dipakai untuk
+        Request Fulfillment yang hanya terlihat saat login sebagai agent di
+        profil DISPATCH.
         """
-        bm = self._browser()
+        if port is not None:
+            if self.browser_manager is None:
+                self.browser_manager = BrowserManager(cdp_port=port)
+            else:
+                self.browser_manager.connect_to(port)
+            return self._open_on_manager(self.browser_manager, url)
+        return self._open_on_manager(self._browser(), url)
+
+    def _open_on_manager(self, bm, url):
         path = re.sub(r"/{2,}", "/", re.sub(r"^https?://[^/]+", "", url).rstrip("/"))
 
         def _norm(u):
@@ -843,6 +859,172 @@ class ReportService:
         except Exception:
             pass
 
+    # --------------------------------------------------
+    # Request Fulfillment: tabel plain HTML (#requestFulfillmentTable)
+    # --------------------------------------------------
+    # Di profil TO tabel ini kosong; dibaca dari profil DISPATCH (agent).
+    # Tabel BUKAN jQuery DataTable, sehingga harus diparsing dari DOM langsung
+    # (kolom: 0=checkbox,1=Request Code,2=Priority,3=Request Name,4=Owner,
+    # 5=Solver,6=Statusinfo,7=Created,8=User Confirmation).
+
+    _REQUEST_HEADERS = [
+        "checkbox", "request_code", "priority", "request_name", "owner",
+        "solver", "statusinfo", "created", "user_confirmation",
+    ]
+
+    @staticmethod
+    def _parse_request_created(text):
+        if not text:
+            return None
+        m = re.search(
+            r"([A-Z][a-z]+ \d{1,2}, \d{4},?\s*\d{1,2}:\d{2}(?::\d{2})?)",
+            text,
+        )
+        if not m:
+            return None
+        s = m.group(1).replace(",", ", ")
+        for fmt in ("%b %d, %Y, %H:%M:%S", "%b %d, %Y, %H:%M",
+                    "%b %d, %Y %H:%M:%S", "%b %d, %Y %H:%M"):
+            try:
+                return datetime.strptime(s, fmt)
+            except Exception:
+                continue
+        return None
+
+    def _read_request_table(self, page):
+        """Baca #requestFulfillmentTable sebagai list dict (bukan DataTable)."""
+        rows = safe_eval(page, """(() => {
+            var t = document.querySelector('#requestFulfillmentTable');
+            if (!t) return [];
+            var out = [];
+            for (var i = 1; i < t.rows.length; i++) {
+                var r = t.rows[i];
+                var cells = [];
+                for (var c = 0; c < r.cells.length; c++) {
+                    var cell = r.cells[c];
+                    var txt = (cell.innerText || '').replace(/\\s+/g, ' ').trim();
+                    var titles = [];
+                    var closedClass = '';
+                    cell.querySelectorAll('[title]').forEach(function (e) {
+                        var tt = e.getAttribute('title') || '';
+                        if (tt) titles.push(tt);
+                        if (tt.toLowerCase().indexOf('closed') >= 0) {
+                            closedClass = (e.getAttribute('class') || '');
+                        }
+                    });
+                    cells.push({ text: txt, titles: titles, closed_class: closedClass });
+                }
+                out.push(cells);
+            }
+            return out;
+        })()""")
+        result = []
+        for cells in (rows or []):
+            if len(cells) < len(self._REQUEST_HEADERS):
+                # baris placeholder ("No data available") -> abaikan
+                continue
+            d = {}
+            for idx, key in enumerate(self._REQUEST_HEADERS):
+                if idx < len(cells):
+                    d[key] = cells[idx]["text"]
+                    if key == "statusinfo":
+                        d["status_titles"] = cells[idx]["titles"]
+                        d["closed_class"] = cells[idx].get("closed_class", "")
+                else:
+                    d[key] = ""
+                    if key == "statusinfo":
+                        d["closed_class"] = ""
+            d["created_dt"] = self._parse_request_created(d.get("created", ""))
+            result.append(d)
+        return result
+
+    @staticmethod
+    def _request_is_completed(row):
+        # Request dianggap COMPLETED hanya bila step terakhir "Closed" sudah
+        # berwarna (text-success/text-primary). Jika class-nya "undefined"
+        # (abu-abu) berarti request masih OPEN/in-progress.
+        cls = (row.get("closed_class") or "").lower()
+        if not cls or "undefined" in cls:
+            return False
+        return "text-success" in cls or "text-primary" in cls
+
+    def _request_color(self, row):
+        dt = row.get("created_dt")
+        if not dt:
+            return "green"
+        age_h = (datetime.now() - dt).total_seconds() / 3600.0
+        if age_h > REPORT_SLA_YELLOW_HOURS:
+            return "red"
+        if age_h > REPORT_SLA_YELLOW_HOURS / 2.0:
+            return "yellow"
+        return "green"
+
+    def _collect_request(self, page):
+        # Tabel #requestFulfillmentTable bukan DataTable -> butuh waktu load
+        # (bukan 4s seperti DataTable). Tunggu hingga ada baris data ASLI
+        # (bukan placeholder "No data available" yang cuma punya 1 cell).
+        for _ in range(20):
+            try:
+                n = safe_eval(
+                    page,
+                    "(() => { var t = document.querySelector('#requestFulfillmentTable');"
+                    " if (!t) return 0; var real = 0;"
+                    " for (var i = 1; i < t.rows.length; i++) {"
+                    "   if (t.rows[i].cells.length >= 9) real++; }"
+                    " return real; })()",
+                )
+            except Exception:
+                n = 0
+            if n and n > 0:
+                break
+            page.wait_for_timeout(1000)
+        rows = self._read_request_table(page)
+        today = datetime.now().date()
+        saldo = 0
+        colors = {"green": 0, "yellow": 0, "red": 0}
+        resolved = 0
+        for r in rows:
+            created_today = bool(r.get("created_dt")) and r["created_dt"].date() == today
+            completed = self._request_is_completed(r)
+            if not completed:
+                if created_today:
+                    saldo += 1
+                    col = self._request_color(r)
+                    if col:
+                        colors[col] += 1
+            else:
+                if created_today:
+                    resolved += 1
+        # Per person: cocokkan kolom Solver dengan nama agent (substring kata).
+        agents = self._personnel_agents()
+        agent_counts = {a["name"].title(): 0 for a in agents}
+        for r in rows:
+            solver = (r.get("solver") or "").lower()
+            for a in agents:
+                name = a["name"].title()
+                if re.search(r"\b" + re.escape(name.lower()) + r"\b", solver):
+                    agent_counts[name] += 1
+        return {
+            "category": {
+                "category": "request",
+                "label": CATEGORY_LABELS.get("request", "Request"),
+                "saldo": saldo,
+                "green": colors["green"],
+                "yellow": colors["yellow"],
+                "red": colors["red"],
+                "oldest": min(
+                    (r["created_dt"] for r in rows if r.get("created_dt")),
+                    default=None,
+                ),
+                "newest": max(
+                    (r["created_dt"] for r in rows if r.get("created_dt")),
+                    default=None,
+                ),
+                "resolved": resolved,
+            },
+            "agent_counts": agent_counts,
+        }
+
     def collect_all(self):
         """Kumpulkan semua data laporan (metode terkonfirmasi user).
 
@@ -866,7 +1048,51 @@ class ReportService:
             label = CATEGORY_LABELS.get(cat, cat)
             self.log(f"=== CATAL {label}: {url} ===")
 
-            page = self._open_page(url)
+            if cat == "request":
+                # Request Fulfillment: tabel plain HTML di profil khusus
+                # REPORT_REQUEST (9229) yang login sebagai agent. Profil ini
+                # TERPISAH dari bot DISPATCH (9224) agar tidak kena auto-close
+                # tab asing milik dispatch. Buka tab baru lalu tutup setelahnya.
+                try:
+                    if self.browser_manager is None:
+                        self.browser_manager = BrowserManager(cdp_port=REPORT_REQUEST_CDP_PORT)
+                    else:
+                        self.browser_manager.connect_to(REPORT_REQUEST_CDP_PORT)
+                    page = self.browser_manager.open_url(url)
+                    if page is None:
+                        raise Exception("gagal buka tab Request")
+                    try:
+                        page.bring_to_front()
+                    except Exception:
+                        pass
+                    try:
+                        res = self._collect_request(page)
+                    finally:
+                        try:
+                            page.close()
+                        except Exception:
+                            pass
+                    categories[cat] = res["category"]
+                    for a in agents:
+                        n = res["agent_counts"].get(a["name"].title(), 0)
+                        agent_detail[a["name"]][cat] = n
+                        agent_totals[a["name"]] += n
+                        self.log(f"  {a['name']} [{cat}]: {n}")
+                    self.log(
+                        f"  Saldo: {res['category']['saldo']} | "
+                        f"Completed: {res['category']['resolved']}"
+                    )
+                except Exception as e:
+                    self.log(
+                        f"  WARNING: gagal baca Request (profil 9229 belum jalan/"
+                        f"login?): {e}"
+                    )
+                    categories[cat] = self._empty_category(cat)
+                continue
+
+            if self.browser_manager is not None:
+                self.browser_manager.connect_to(REPORT_CDP_PORT)
+            page = self._open_on_manager(self._browser(), url)
             table_id = self._table_id(page)
             if not table_id:
                 self.log(f"  WARNING: DataTable tidak ditemukan di {url}")

@@ -155,6 +155,44 @@ class BrowserManager:
 
         return self.browser
 
+    def connect_to(self, port):
+        """Sambungkan ke port CDP lain pakai Playwright yang SAMA.
+
+        Dipakai saat satu ReportService butuh membaca dua profil Chrome
+        berbeda (mis. TO untuk Incident, DISPATCH untuk Request) tanpa
+        membuat dua instance `sync_playwright()` di thread yang sama
+        (yang memicu error "Sync API inside asyncio loop").
+        """
+        # Sudah terhubung ke port yang sama -> jangan sambung ulang (menghindari
+        # dua session CDP ke browser yang sama yang bikin tabel tidak load).
+        if self.connected and self.cdp_port == port and self.browser is not None:
+            try:
+                _ = self.browser.contexts
+                return self.browser
+            except Exception:
+                pass
+        try:
+            s = socket.socket()
+            s.connect(("127.0.0.1", port))
+            s.close()
+        except Exception:
+            raise Exception(
+                f"Chrome CDP belum berjalan di port {port}.\n"
+                f"Jalankan Chrome dengan --remote-debugging-port={port}"
+            )
+
+        if getattr(self, "playwright", None) is None:
+            self.playwright = sync_playwright().start()
+        self.cdp_port = port
+        self.browser = self.playwright.chromium.connect_over_cdp(
+            f"http://127.0.0.1:{port}"
+        )
+        self.connected = True
+        for context in self.browser.contexts:
+            context.set_default_timeout(10000)
+        self.refresh_cache()
+        return self.browser
+
     # ==================================================
     # Disconnect
     # ==================================================
