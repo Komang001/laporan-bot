@@ -917,7 +917,7 @@ class DispatchAssistantGUI(ctk.CTk):
     def _show_export_dialog(self):
         """Dialog pilih rentang tanggal untuk export (dari kapan sampai kapan) — record mulai hari ini."""
         from datetime import datetime, timedelta
-
+        self.write_log("[export] dialog dibuka — isi Tanggal Mulai & Akhir lalu klik ⬇ Export", channel="all")
         dlg = ctk.CTkToplevel(self)
         dlg.title("Export History — Pilih Tanggal")
         dlg.geometry("420x320")
@@ -995,6 +995,7 @@ class DispatchAssistantGUI(ctk.CTk):
             import os
             from datetime import datetime, timedelta
             from pathlib import Path
+            self.write_log(f"[export] mulai export {start_str} s/d {end_str} ({days} hari)...", channel="all")
             base = Path(__file__).resolve().parents[1]
             history_all = base / "logs" / "history_all.csv"
             history_dir = base / "logs"
