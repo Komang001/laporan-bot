@@ -2019,7 +2019,8 @@ class SygapService:
                             log(f"    Induk GAMAS terdeteksi otomatis by source: {parent_inc}")
                             child_incs = [i for i in child_check["valid"] if i != parent_inc]
                         else:
-                            log(f"    Tidak ada tiket GAMAS di antara INC; SKIP (tidak ada induk).")
+                            log(f"    Tidak ada tiket GAMAS di antara INC; COMPLETE dengan reply 'harap sertakan juga induk gamas nya'.")
+                            self._complete_gamas_reply(page, ticket_page, code, "harap sertakan juga induk gamas nya", results, log)
                             continue
 
                     if not child_incs:
@@ -2081,7 +2082,8 @@ class SygapService:
                                     log(f"    Fallback Child INCs ({len(child_incs)}): {','.join(child_incs[:5])}...")
                                     # Lanjut ke pengecekan child di bawah (jangan continue, biarkan flow ke check child)
                                 else:
-                                    log(f"    Fallback: tidak ada tiket GAMAS di antara INC; SKIP (tidak ada induk).")
+                                    log(f"    Fallback: tidak ada tiket GAMAS di antara INC; COMPLETE dengan reply 'harap sertakan juga induk gamas nya'.")
+                                    self._complete_gamas_reply(page, ticket_page, code, "harap sertakan juga induk gamas nya", results, log)
                                     continue
 
                         log(f"    Checking {len(child_incs)} anak via /cekticket...")
