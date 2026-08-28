@@ -287,18 +287,23 @@ class ReportService:
     def _table_id(self, page):
         if page in self._table_cache:
             return self._table_cache[page]
+        # Prioritaskan id eksplisit (requestFulfillmentTable/incidentTable) via getElementById,
+        # bukan via table.dataTable yang bisa ketemu MFAUserDetailTable di modal hidden.
         table_id = safe_eval(page,"""
             (() => {
-                var preferred = ['requestFulfillmentTable', 'incidentTable', 'dataTable'];
-                var tables = [];
-                document.querySelectorAll('table.dataTable').forEach(function (t) {
-                    tables.push(t.id || '');
-                });
-                for (var i = 0; i < preferred.length; i++) {
-                    if (preferred[i] && tables.indexOf(preferred[i]) !== -1) return preferred[i];
+                var pref = ['requestFulfillmentTable', 'incidentTable'];
+                for (var i = 0; i < pref.length; i++) {
+                    var el = document.getElementById(pref[i]);
+                    if (el) return pref[i];
                 }
+                // Fallback: cari dataTable yang visible dan bukan MFA
+                var tables = document.querySelectorAll('table.dataTable');
                 for (var j = 0; j < tables.length; j++) {
-                    if (tables[j]) return tables[j];
+                    var tid = tables[j].id || '';
+                    if (!tid) continue;
+                    if (tid.toLowerCase().indexOf('mfa') !== -1) continue;
+                    if (tid.toLowerCase().indexOf('userdetail') !== -1) continue;
+                    return tid;
                 }
                 return null;
             })()
