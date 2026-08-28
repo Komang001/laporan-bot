@@ -3347,7 +3347,11 @@ class SygapService:
                     if service_id:
                         biscuit = BiscuitService(browser_manager=self.browser_manager)
                         if not biscuit.open():
-                            log(f"    BISCUIT tab not found!")
+                            log(f"    BISCUIT tab not found! SKIP tanpa complete — akan retry")
+                            continue
+                        # Safety: pastikan BISCUIT sudah login, jangan complete dengan error jika belum login
+                        if not self._wait_for_biscuit_login(log, timeout=10):
+                            log(f"    BISCUIT belum login / tidak siap, SKIP tanpa complete — buka tab BISCUIT & login dulu")
                             continue
 
                         command = f"/changeserviceid {inc_number} {service_id}"
@@ -3365,6 +3369,10 @@ class SygapService:
                             if attempt < max_retries:
                                 log(f"    BISCUIT timeout, retrying...")
                                 biscuit.wait_for_ready()
+                        # Jika BISCUIT gagal karena belum login / tab tidak siap, jangan complete
+                        if response and response.status == "UNKNOWN" and ("BISCUIT" in (response.message or "") or "not found" in (response.message or "").lower() or "Timeout" in (response.message or "")):
+                            log(f"    BISCUIT UNKNOWN (tab/command box tidak siap) — SKIP tanpa complete, akan retry")
+                            continue
                     else:
                         # Service Type sudah sepaket dengan Service ID -> tidak dikerjakan, complete dengan penolakan
                         rejection_msg = "service type sudah sepaket dengan service ID, maka dari itu tidak dapat kami penuhi, silahkan request perubahan service ID"
@@ -3379,6 +3387,9 @@ class SygapService:
                     elif response and response.status == "REJECTED":
                         log(f"    SERVICE TYPE DITOLAK - Complete dengan note penolakan...")
                         complete_note = response.message[:500]
+                    elif response and response.status in ("FAILED", "UNKNOWN") and any(k in (response.message or "").lower() for k in ["biscuit", "not found", "command box", "timeout", "tidak ditemukan", "tidak muncul", "tab not found"]):
+                        log(f"    BISCUIT belum login/tidak siap ({response.message[:80]}) — SKIP tanpa complete, akan retry setelah login")
+                        continue
                     else:
                         err_msg = response.message if response else "Unknown error"
                         log(f"    EKSEKUSI GAGAL! Complete dengan alasan error...")
