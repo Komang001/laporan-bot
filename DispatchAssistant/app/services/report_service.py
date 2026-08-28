@@ -1461,16 +1461,50 @@ def _generate_report_impl(log_callback=None):
     connected = False
 
     try:
-        if not bm.is_chrome_running():
-            log("Report: launching Chrome (port REPORT)...")
-            if not bm.launch(log_callback=log):
-                raise Exception("Gagal launch Chrome untuk report")
-        log("Report: connecting browser...")
-        bm.connect()
-        connected = True
+        # Retry 2x untuk handle CDP timeout 180s (Chrome hang / profil TO korup setelah hapus TO)
+        for attempt in range(1, 4):
+            try:
+                if not bm.is_chrome_running():
+                    log(f"Report: launching Chrome (port REPORT {REPORT_CDP_PORT})... [attempt {attempt}]")
+                    if not bm.launch(log_callback=log):
+                        raise Exception("Gagal launch Chrome untuk report")
+                log(f"Report: connecting browser port {REPORT_CDP_PORT}... [attempt {attempt}]")
+                bm.connect()
+                connected = True
+                break
+            except Exception as e:
+                msg = str(e)
+                # Timeout 180s via connect_over_cdp → Chrome hang, coba bunuh & relaunch
+                if "Timeout" in msg and "connect_over_cdp" in msg and attempt < 3:
+                    log(f"Report: connect timeout attempt {attempt} — coba kill & relaunch Chrome...")
+                    try:
+                        # Kill chrome di port tersebut
+                        import subprocess as _sp
+                        _sp.run(["taskkill", "/F", "/IM", "chrome.exe"], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+                    except Exception:
+                        pass
+                    try:
+                        bm.disconnect()
+                    except Exception:
+                        pass
+                    import time as _t
+                    _t.sleep(3)
+                    continue
+                raise
+
+        if not connected:
+            raise Exception(f"Gagal connect ke Chrome port {REPORT_CDP_PORT} setelah 3 attempt")
 
         pages = bm.get_pages()
         log(f"Report: Chrome port {REPORT_CDP_PORT} terhubung - {len(pages)} tab terbuka")
+        # Pastikan tab pertama tidak about:blank hang — refresh jika perlu
+        try:
+            if pages and pages[0].url == "about:blank":
+                log("Report: tab pertama about:blank — navigasi ke base SYGAP...")
+                pages[0].goto(REPORT_BASE_URL, wait_until="domcontentloaded", timeout=15000)
+                pages[0].wait_for_timeout(2000)
+        except Exception:
+            pass
 
         svc = ReportService(browser_manager=bm, log_callback=log)
         log("Report: mengumpulkan data...")

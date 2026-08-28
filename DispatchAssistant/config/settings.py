@@ -122,12 +122,9 @@ SKIP_COORDINATOR_USER_IDS = ["55652"]
 # Report Harian Helpdesk Operasional
 # ==================================================
 
-# Chrome untuk report.
-# Default: pakai port TO (9222) -> reuse sesi login SYGAP yang sudah ada,
-# jadi report langsung bisa ambil data tanpa login lagi.
-# Alternatif terisolasi: set ke 9226 (profil C:\ChromeDebug_REPORT) tapi
-# harus login sekali manual di Chrome port 9226.
-REPORT_CDP_PORT = CHROME_PORTS["TO"]
+# Chrome untuk report — terisolasi di port REPORT (9226) agar tidak tabrakan dengan TO (9222) yang sudah dihapus.
+# Profil: C:\ChromeDebug_REPORT — login sekali manual di Chrome port 9226, lalu report akan reuse sesi.
+REPORT_CDP_PORT = CHROME_PORTS["REPORT"]
 
 # Chat ID channel/grup tujuan report (misal @hdsigmaniwbis).
 # Untuk channel: ID negatif, dapat via @getidsbot atau forward pesan ke bot.
