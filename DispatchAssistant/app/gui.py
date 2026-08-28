@@ -917,10 +917,10 @@ class DispatchAssistantGUI(ctk.CTk):
     def _show_export_dialog(self):
         """Dialog pilih rentang tanggal untuk export (dari kapan sampai kapan) — record mulai hari ini."""
         from datetime import datetime, timedelta
-        self.write_log("[export] dialog dibuka — isi Tanggal Mulai & Akhir lalu klik ⬇ Export", channel="all")
+        self.write_log("[export] dialog dibuka — isi Tanggal Mulai & Akhir lalu klik Export", channel="all")
         dlg = ctk.CTkToplevel(self)
         dlg.title("Export History — Pilih Tanggal")
-        dlg.geometry("420x320")
+        dlg.geometry("420x400")
         dlg.resizable(False, False)
         dlg.configure(fg_color=BG_HEADER)
         dlg.transient(self)
@@ -929,8 +929,12 @@ class DispatchAssistantGUI(ctk.CTk):
         # Header
         hdr = ctk.CTkFrame(dlg, fg_color="transparent")
         hdr.pack(fill="x", padx=20, pady=(14, 6))
-        ctk.CTkLabel(hdr, text="📊 Export History Excel", font=(FONT_UI, 16, "bold"), text_color=TEXT_MAIN).pack(anchor="w")
+        ctk.CTkLabel(hdr, text="Export History Excel", font=(FONT_UI, 16, "bold"), text_color=TEXT_MAIN).pack(anchor="w")
         ctk.CTkLabel(hdr, text="Record mulai hari ini (27 Agu 2026). Pilih rentang tanggal untuk export.", font=(FONT_UI, 10), text_color=TEXT_DIM, wraplength=380, justify="left").pack(anchor="w", pady=(2,0))
+
+        # Tombol bawah dulu agar selalu terlihat (pack bottom)
+        btn_row = ctk.CTkFrame(dlg, fg_color="transparent")
+        btn_row.pack(side="bottom", fill="x", padx=20, pady=(10, 14))
 
         body = ctk.CTkFrame(dlg, fg_color="transparent")
         body.pack(fill="both", expand=True, padx=20, pady=6)
@@ -965,9 +969,6 @@ class DispatchAssistantGUI(ctk.CTk):
         info = ctk.CTkLabel(body, text="Kosong sebelum 27 Agu → hanya 27 Agu ke depan yang ada. File: logs/history_YYYY-MM-DD.csv + history_all.csv", font=(FONT_UI, 9), text_color=TEXT_DIM, wraplength=380, justify="left")
         info.pack(anchor="w", pady=(8,0))
 
-        btn_row = ctk.CTkFrame(dlg, fg_color="transparent")
-        btn_row.pack(fill="x", padx=20, pady=(10, 14))
-
         def _do_export():
             s = e_start.get().strip()
             e = e_end.get().strip()
@@ -985,7 +986,7 @@ class DispatchAssistantGUI(ctk.CTk):
             except Exception as ex:
                 self.write_log(f"[export] Format tanggal salah: {ex} (pakai YYYY-MM-DD)", channel="all")
 
-        ctk.CTkButton(btn_row, text="⬇ Export", width=110, height=32, corner_radius=8, fg_color="#107C41", hover_color="#0B5E31", text_color=WHITE, font=(FONT_UI, 11, "bold"), command=_do_export).pack(side="left")
+        ctk.CTkButton(btn_row, text="Export", width=110, height=32, corner_radius=8, fg_color="#107C41", hover_color="#0B5E31", text_color=WHITE, font=(FONT_UI, 11, "bold"), command=_do_export).pack(side="left")
         ctk.CTkButton(btn_row, text="Batal", width=80, height=32, corner_radius=8, fg_color=BG_BTN_SECONDARY, hover_color=BG_BTN_SECONDARY_HOVER, text_color=TEXT_MAIN, font=(FONT_UI, 11, "bold"), command=dlg.destroy).pack(side="left", padx=(8,0))
 
     def _export_history_range(self, start_str, end_str, days):
