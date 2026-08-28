@@ -13,8 +13,13 @@ from app.parser import (
 )
 from config.settings import USER_ID, USER_NAME, SKIP_COORDINATOR_USER_IDS
 from app.services.history_service import log_history
+import os
+import json
 
 LOOP_INTERVAL = 180
+
+# File untuk ingat tiket yang pernah di-SKIP (permanen, tidak pernah dibuka lagi) — anti duplikat bulanan
+_PERSISTENT_SKIPPED_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "skipped_tickets.json")
 
 
 class SygapService:
@@ -24,8 +29,45 @@ class SygapService:
         self.related_ids = set()      # tiket yg relasi GAMAS-nya sudah di-submit (cegah duplikat)
         self.gamas_fail_count = {}    # code -> jumlah gagal complete (batas retry)
         self.skipped_ids = {}         # code -> timestamp terakhir di-SKIP (cooldown LOOP_INTERVAL)
+        self.persistent_skipped = set()  # tiket yang pernah di-SKIP permanen (tidak pernah dibuka lagi)
+        self._load_persistent_skipped()
         self.browser_manager = browser_manager
         self.stop_check = stop_check
+
+    def _load_persistent_skipped(self):
+        try:
+            if os.path.exists(_PERSISTENT_SKIPPED_PATH):
+                with open(_PERSISTENT_SKIPPED_PATH, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        self.persistent_skipped = set(data.keys())
+                    elif isinstance(data, list):
+                        self.persistent_skipped = set(data)
+        except Exception:
+            self.persistent_skipped = set()
+
+    def _save_persistent_skipped(self, code):
+        try:
+            self.persistent_skipped.add(code)
+            os.makedirs(os.path.dirname(_PERSISTENT_SKIPPED_PATH), exist_ok=True)
+            # Simpan sebagai dict code -> timestamp
+            data = {}
+            if os.path.exists(_PERSISTENT_SKIPPED_PATH):
+                try:
+                    with open(_PERSISTENT_SKIPPED_PATH, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        if isinstance(data, list):
+                            data = {k: "" for k in data}
+                except Exception:
+                    data = {}
+            data[code] = __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            with open(_PERSISTENT_SKIPPED_PATH, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        except Exception:
+            pass
+
+    def _is_persistent_skipped(self, code):
+        return code in self.persistent_skipped
 
     def _stopped(self):
         return bool(self.stop_check and self.stop_check())
@@ -1495,6 +1537,7 @@ class SygapService:
                 finally:
                     if code not in self.processed_ids and code not in self.related_ids:
                         self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code)
                     try:
                         if not ticket_page.is_closed():
                             ticket_page.close()
@@ -1936,6 +1979,9 @@ class SygapService:
                     log(f"  [{i+1}] {code} - SKIP (already processed)")
                     continue
 
+                if self._is_persistent_skipped(code):
+                    log(f"  [{i+1}] {code} - SKIP (permanen, sudah pernah di-skip — tidak dibuka lagi)")
+                    continue
                 if code in self.skipped_ids and (time.time() - self.skipped_ids[code]) < LOOP_INTERVAL:
                     log(f"  [{i+1}] {code} - SKIP (recently skipped, tunggu {LOOP_INTERVAL}s)")
                     continue
@@ -1947,6 +1993,7 @@ class SygapService:
                 if ticket_page is None:
                     log(f"    Failed to open {code}")
                     self.skipped_ids[code] = time.time()
+                    self._save_persistent_skipped(code)
                     continue
 
                 try:
@@ -2203,6 +2250,7 @@ class SygapService:
                     # agar tidak dibuka berulang dalam sesi yang sama (cooldown LOOP_INTERVAL).
                     if code not in self.processed_ids and code not in self.related_ids:
                         self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code)
                     try:
                         if not ticket_page.is_closed():
                             ticket_page.close()
@@ -2278,6 +2326,9 @@ class SygapService:
                     log(f"  [{i+1}] {code} - SKIP (already processed)")
                     continue
 
+                if self._is_persistent_skipped(code):
+                    log(f"  [{i+1}] {code} - SKIP (permanen, sudah pernah di-skip — tidak dibuka lagi)")
+                    continue
                 if code in self.skipped_ids and (time.time() - self.skipped_ids[code]) < LOOP_INTERVAL:
                     log(f"  [{i+1}] {code} - SKIP (recently skipped, tunggu {LOOP_INTERVAL}s)")
                     continue
@@ -2290,6 +2341,7 @@ class SygapService:
                 if ticket_page is None:
                     log(f"    Failed to open {code}")
                     self.skipped_ids[code] = time.time()
+                    self._save_persistent_skipped(code)
                     continue
 
                 try:
@@ -2676,6 +2728,7 @@ class SygapService:
                 finally:
                     if code not in self.processed_ids and code not in self.related_ids:
                         self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code)
                     try:
                         if not ticket_page.is_closed():
                             ticket_page.close()
@@ -2778,6 +2831,9 @@ class SygapService:
                     log(f"  [{i+1}] {code} - SKIP (already processed)")
                     continue
 
+                if self._is_persistent_skipped(code):
+                    log(f"  [{i+1}] {code} - SKIP (permanen, sudah pernah di-skip — tidak dibuka lagi)")
+                    continue
                 if code in self.skipped_ids and (time.time() - self.skipped_ids[code]) < LOOP_INTERVAL:
                     log(f"  [{i+1}] {code} - SKIP (recently skipped, tunggu {LOOP_INTERVAL}s)")
                     continue
@@ -2790,6 +2846,7 @@ class SygapService:
                 if ticket_page is None:
                     log(f"    Failed to open {code}")
                     self.skipped_ids[code] = time.time()
+                    self._save_persistent_skipped(code)
                     continue
 
                 try:
@@ -3123,6 +3180,7 @@ class SygapService:
                 finally:
                     if code not in self.processed_ids and code not in self.related_ids:
                         self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code)
                     try:
                         if not ticket_page.is_closed():
                             ticket_page.close()
@@ -3367,6 +3425,7 @@ class SygapService:
                 finally:
                     if code not in self.processed_ids and code not in self.related_ids:
                         self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code)
                     try:
                         if not ticket_page.is_closed():
                             ticket_page.close()

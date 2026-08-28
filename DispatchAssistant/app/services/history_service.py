@@ -28,6 +28,32 @@ HEADER = [
 def _history_path():
     return os.path.join(HISTORY_DIR, f"history_{datetime.now().strftime('%Y-%m-%d')}.csv")
 
+def _is_duplicate(ticket_code, biscuit_message, status, reply_sygap):
+    """Cek apakah tiket yang sama dengan error/reply yang sama sudah ada di history_all.csv (anti duplikat bulanan)."""
+    try:
+        all_path = os.path.join(HISTORY_DIR, "history_all.csv")
+        if not os.path.exists(all_path):
+            return False
+        # Normalisasi untuk bandingkan
+        tc = (ticket_code or "").strip().upper()
+        bm = " ".join((biscuit_message or "").split())[:300]
+        st = (status or "").strip().upper()
+        rp = " ".join((reply_sygap or "").split())[:200]
+        if not tc:
+            return False
+        with open(all_path, "r", newline="", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            for r in reader:
+                rt = (r.get("Tiket SYGAP (REQ)") or "").strip().upper()
+                rbm = " ".join((r.get("BISCUIT Message") or "").split())[:300]
+                rst = (r.get("Status") or "").strip().upper()
+                rrp = " ".join((r.get("Reply SYGAP") or "").split())[:200]
+                if rt == tc and rbm == bm and rst == st and rrp == rp:
+                    return True
+        return False
+    except Exception:
+        return False
+
 def log_history(
     feature="",
     ticket_code="",
@@ -43,8 +69,16 @@ def log_history(
     tgl_masuk="",
     tgl_selesai="",
 ):
-    """Tulis 1 baris history harian. Aman untuk dipanggil dari thread manapun."""
+    """Tulis 1 baris history harian. Aman untuk dipanggil dari thread manapun. Anti duplikat: tiket sama + error sama tidak ditulis lagi."""
     try:
+        # Anti duplikat bulanan: tiket sama + error/reply sama → skip (jangan double di Excel bulanan)
+        if ticket_code and _is_duplicate(ticket_code, biscuit_message, status, reply_sygap):
+            try:
+                print(f"[history] skip duplikat {ticket_code} | {status} | {biscuit_message[:40]}")
+            except Exception:
+                pass
+            return
+
         os.makedirs(HISTORY_DIR, exist_ok=True)
         path = _history_path()
         need_header = not os.path.exists(path) or os.path.getsize(path) == 0
