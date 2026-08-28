@@ -2024,14 +2024,16 @@ class SygapService:
                             continue
 
                     if not child_incs:
-                        log(f"    No child INCs found, SKIP")
+                        log(f"    No child INCs found, COMPLETE dengan reply 'Harap sertakan anak gamas nya juga'.")
+                        self._complete_gamas_reply(page, ticket_page, code, "Harap sertakan anak gamas nya juga", results, log)
                         continue
                     # Proteksi: anak gamas TIDAK boleh menjadi induk gamas.
                     # Buang parent dari daftar child; jika tidak ada child
                     # tersisa selain parent, jangan buat relasi.
                     child_incs = [c for c in child_incs if c != parent_inc]
                     if not child_incs:
-                        log(f"    Parent {parent_inc} terdeteksi sebagai child juga. SKIP (hindari relasi salah).")
+                        log(f"    Parent {parent_inc} terdeteksi sebagai child juga. COMPLETE dengan reply 'Harap sertakan anak gamas nya juga'.")
+                        self._complete_gamas_reply(page, ticket_page, code, "Harap sertakan anak gamas nya juga", results, log)
                         continue
                     log(f"    Child INCs ({len(child_incs)}): {','.join(child_incs[:5])}...")
 
@@ -2077,7 +2079,8 @@ class SygapService:
                                     log(f"    Fallback: induk GAMAS terdeteksi otomatis: {parent_inc} (ganti dari parser {check['detail'][:40]})")
                                     child_incs = [i for i in fb_check["valid"] if i != parent_inc]
                                     if not child_incs:
-                                        log(f"    Fallback: tidak ada child valid setelah koreksi. SKIP")
+                                        log(f"    Fallback: tidak ada child valid setelah koreksi. COMPLETE dengan reply 'Harap sertakan anak gamas nya juga'.")
+                                        self._complete_gamas_reply(page, ticket_page, code, "Harap sertakan anak gamas nya juga", results, log)
                                         continue
                                     log(f"    Fallback Child INCs ({len(child_incs)}): {','.join(child_incs[:5])}...")
                                     # Lanjut ke pengecekan child di bawah (jangan continue, biarkan flow ke check child)
@@ -2092,7 +2095,8 @@ class SygapService:
                             log(f"    Anak {ex['inc']} source={ex['source']} -> jangan di-input ({ex['detail'][:90]})")
                         child_incs = child_check["valid"]
                         if not child_incs:
-                            log(f"    Semua anak tidak valid (bukan CUSTOMER), SKIP relasi")
+                            log(f"    Semua anak tidak valid (bukan CUSTOMER), COMPLETE dengan reply 'Harap sertakan anak gamas nya juga'.")
+                            self._complete_gamas_reply(page, ticket_page, code, "Harap sertakan anak gamas nya juga", results, log)
                             continue
                         child_str = ",".join(child_incs)
                         log(f"    Child INCs valid ({len(child_incs)}): {child_str[:100]}...")
