@@ -1,0 +1,1487 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Catatan Keuangan — Aplikasi Pencatat Keuangan & Modal Jualan Offline</title>
+  <meta name="description" content="Aplikasi pencatat keuangan modern, offline, tanpa iklan, dan bebas biaya langganan. Kelola banyak akun, pantau grafik pengeluaran, dan hitung HPP/Modal Jualan UMKM secara akurat.">
+  <meta name="theme-color" content="#0F172A">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-dark: #090E17;
+      --bg-surface: #0F172A;
+      --bg-card: #1E293B;
+      --bg-card-hover: #24344D;
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-highlight: rgba(99, 102, 241, 0.3);
+      --text-main: #F8FAFC;
+      --text-muted: #94A3B8;
+      --text-dim: #64748B;
+      
+      --brand-primary: #10B981;
+      --brand-primary-glow: rgba(16, 185, 129, 0.25);
+      --brand-amber: #F59E0B;
+      --brand-rose: #F43F5E;
+      --brand-indigo: #6366F1;
+      --brand-cyan: #06B6D4;
+      
+      --radius-sm: 8px;
+      --radius-md: 14px;
+      --radius-lg: 20px;
+      --radius-xl: 28px;
+      --shadow-subtle: 0 4px 20px rgba(0, 0, 0, 0.3);
+      --shadow-glow: 0 10px 30px rgba(16, 185, 129, 0.2);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      line-height: 1.6;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Ambient Lighting Background */
+    .ambient-bg {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+    .glow-sphere {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(120px);
+      opacity: 0.25;
+    }
+    .glow-1 { width: 500px; height: 500px; background: var(--brand-indigo); top: -100px; left: -100px; }
+    .glow-2 { width: 450px; height: 450px; background: var(--brand-primary); top: 30%; right: -150px; }
+    .glow-3 { width: 400px; height: 400px; background: var(--brand-amber); bottom: 10%; left: 10%; }
+
+    /* Layout Wrapper */
+    .container {
+      width: 100%;
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0 clamp(16px, 4vw, 24px);
+      position: relative;
+      z-index: 1;
+      box-sizing: border-box;
+    }
+
+    /* Navbar */
+    header.navbar-wrap {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(9, 14, 23, 0.88);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-color);
+      transition: all 0.3s ease;
+    }
+    .navbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 72px;
+      gap: 16px;
+    }
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text-main);
+      font-weight: 800;
+      font-size: clamp(1rem, 3.8vw, 1.15rem);
+      letter-spacing: -0.3px;
+      white-space: nowrap;
+    }
+    .nav-brand img {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      flex-shrink: 0;
+    }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      list-style: none;
+    }
+    .nav-links a {
+      text-decoration: none;
+      color: var(--text-muted);
+      font-size: 0.92rem;
+      font-weight: 600;
+      transition: color 0.2s ease;
+    }
+    .nav-links a:hover { color: var(--text-main); }
+    .nav-btn {
+      padding: 9px 18px;
+      background: var(--brand-primary);
+      color: #042F1A;
+      font-weight: 700;
+      border-radius: var(--radius-sm);
+      text-decoration: none;
+      font-size: 0.88rem;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .nav-btn:hover {
+      background: #34D399;
+      transform: translateY(-1px);
+      box-shadow: var(--shadow-glow);
+    }
+    .nav-toggle {
+      display: none;
+      background: transparent;
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      color: var(--text-main);
+      padding: 8px;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      flex-shrink: 0;
+    }
+    .nav-toggle svg { width: 22px; height: 22px; }
+
+    /* Mobile Dropdown Menu */
+    .mobile-menu {
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      padding: 16px 20px 24px;
+      background: rgba(15, 23, 42, 0.98);
+      border-bottom: 1px solid var(--border-color);
+      box-shadow: 0 15px 30px rgba(0,0,0,0.5);
+    }
+    .mobile-menu.active {
+      display: flex;
+    }
+    .mobile-menu a {
+      text-decoration: none;
+      color: var(--text-muted);
+      font-size: 1rem;
+      font-weight: 600;
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      transition: all 0.2s ease;
+    }
+    .mobile-menu a:hover {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-main);
+    }
+    .mobile-menu .mobile-nav-btn {
+      margin-top: 8px;
+      justify-content: center;
+      padding: 12px;
+    }
+
+    /* Hero Section */
+    .hero {
+      padding: clamp(36px, 6vw, 70px) 0 clamp(48px, 8vw, 90px);
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: clamp(32px, 5vw, 50px);
+      align-items: center;
+    }
+    .hero-content {
+      width: 100%;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 999px;
+      color: var(--brand-primary);
+      font-size: clamp(0.78rem, 2.5vw, 0.85rem);
+      font-weight: 700;
+      margin-bottom: 18px;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .hero-badge .pulse-dot {
+      width: 7px;
+      height: 7px;
+      background: var(--brand-primary);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--brand-primary);
+      flex-shrink: 0;
+    }
+    .hero-title {
+      font-size: clamp(2rem, 5.2vw, 3.1rem);
+      line-height: 1.18;
+      font-weight: 800;
+      letter-spacing: -1px;
+      margin-bottom: 16px;
+      word-break: break-word;
+    }
+    .hero-title .gradient-text {
+      background: linear-gradient(135deg, #10B981 0%, #38BDF8 50%, #818CF8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero-subtitle {
+      font-size: clamp(0.95rem, 2.5vw, 1.1rem);
+      color: var(--text-muted);
+      line-height: 1.65;
+      margin-bottom: 28px;
+      max-width: 540px;
+    }
+    .hero-actions {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      margin-bottom: 28px;
+    }
+    .btn-main {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 14px 26px;
+      background: linear-gradient(135deg, #10B981, #059669);
+      color: #FFFFFF;
+      font-size: 0.98rem;
+      font-weight: 700;
+      border-radius: var(--radius-md);
+      text-decoration: none;
+      box-shadow: 0 10px 25px rgba(16, 185, 129, 0.35);
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      box-sizing: border-box;
+      text-align: center;
+    }
+    .btn-main:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 32px rgba(16, 185, 129, 0.45);
+    }
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 13px 22px;
+      background: var(--bg-card);
+      color: var(--text-main);
+      font-size: 0.94rem;
+      font-weight: 600;
+      border-radius: var(--radius-md);
+      text-decoration: none;
+      border: 1px solid var(--border-color);
+      transition: all 0.2s ease;
+      box-sizing: border-box;
+      text-align: center;
+    }
+    .btn-secondary:hover {
+      background: var(--bg-card-hover);
+      border-color: rgba(255, 255, 255, 0.2);
+      transform: translateY(-2px);
+    }
+    .hero-proof {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      color: var(--text-dim);
+      font-size: 0.82rem;
+      font-weight: 600;
+      flex-wrap: wrap;
+    }
+    .hero-proof span {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .hero-proof svg {
+      width: 15px;
+      height: 15px;
+      color: var(--brand-primary);
+      flex-shrink: 0;
+    }
+
+    /* Mockup Showcase in Hero */
+    .mockup-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 380px;
+      margin: 0 auto;
+      box-sizing: border-box;
+    }
+    .phone-card {
+      background: linear-gradient(180deg, #131E30 0%, #0F172A 100%);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: clamp(24px, 5vw, 36px);
+      padding: clamp(16px, 4vw, 24px);
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(16, 185, 129, 0.15);
+      position: relative;
+      overflow: hidden;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .phone-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .phone-badge {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--brand-amber);
+      background: rgba(245, 158, 11, 0.15);
+      padding: 3px 9px;
+      border-radius: 999px;
+    }
+
+    /* Inner UI Card Preview */
+    .ui-summary {
+      background: linear-gradient(135deg, #0F172A 0%, #1E293B 50%, #1E3A8A 100%);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 18px;
+      padding: 16px;
+      margin-bottom: 14px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .ui-balance-label {
+      font-size: 0.78rem;
+      color: rgba(255, 255, 255, 0.6);
+      display: flex;
+      justify-content: space-between;
+    }
+    .ui-balance-val {
+      font-size: clamp(1.4rem, 4.5vw, 1.7rem);
+      font-weight: 800;
+      color: #FFFFFF;
+      margin: 4px 0 12px;
+      letter-spacing: -0.5px;
+    }
+    .ui-mini-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .ui-stat-item {
+      font-size: 0.72rem;
+      color: rgba(255, 255, 255, 0.65);
+    }
+    .ui-stat-item strong {
+      display: block;
+      font-size: 0.88rem;
+      margin-top: 2px;
+    }
+    .color-in { color: #34D399 !important; }
+    .color-out { color: #FB7185 !important; }
+
+    .ui-actions {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+    .ui-act-btn {
+      flex: 1;
+      padding: 7px 4px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      text-align: center;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+
+    .ui-item-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 11px;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 12px;
+      margin-bottom: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      gap: 8px;
+    }
+    .ui-item-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow: hidden;
+    }
+    .ui-item-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      flex-shrink: 0;
+    }
+
+    /* Floating Badges (Desktop) */
+    .floating-card {
+      position: absolute;
+      background: rgba(15, 23, 42, 0.94);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 14px;
+      padding: 10px 16px;
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+      animation: float 4s ease-in-out infinite;
+      z-index: 10;
+      white-space: nowrap;
+    }
+    .float-top-left {
+      top: -16px;
+      left: -20px;
+      animation-delay: 0s;
+    }
+    .float-bottom-right {
+      bottom: 20px;
+      right: -20px;
+      animation-delay: 2s;
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-8px); }
+    }
+
+    /* Highlight Banner / Features */
+    .section-head {
+      text-align: center;
+      max-width: 680px;
+      margin: 0 auto clamp(32px, 6vw, 50px);
+      padding: 0 8px;
+      box-sizing: border-box;
+    }
+    .section-tag {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--brand-primary);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin-bottom: 8px;
+      display: block;
+    }
+    .section-title {
+      font-size: clamp(1.65rem, 4.5vw, 2.3rem);
+      font-weight: 800;
+      letter-spacing: -0.7px;
+      margin-bottom: 12px;
+      line-height: 1.25;
+      word-break: break-word;
+    }
+    .section-subtitle {
+      font-size: clamp(0.92rem, 2.5vw, 1.05rem);
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* Bento Grid */
+    .bento-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: clamp(14px, 3vw, 20px);
+      margin-bottom: clamp(50px, 8vw, 80px);
+    }
+    .bento-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: clamp(20px, 4vw, 28px);
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s ease;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      box-sizing: border-box;
+    }
+    .bento-card:hover {
+      border-color: var(--border-highlight);
+      transform: translateY(-3px);
+      box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
+    }
+    .bento-card.col-span-2 { grid-column: span 2; }
+    .bento-card.highlight {
+      background: linear-gradient(135deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+    }
+    .bento-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+      flex-shrink: 0;
+    }
+    .bento-icon svg { width: 22px; height: 22px; }
+    .bento-card h3 {
+      font-size: clamp(1.1rem, 3vw, 1.25rem);
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--text-main);
+    }
+    .bento-card p {
+      color: var(--text-muted);
+      font-size: 0.92rem;
+      line-height: 1.6;
+    }
+
+    /* Live Interactive Costing Demo Widget */
+    .demo-section {
+      background: linear-gradient(180deg, var(--bg-surface) 0%, var(--bg-dark) 100%);
+      border: 1px solid var(--border-color);
+      border-radius: clamp(18px, 4vw, var(--radius-xl));
+      padding: clamp(20px, 4vw, 44px);
+      margin: clamp(40px, 6vw, 80px) 0;
+      position: relative;
+      box-sizing: border-box;
+    }
+    .demo-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: clamp(24px, 4vw, 40px);
+      align-items: center;
+    }
+    .calc-box {
+      background: var(--bg-card);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: var(--radius-lg);
+      padding: clamp(16px, 3.5vw, 26px);
+      box-shadow: var(--shadow-subtle);
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .calc-input-group {
+      margin-bottom: 14px;
+    }
+    .calc-input-group label {
+      display: block;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+    .calc-input-group input {
+      width: 100%;
+      padding: 10px 12px;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-sm);
+      color: var(--text-main);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.92rem;
+      outline: none;
+      transition: border-color 0.2s ease;
+      box-sizing: border-box;
+    }
+    .calc-input-group input:focus {
+      border-color: var(--brand-primary);
+    }
+    .calc-result-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border-color);
+    }
+    .calc-res-item {
+      background: rgba(15, 23, 42, 0.6);
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      box-sizing: border-box;
+    }
+    .calc-res-item span {
+      display: block;
+      font-size: 0.72rem;
+      color: var(--text-dim);
+    }
+    .calc-res-item strong {
+      font-size: clamp(0.92rem, 3.2vw, 1.08rem);
+      color: var(--brand-primary);
+      font-family: 'JetBrains Mono', monospace;
+      display: block;
+      margin-top: 2px;
+      word-break: break-all;
+    }
+
+    /* Comparison Table Responsive Wrapper */
+    .table-wrapper {
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border-color);
+      margin-bottom: clamp(50px, 8vw, 80px);
+      box-sizing: border-box;
+    }
+    .comparison-table {
+      width: 100%;
+      min-width: 580px;
+      border-collapse: collapse;
+      background: var(--bg-surface);
+      overflow: hidden;
+    }
+    .comparison-table th, .comparison-table td {
+      padding: 14px 18px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-color);
+      font-size: 0.92rem;
+    }
+    .comparison-table th {
+      background: var(--bg-card);
+      font-weight: 700;
+      color: var(--text-muted);
+    }
+    .comparison-table th.highlight, .comparison-table td.highlight {
+      background: rgba(16, 185, 129, 0.06);
+      color: var(--text-main);
+      font-weight: 700;
+      border-left: 1px solid rgba(16, 185, 129, 0.2);
+      border-right: 1px solid rgba(16, 185, 129, 0.2);
+    }
+    .table-hint {
+      display: none;
+      text-align: center;
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      margin-top: -40px;
+      margin-bottom: 40px;
+    }
+
+    /* Installation Steps */
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: clamp(16px, 3vw, 24px);
+      margin-bottom: clamp(50px, 8vw, 80px);
+    }
+    .step-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: clamp(20px, 4vw, 28px);
+      position: relative;
+      box-sizing: border-box;
+    }
+    .step-number {
+      width: 34px;
+      height: 34px;
+      background: var(--brand-indigo);
+      color: #fff;
+      font-weight: 800;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+      font-size: 0.95rem;
+    }
+    .step-card h4 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .step-card p {
+      color: var(--text-muted);
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
+
+    /* Version Changelog */
+    .version-item {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: clamp(18px, 4vw, 24px);
+      margin-bottom: 16px;
+      box-sizing: border-box;
+    }
+    .v-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .v-badge-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .v-tag-num {
+      background: var(--brand-primary);
+      color: #042F1A;
+      font-weight: 800;
+      padding: 3px 10px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+    }
+    .v-date-txt {
+      color: var(--text-dim);
+      font-size: 0.82rem;
+    }
+    .v-notes {
+      list-style: none;
+      margin-bottom: 16px;
+    }
+    .v-notes li {
+      position: relative;
+      padding-left: 18px;
+      margin-bottom: 6px;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      line-height: 1.5;
+    }
+    .v-notes li::before {
+      content: "•";
+      color: var(--brand-primary);
+      position: absolute;
+      left: 4px;
+      font-weight: bold;
+    }
+    .v-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    /* FAQ Accordion */
+    .faq-item {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-md);
+      margin-bottom: 10px;
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+    .faq-question {
+      padding: 16px 18px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 700;
+      font-size: clamp(0.92rem, 2.8vw, 1rem);
+      user-select: none;
+      gap: 12px;
+    }
+    .faq-answer {
+      padding: 0 18px 18px;
+      color: var(--text-muted);
+      font-size: 0.92rem;
+      line-height: 1.6;
+      display: none;
+    }
+    .faq-item.active .faq-answer { display: block; }
+    .faq-icon {
+      transition: transform 0.3s ease;
+      flex-shrink: 0;
+    }
+    .faq-item.active .faq-icon { transform: rotate(180deg); }
+
+    /* Footer */
+    footer {
+      background: #060911;
+      border-top: 1px solid var(--border-color);
+      padding: clamp(36px, 6vw, 50px) 0 30px;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.88rem;
+    }
+    .footer-brand {
+      font-weight: 800;
+      color: var(--text-main);
+      font-size: 1.15rem;
+      margin-bottom: 6px;
+    }
+
+    /* =========================================================================
+       RESPONSIVE MEDIA QUERIES (Mobile-First Polish)
+       ========================================================================= */
+
+    /* Tablet & Small Desktop (<= 900px) */
+    @media (max-width: 900px) {
+      .hero {
+        grid-template-columns: 1fr;
+        text-align: center;
+        padding: 36px 0 54px;
+        gap: 40px;
+      }
+      .hero-subtitle { margin: 0 auto 26px; }
+      .hero-actions { justify-content: center; }
+      .hero-proof { justify-content: center; }
+      .bento-grid { grid-template-columns: 1fr; }
+      .bento-card.col-span-2 { grid-column: span 1; }
+      .demo-grid { grid-template-columns: 1fr; }
+      .steps-grid { grid-template-columns: 1fr; }
+      
+      .nav-links, .nav-btn { display: none; }
+      .nav-toggle { display: inline-flex; }
+      .table-hint { display: block; }
+    }
+
+    /* Mobile Phablets & Phones (<= 640px) */
+    @media (max-width: 640px) {
+      .navbar { height: 64px; }
+      .hero-actions {
+        flex-direction: column;
+        width: 100%;
+      }
+      .hero-actions .btn-main,
+      .hero-actions .btn-secondary {
+        width: 100%;
+      }
+      
+      /* Mobile Floating Badges: convert to neat stacked tags without negative offsets */
+      .floating-card {
+        position: static;
+        margin: 0 auto 10px;
+        animation: none;
+        width: 100%;
+        max-width: 320px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-sizing: border-box;
+      }
+      .float-top-left { order: -1; }
+      .float-bottom-right { margin-top: 10px; margin-bottom: 0; }
+      
+      .mockup-wrapper {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      
+      .v-actions {
+        flex-direction: column;
+      }
+      .v-actions .btn-main,
+      .v-actions .btn-secondary {
+        width: 100%;
+      }
+    }
+
+    /* Small Phones (<= 400px) */
+    @media (max-width: 400px) {
+      .calc-result-grid {
+        grid-template-columns: 1fr;
+      }
+      .ui-balance-val {
+        font-size: 1.35rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Ambient Light -->
+  <div class="ambient-bg">
+    <div class="glow-sphere glow-1"></div>
+    <div class="glow-sphere glow-2"></div>
+    <div class="glow-sphere glow-3"></div>
+  </div>
+
+  <!-- Navigation Bar -->
+  <header class="navbar-wrap">
+    <div class="container">
+      <nav class="navbar">
+        <a href="#" class="nav-brand">
+          <img src="icons/icon-192.png" alt="Catatan Keuangan Logo">
+          <span>Catatan Keuangan</span>
+        </a>
+        <ul class="nav-links">
+          <li><a href="#fitur">Fitur</a></li>
+          <li><a href="#kalkulator">Kalkulator HPP</a></li>
+          <li><a href="#komparasi">Keunggulan</a></li>
+          <li><a href="#instalasi">Cara Pasang</a></li>
+          <li><a href="#versi">Riwayat Versi</a></li>
+          <li><a href="#faq">FAQ</a></li>
+        </ul>
+        <a href="#download" class="nav-btn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span>Unduh APK</span>
+        </a>
+        <button class="nav-toggle" id="menu-toggle" aria-label="Buka Menu">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+      </nav>
+    </div>
+    <!-- Mobile Drawer Menu -->
+    <div class="mobile-menu" id="mobile-menu">
+      <a href="#fitur" class="mobile-nav-link">Fitur Unggulan</a>
+      <a href="#kalkulator" class="mobile-nav-link">Kalkulator HPP</a>
+      <a href="#komparasi" class="mobile-nav-link">Keunggulan</a>
+      <a href="#instalasi" class="mobile-nav-link">Cara Pasang APK</a>
+      <a href="#versi" class="mobile-nav-link">Riwayat Versi</a>
+      <a href="#faq" class="mobile-nav-link">Tanya Jawab (FAQ)</a>
+      <a href="#download" class="btn-main mobile-nav-btn mobile-nav-link">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span>Unduh APK Resmi</span>
+      </a>
+    </div>
+  </header>
+
+  <main>
+    <!-- Hero Section -->
+    <section class="hero container">
+      <div class="hero-content">
+        <div class="hero-badge">
+          <span class="pulse-dot"></span>
+          <span>Versi 1.3 Terbaru • Fitur Modal Cepat • 100% Offline</span>
+        </div>
+        <h1 class="hero-title">
+          Kelola Keuangan &amp; Modal Jualan <span class="gradient-text">Lebih Cerdas &amp; Privat.</span>
+        </h1>
+        <p class="hero-subtitle">
+          Aplikasi pencatat keuangan modern dengan fitur multi-akun, analisis visual, dan kalkulator HPP/margin bisnis. Bebas ribet, tanpa login, dan data tersimpan aman hanya di ponsel Anda.
+        </p>
+        <div class="hero-actions" id="download">
+          <a id="hero-download-btn" class="btn-main" href="apk/catatan-keuangan-1.3.apk" download>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Unduh APK Android <small style="font-size:0.8rem;opacity:0.85;">(18.7 MB)</small></span>
+          </a>
+          <a class="btn-secondary" href="https://playful-caramel-a34f9d.netlify.app" target="_blank" rel="noopener">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+            <span>Coba Versi Web (Live Demo)</span>
+          </a>
+        </div>
+        <div class="hero-proof">
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Gratis Selamanya</span>
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Tanpa Registrasi</span>
+          <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> 0% Iklan</span>
+        </div>
+      </div>
+
+      <!-- Hero Phone Mockup -->
+      <div class="mockup-wrapper">
+        <div class="floating-card float-top-left">
+          <div style="font-size:0.75rem;color:var(--text-muted);">Pemasukan Bulan Ini</div>
+          <div style="font-size:1.1rem;font-weight:800;color:#34D399;">+Rp 8.500.000</div>
+        </div>
+
+        <div class="floating-card float-bottom-right">
+          <div style="font-size:0.75rem;color:var(--text-muted);">Margin Jualan UMKM</div>
+          <div style="font-size:1.1rem;font-weight:800;color:var(--brand-amber);">35.0% Terjaga ⭐</div>
+        </div>
+
+        <div class="phone-card">
+          <div class="phone-header">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-weight:800;font-size:0.95rem;">Catatan Keuangan</span>
+            </div>
+            <span class="phone-badge">PRO FINTECH</span>
+          </div>
+
+          <!-- Hero Balance Card Preview -->
+          <div class="ui-summary">
+            <div class="ui-balance-label">
+              <span>Total Saldo (3 Akun)</span>
+              <span>👁️</span>
+            </div>
+            <div class="ui-balance-val">Rp 15.450.000</div>
+            <div class="ui-mini-stats">
+              <div class="ui-stat-item">
+                <span>Pemasukan</span>
+                <strong class="color-in">+Rp 8.500.000</strong>
+              </div>
+              <div class="ui-stat-item">
+                <span>Pengeluaran</span>
+                <strong class="color-out">-Rp 3.250.000</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Action Buttons -->
+          <div class="ui-actions">
+            <div class="ui-act-btn" style="color:#34D399;border-color:rgba(16,185,129,0.3);">+ Masuk</div>
+            <div class="ui-act-btn" style="color:#FB7185;border-color:rgba(244,63,94,0.3);">- Keluar</div>
+            <div class="ui-act-btn" style="color:#818CF8;border-color:rgba(99,102,241,0.3);">⇄ Transfer</div>
+          </div>
+
+          <!-- Recent Item List -->
+          <div class="ui-item-row">
+            <div class="ui-item-left">
+              <div class="ui-item-icon" style="background:rgba(245,158,11,0.2);color:#F59E0B;">🍔</div>
+              <div>
+                <div style="font-weight:700;font-size:0.85rem;">Makan Siang Resto</div>
+                <div style="font-size:0.7rem;color:var(--text-dim);">BCA • Makanan</div>
+              </div>
+            </div>
+            <div style="font-weight:700;font-size:0.85rem;color:#FB7185;">-Rp 65.000</div>
+          </div>
+
+          <div class="ui-item-row">
+            <div class="ui-item-left">
+              <div class="ui-item-icon" style="background:rgba(16,185,129,0.2);color:#10B981;">💼</div>
+              <div>
+                <div style="font-weight:700;font-size:0.85rem;">Gaji Proyek Desain</div>
+                <div style="font-size:0.7rem;color:var(--text-dim);">Mandiri • Gaji</div>
+              </div>
+            </div>
+            <div style="font-weight:700;font-size:0.85rem;color:#34D399;">+Rp 4.500.000</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Bento Features Grid -->
+    <section id="fitur" class="container" style="padding-top:40px;">
+      <div class="section-head">
+        <span class="section-tag">Fitur Unggulan</span>
+        <h2 class="section-title">Segala yang Anda Butuhkan untuk Mengatur Uang &amp; Bisnis</h2>
+        <p class="section-subtitle">Didesain khusus untuk Anda yang menginginkan fleksibilitas penuh, kecepatan pencatatan, dan keamanan privasi tanpa batas.</p>
+      </div>
+
+      <div class="bento-grid">
+        <!-- Item 1 -->
+        <div class="bento-card highlight col-span-2">
+          <div>
+            <div class="bento-icon" style="background:rgba(245,158,11,0.2);color:var(--brand-amber);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            </div>
+            <h3>Modal Cepat &amp; Modal Jualan (Kalkulator Pemula &amp; UMKM)</h3>
+            <p><strong>Modal Cepat (1 Layar):</strong> Khusus bagi Anda yang baru mulai usaha! Cukup masukkan biaya bahan, biaya lainnya, dan jumlah produksi — langsung ketahui Harga Pokok (HPP), harga jual rekomendasi, dan keuntungan total secara instan.</p>
+            <p style="margin-top:8px;color:var(--text-muted);"><strong>Modal Jualan Pro:</strong> Untuk usaha yang lebih mapan dengan manajemen stok bahan baku, rincian biaya tenaga kerja per jam, overhead variabel/tetap, dan simulasi Break Even Point (BEP).</p>
+          </div>
+          <div style="margin-top:20px;padding:12px;background:rgba(0,0,0,0.3);border-radius:12px;border:1px solid rgba(245,158,11,0.3);font-size:0.85rem;color:var(--brand-amber);">
+            💡 <strong>Cocok Untuk Semua:</strong> Dari pemula yang baru ingin memulai bisnis hingga UMKM kuliner, online shop, dan jasa.
+          </div>
+        </div>
+
+        <!-- Item 2 -->
+        <div class="bento-card">
+          <div>
+            <div class="bento-icon" style="background:rgba(99,102,241,0.2);color:var(--brand-indigo);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+            </div>
+            <h3>Multi Account &amp; Transfer</h3>
+            <p>Pisahkan uang Tunai, Rekening Bank (BCA, Mandiri, BRI), hingga E-Wallet (GoPay, OVO). Transfer antar akun tanpa merusak kalkulasi total aset.</p>
+          </div>
+        </div>
+
+        <!-- Item 3 -->
+        <div class="bento-card">
+          <div>
+            <div class="bento-icon" style="background:rgba(16,185,129,0.2);color:var(--brand-primary);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>
+            </div>
+            <h3>Grafik Donut &amp; Progress Bar</h3>
+            <p>Visualisasikan ke mana uang Anda pergi dengan Donut Chart elegan dan bilah progres persentase per kategori pengeluaran.</p>
+          </div>
+        </div>
+
+        <!-- Item 4 -->
+        <div class="bento-card">
+          <div>
+            <div class="bento-icon" style="background:rgba(6,182,212,0.2);color:var(--brand-cyan);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </div>
+            <h3>Filter Riwayat &amp; Ekspor CSV</h3>
+            <p>Telusuri riwayat transaksi berdasarkan rentang tanggal atau akun, lalu unduh laporan ke format CSV untuk dibuka di Microsoft Excel.</p>
+          </div>
+        </div>
+
+        <!-- Item 5 -->
+        <div class="bento-card">
+          <div>
+            <div class="bento-icon" style="background:rgba(244,63,94,0.2);color:var(--brand-rose);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </div>
+            <h3>100% Offline &amp; Data Privat</h3>
+            <p>Privasi adalah prioritas utama. Tanpa database cloud pihak ketiga, data keuangan Anda hanya tersimpan di memori perangkat Anda sendiri.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Interactive Live Costing Calculator Widget -->
+    <section id="kalkulator" class="container">
+      <div class="demo-section">
+        <div class="demo-grid">
+          <div>
+            <span class="section-tag">Coba Langsung di Browser</span>
+            <h2 style="font-size:2rem;font-weight:800;margin-bottom:14px;letter-spacing:-0.5px;">
+              Simulasi Kalkulator HPP &amp; Harga Jual
+            </h2>
+            <p style="color:var(--text-muted);font-size:0.98rem;margin-bottom:20px;">
+              Ingin tahu berapa harga jual yang tepat agar bisnis Anda untung maksimal? Coba masukkan estimasi biaya di samping dan saksikan hasil perhitungannya secara instan!
+            </p>
+            <ul style="color:var(--text-muted);font-size:0.9rem;padding-left:18px;margin-bottom:24px;">
+              <li>Perhitungan deterministic tanpa pembulatan premature.</li>
+              <li>Mendukung metode <strong>Markup on Cost</strong> dan <strong>Target Margin</strong>.</li>
+            </ul>
+            <a href="#download" class="btn-main" style="padding:10px 20px;font-size:0.9rem;">
+              Dapatkan Fitur Lengkap di Aplikasi APK
+            </a>
+          </div>
+
+          <div class="calc-box">
+            <div class="calc-input-group">
+              <label>Biaya Bahan / Resep (Rp)</label>
+              <input type="number" id="calc-material" value="15000" step="500">
+            </div>
+            <div class="calc-input-group">
+              <label>Biaya Tenaga Kerja &amp; Kemasan (Rp)</label>
+              <input type="number" id="calc-labor" value="5000" step="500">
+            </div>
+            <div class="calc-input-group">
+              <label>Target Keuntungan (Markup %)</label>
+              <input type="number" id="calc-markup" value="40" min="1" max="500">
+            </div>
+
+            <div class="calc-result-grid">
+              <div class="calc-res-item">
+                <span>Total HPP / Unit</span>
+                <strong id="res-hpp">Rp 20.000</strong>
+              </div>
+              <div class="calc-res-item">
+                <span>Rekomendasi Harga Jual</span>
+                <strong id="res-price">Rp 28.000</strong>
+              </div>
+              <div class="calc-res-item">
+                <span>Laba per Unit</span>
+                <strong id="res-profit" style="color:#34D399;">+Rp 8.000</strong>
+              </div>
+              <div class="calc-res-item">
+                <span>Margin Real</span>
+                <strong id="res-margin" style="color:var(--brand-amber);">28.57%</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Comparison Section -->
+    <section id="komparasi" class="container">
+      <div class="section-head">
+        <span class="section-tag">Perbandingan</span>
+        <h2 class="section-title">Mengapa Memilih Catatan Keuangan?</h2>
+        <p class="section-subtitle">Lihat perbedaan nyata antara aplikasi kami dengan aplikasi keuangan umum lainnya.</p>
+      </div>
+
+      <div class="table-wrapper">
+        <table class="comparison-table">
+          <thead>
+            <tr>
+              <th>Fitur / Kriteria</th>
+              <th class="highlight">✨ Catatan Keuangan</th>
+              <th>Aplikasi Lain pada Umumnya</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Iklan Banner &amp; Pop-up</strong></td>
+              <td class="highlight" style="color:#34D399;">⛔ 100% Bebas Iklan</td>
+              <td style="color:#FB7185;">Penuh iklan mengganggu</td>
+            </tr>
+            <tr>
+              <td><strong>Koneksi Internet</strong></td>
+              <td class="highlight" style="color:#34D399;">⚡ Offline Penuh</td>
+              <td>Wajib online / sering loading</td>
+            </tr>
+            <tr>
+              <td><strong>Privasi Akun &amp; Data</strong></td>
+              <td class="highlight" style="color:#34D399;">🔒 Tersimpan di HP Anda</td>
+              <td>Wajib login Google / server pihak ke-3</td>
+            </tr>
+            <tr>
+              <td><strong>Kalkulator HPP &amp; Modal UMKM</strong></td>
+              <td class="highlight" style="color:#34D399;">✅ Bawaan &amp; Lengkap</td>
+              <td style="color:#FB7185;">❌ Tidak tersedia (hanya kas masuk/keluar)</td>
+            </tr>
+            <tr>
+              <td><strong>Biaya Langganan</strong></td>
+              <td class="highlight" style="color:#34D399;">🎉 Gratis Selamanya</td>
+              <td>Sering minta langganan bulanan</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="table-hint">👉 Geser tabel ke samping untuk melihat detail perbandingan</p>
+    </section>
+
+    <!-- Installation Guide -->
+    <section id="instalasi" class="container">
+      <div class="section-head">
+        <span class="section-tag">Mudah &amp; Cepat</span>
+        <h2 class="section-title">3 Langkah Pasang di Android Anda</h2>
+        <p class="section-subtitle">Tidak perlu akun Google Play Store, Anda bisa memasang file APK secara langsung.</p>
+      </div>
+
+      <div class="steps-grid">
+        <div class="step-card">
+          <div class="step-number">1</div>
+          <h4>Unduh File APK</h4>
+          <p>Klik tombol unduh di website ini. File instalasi resmi berukuran ringan (~18 MB) akan langsung tersimpan di folder Unduhan HP Anda.</p>
+        </div>
+
+        <div class="step-card">
+          <div class="step-number">2</div>
+          <h4>Buka &amp; Beri Izin</h4>
+          <p>Ketuk notifikasi unduhan yang selesai. Jika muncul peringatan keamanan, pilih <strong>"Tetap Install"</strong> atau izinkan instalasi dari browser.</p>
+        </div>
+
+        <div class="step-card">
+          <div class="step-number">3</div>
+          <h4>Siap Digunakan!</h4>
+          <p>Buka aplikasi Catatan Keuangan dan Anda bisa langsung mencatat tanpa perlu mendaftar akun atau memasukkan email.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Version Changelog -->
+    <section id="versi" class="container">
+      <div class="section-head">
+        <span class="section-tag">Pembaruan Rutin</span>
+        <h2 class="section-title">Riwayat Versi &amp; Arsip Unduhan</h2>
+        <p class="section-subtitle">Setiap perbaikan performa dan penambahan fitur selalu terdokumentasi rapi di sini.</p>
+      </div>
+
+      <div id="version-list" style="max-width:800px;margin:0 auto 80px;"></div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section id="faq" class="container" style="max-width:800px;margin-bottom:90px;">
+      <div class="section-head">
+        <span class="section-tag">Tanya Jawab</span>
+        <h2 class="section-title">Pertanyaan yang Sering Diajukan</h2>
+      </div>
+
+      <div class="faq-item active">
+        <div class="faq-question">
+          <span>Apakah aplikasi ini benar-benar gratis dan tanpa iklan?</span>
+          <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="faq-answer">
+          Ya, 100% gratis selamanya dan tanpa iklan jenis apa pun. Aplikasi ini dikembangkan untuk memudahkan masyarakat dan pelaku UMKM dalam mencatat keuangan tanpa gangguan.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question">
+          <span>Apakah data saya aman jika HP tidak terhubung ke internet?</span>
+          <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="faq-answer">
+          Sangat aman! Seluruh database disimpan secara lokal di memori internal ponsel Anda. Tidak ada data yang dikirim ke server luar, sehingga catatan keuangan Anda sepenuhnya privat.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question">
+          <span>Bagaimana jika HP saya keluaran lama (Android lama)?</span>
+          <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="faq-answer">
+          Kami menyediakan file khusus <strong>APK ARMv7 (HP Lama)</strong> di bagian Riwayat Versi. File ini dirancang kompatibel untuk ponsel Android generasi lama (32-bit).
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question">
+          <span>Bisakah data transaksi saya diekspor ke laptop / Excel?</span>
+          <svg class="faq-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="faq-answer">
+          Bisa. Pada tab Riwayat, terdapat tombol Ekspor CSV untuk mengunduh seluruh transaksi Anda ke dalam file spreadsheet yang kompatibel dengan Microsoft Excel dan Google Sheets.
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <div class="footer-brand">Catatan Keuangan</div>
+      <p style="margin-bottom:14px;">Aplikasi Pencatat Keuangan Pribadi &amp; Perhitungan Modal Jualan UMKM</p>
+      <p style="font-size:0.8rem;opacity:0.6;">&copy; 2026 Catatan Keuangan. Dikembangkan dengan standar industri modern.</p>
+    </div>
+  </footer>
+
+  <script>
+    // Versi Data
+    const VERSIONS = [
+      {
+        version: "1.3",
+        date: "28 Agustus 2026",
+        tagline: "Fitur Modal Cepat & Bahasa Pemula (Terbaru)",
+        size: "18.7 MB",
+        url: "apk/catatan-keuangan-1.3.apk",
+        urlV7: "apk/catatan-keuangan-1.3-armv7.apk",
+        sizeV7: "16.2 MB",
+        notes: [
+          "Fitur Baru: Modal Cepat — kalkulator 1 layar instan tanpa perlu repot buat master bahan baku",
+          "Bahasa Sederhana: istilah teknis disederhanakan agar mudah dipahami siapa saja yang baru memulai usaha",
+          "Live Real-time Costing: hitung HPP, harga jual rekomendasi, dan keuntungan total secara instan",
+          "Desain UI/UX Modern Fintech: tampilan Material 3 Expressive yang elegan dan nyaman dipandang",
+          "Peningkatan performa kalkulasi matematis presisi tanpa pembulatan premature"
+        ]
+      },
+      {
+        version: "1.2",
+        date: "12 Agustus 2026",
+        tagline: "Modal Jualan & Pengaturan",
+        size: "18.5 MB",
+        url: "apk/catatan-keuangan-1.2.apk",
+        urlV7: "apk/catatan-keuangan-1.2-armv7.apk",
+        sizeV7: "16.0 MB",
+        notes: [
+          "Desain Antarmuka Baru (Modern Fintech Palette): tampilan mewah & estetik",
+          "Menu Modal Jualan: hitung HPP, harga jual, margin, profit & BEP",
+          "Kalkulator Resep Produk: bahan baku, biaya tenaga kerja, dan overhead",
+          "Pricing Engine: Rekomendasi harga jual Markup & Target Margin",
+          "Simulasi Break Even Point (BEP) otomatis dengan peringatan biaya",
+          "Fitur Privasi Saldo (Eye Toggle) untuk menyembunyikan nominal saat di tempat umum",
+          "Menu Pengaturan: tema terang/gelap, preferensi mata uang & pembulatan"
+        ]
+      },
+      {
+        version: "1.1",
+        date: "11 Agustus 2026",
+        tagline: "Financial Core V1",
+        size: "18.3 MB",
+        url: "apk/catatan-keuangan-1.1.apk",
+        urlV7: "apk/catatan-keuangan-1.1-armv7.apk",
+        sizeV7: "15.8 MB",
+        notes: [
+          "Multi-account: Tunai, Rekening Bank, E-Wallet dengan saldo awal",
+          "Mutasi transfer saldo antar akun dengan konservasi total aset",
+          "Kategori terkelola: 16 kategori default + kategori buatan sendiri",
+          "Donut Chart pengeluaran bulanan",
+          "Filter riwayat transaksi dan ekspor CSV"
+        ]
+      }
+    ];
+
+    function renderVersions() {
+      const container = document.getElementById("version-list");
+      if (!container) return;
+      container.innerHTML = "";
+
+      VERSIONS.forEach((v, idx) => {
+        const isLatest = idx === 0;
+        const card = document.createElement("div");
+        card.className = "version-item";
+        card.innerHTML = `
+          <div class="v-header">
+            <div class="v-badge-row">
+              <span class="v-tag-num" style="${!isLatest ? 'background:#334155;color:#94A3B8;' : ''}">v${v.version}</span>
+              <strong style="font-size:1rem;color:var(--text-main);">${v.tagline}</strong>
+            </div>
+            <span class="v-date-txt">${v.date}</span>
+          </div>
+          <ul class="v-notes">
+            ${v.notes.map(n => `<li>${n}</li>`).join('')}
+          </ul>
+          <div class="v-actions">
+            <a class="btn-main" style="padding:8px 16px;font-size:0.85rem;" href="${v.url}" download>
+              Unduh APK v${v.version} (${v.size})
+            </a>
+            ${v.urlV7 ? `
+              <a class="btn-secondary" style="padding:8px 16px;font-size:0.85rem;" href="${v.urlV7}" download>
+                APK HP Lama (${v.sizeV7})
+              </a>
+            ` : ''}
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    // Interactive Costing Calculator on Website
+    function initCalc() {
+      const matInput = document.getElementById("calc-material");
+      const laborInput = document.getElementById("calc-labor");
+      const markupInput = document.getElementById("calc-markup");
+
+      function update() {
+        const mat = parseFloat(matInput.value) || 0;
+        const labor = parseFloat(laborInput.value) || 0;
+        const markup = parseFloat(markupInput.value) || 0;
+
+        const hpp = mat + labor;
+        const price = hpp * (1 + markup / 100);
+        const profit = price - hpp;
+        const margin = price > 0 ? (profit / price) * 100 : 0;
+
+        const fmt = (num) => "Rp " + Math.round(num).toLocaleString("id-ID");
+
+        document.getElementById("res-hpp").textContent = fmt(hpp);
+        document.getElementById("res-price").textContent = fmt(price);
+        document.getElementById("res-profit").textContent = "+" + fmt(profit);
+        document.getElementById("res-margin").textContent = margin.toFixed(2) + "%";
+      }
+
+      matInput.addEventListener("input", update);
+      laborInput.addEventListener("input", update);
+      markupInput.addEventListener("input", update);
+      update();
+    }
+
+    // Mobile Menu Toggle
+    function initMobileMenu() {
+      const toggle = document.getElementById("menu-toggle");
+      const menu = document.getElementById("mobile-menu");
+      if (!toggle || !menu) return;
+
+      toggle.addEventListener("click", () => {
+        menu.classList.toggle("active");
+      });
+
+      // Close menu when clicking a link
+      document.querySelectorAll(".mobile-nav-link").forEach(link => {
+        link.addEventListener("click", () => {
+          menu.classList.remove("active");
+        });
+      });
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      renderVersions();
+      initCalc();
+      initFAQ();
+      initMobileMenu();
+    });
+  </script>
+</body>
+</html>
