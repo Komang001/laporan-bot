@@ -657,17 +657,28 @@ class SygapService:
         return _dt.now().strftime("%Y-%m-%d %H:%M:%S")
 
     def _handle_new_incident_status(self, biscuit, inc_number, log):
-        """Untuk DISPATCH INCIDENT status NEW: /duplicateprosess + /truecorrective lalu dispatch lagi. Agar tidak reply 'status masih NEW'."""
+        """Untuk DISPATCH INCIDENT status NEW: /duplicateprosess dulu, jika SUCCESS baru /truecorrective lalu dispatch lagi. Agar tidak reply 'status masih NEW'."""
         try:
-            for cmd in [f"/duplicateprosess {inc_number}", f"/truecorrective {inc_number}"]:
-                log(f"    [NEW-HANDLER] Sending: {cmd}")
-                resp = biscuit.execute(cmd, "INSERA")
-                log(f"    [NEW-HANDLER] {cmd} -> {resp.status} - {resp.message}")
-                try:
-                    biscuit.wait_for_ready()
-                except Exception:
-                    pass
-            return True
+            cmd1 = f"/duplicateprosess {inc_number}"
+            log(f"    [NEW-HANDLER] Sending: {cmd1}")
+            resp1 = biscuit.execute(cmd1, "INSERA")
+            log(f"    [NEW-HANDLER] {cmd1} -> {resp1.status} - {resp1.message}")
+            try:
+                biscuit.wait_for_ready()
+            except Exception:
+                pass
+            if resp1.status != "SUCCESS":
+                log(f"    [NEW-HANDLER] duplicateprosess tidak SUCCESS ({resp1.status}), skip truecorrective")
+                return False
+            cmd2 = f"/truecorrective {inc_number}"
+            log(f"    [NEW-HANDLER] Sending: {cmd2}")
+            resp2 = biscuit.execute(cmd2, "INSERA")
+            log(f"    [NEW-HANDLER] {cmd2} -> {resp2.status} - {resp2.message}")
+            try:
+                biscuit.wait_for_ready()
+            except Exception:
+                pass
+            return resp2.status == "SUCCESS"
         except Exception as e:
             log(f"    [NEW-HANDLER] error: {e}")
             return False
