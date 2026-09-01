@@ -371,9 +371,9 @@ class SygapService:
                     log(f"    Note terbaca setelah retry {i+1}/{retries}")
                 return note
             if log:
-                log(f"    Gagal baca note (attempt {i+1}/{retries}), retry 2 detik...")
+                log(f"    Gagal baca note (attempt {i+1}/{retries}), retry 5 detik... (page belum terload penuh)")
             try:
-                ticket_page.wait_for_timeout(2000)
+                ticket_page.wait_for_timeout(5000)
                 ticket_page.wait_for_load_state("domcontentloaded", timeout=5000)
             except Exception:
                 pass
@@ -387,9 +387,9 @@ class SygapService:
                     log(f"    Field Ticket ID terbaca setelah retry {i+1}: {incs}")
                 return incs
             if log:
-                log(f"    Gagal baca field Ticket ID (attempt {i+1}/{retries}), retry 2 detik...")
+                log(f"    Gagal baca field Ticket ID (attempt {i+1}/{retries}), retry 5 detik... (page belum terload penuh)")
             try:
-                ticket_page.wait_for_timeout(2000)
+                ticket_page.wait_for_timeout(5000)
             except Exception:
                 pass
         return self.read_child_incs_from_field(ticket_page) or []
@@ -2066,12 +2066,14 @@ class SygapService:
                         log(f"    Parent INC from note: {parent_inc}")
                     else:
                         # Retry baca field untuk parent jika note tidak ada
-                        for _ in range(2):
+                        for _ in range(3):
                             parent_inc = self.find_parent_from_ticket_id_field(ticket_page, note)
                             if parent_inc:
                                 break
+                            if log:
+                                log(f"    Retry baca parent dari field (5 detik)...")
                             try:
-                                ticket_page.wait_for_timeout(2000)
+                                ticket_page.wait_for_timeout(5000)
                             except Exception:
                                 pass
                         if parent_inc:
@@ -2091,8 +2093,7 @@ class SygapService:
                             if i not in all_incs:
                                 all_incs.append(i)
                         if not all_incs:
-                            log(f"    Tidak ada INC di note/field setelah 3x retry. COMPLETE dengan reply 'harap sertakan juga induk gamas nya'.")
-                            self._complete_gamas_reply(page, ticket_page, code, "harap sertakan juga induk gamas nya", results, log)
+                            log(f"    Tidak ada INC di note/field setelah 3x retry 5 detik (page belum terload penuh). SKIP — tidak complete, akan retry next loop")
                             continue
                         log(f"    FALLBACK deteksi by source untuk {len(all_incs)} INC: {','.join(all_incs[:8])}...")
                         child_check = biscuit.check_children(all_incs)
@@ -2152,8 +2153,7 @@ class SygapService:
                                     if i not in all_incs_fb:
                                         all_incs_fb.append(i)
                                 if not all_incs_fb:
-                                    log(f"    Fallback: tidak ada INC di note/field setelah 3x retry. COMPLETE dengan reply 'harap sertakan juga induk gamas nya'.")
-                                    self._complete_gamas_reply(page, ticket_page, code, "harap sertakan juga induk gamas nya", results, log)
+                                    log(f"    Fallback: tidak ada INC di note/field setelah 3x retry 5 detik (page belum terload penuh). SKIP — tidak complete, akan retry")
                                     continue
                                 log(f"    Fallback cek {len(all_incs_fb)} INC via /cekticket: {','.join(all_incs_fb[:8])}...")
                                 fb_check = biscuit.check_children(all_incs_fb)
