@@ -363,6 +363,37 @@ class SygapService:
             note = ""
         return note
 
+    def read_ticket_note_with_retry(self, ticket_page, retries=3, log=None):
+        for i in range(retries):
+            note = self.read_ticket_note(ticket_page)
+            if note and note.strip():
+                if i > 0 and log:
+                    log(f"    Note terbaca setelah retry {i+1}/{retries}")
+                return note
+            if log:
+                log(f"    Gagal baca note (attempt {i+1}/{retries}), retry 2 detik...")
+            try:
+                ticket_page.wait_for_timeout(2000)
+                ticket_page.wait_for_load_state("domcontentloaded", timeout=5000)
+            except Exception:
+                pass
+        return self.read_ticket_note(ticket_page) or ""
+
+    def read_child_incs_with_retry(self, ticket_page, retries=3, log=None):
+        for i in range(retries):
+            incs = self.read_child_incs_from_field(ticket_page)
+            if incs:
+                if i > 0 and log:
+                    log(f"    Field Ticket ID terbaca setelah retry {i+1}: {incs}")
+                return incs
+            if log:
+                log(f"    Gagal baca field Ticket ID (attempt {i+1}/{retries}), retry 2 detik...")
+            try:
+                ticket_page.wait_for_timeout(2000)
+            except Exception:
+                pass
+        return self.read_child_incs_from_field(ticket_page) or []
+
     def read_ticket_id(self, ticket_page):
         selectors = [
             "input[name$='_ticket_id']",
@@ -2019,10 +2050,12 @@ class SygapService:
                             continue
                         log(f"    TO CONFIRMED: {code}")
 
-                    note = self.read_ticket_note(ticket_page)
+                    note = self.read_ticket_note_with_retry(ticket_page, retries=3, log=log)
                     if note:
                         note_one_line = " ".join(note.split())[:500]
                         log(f"    Note: {note_one_line}")
+                    else:
+                        log(f"    Note kosong setelah 3x retry, coba baca lagi...")
 
                     from app.services.biscuit_service import BiscuitService
                     biscuit = BiscuitService(browser_manager=self.browser_manager)
@@ -2032,25 +2065,34 @@ class SygapService:
                     if parent_inc:
                         log(f"    Parent INC from note: {parent_inc}")
                     else:
-                        parent_inc = self.find_parent_from_ticket_id_field(ticket_page, note)
+                        # Retry baca field untuk parent jika note tidak ada
+                        for _ in range(2):
+                            parent_inc = self.find_parent_from_ticket_id_field(ticket_page, note)
+                            if parent_inc:
+                                break
+                            try:
+                                ticket_page.wait_for_timeout(2000)
+                            except Exception:
+                                pass
                         if parent_inc:
                             log(f"    Parent INC from Ticket ID field: {parent_inc}")
                             parser_found_parent = True
 
                     if parser_found_parent:
-                        # Parser menemukan induk -> anak diambil dari note/field (existing behavior)
+                        # Parser menemukan induk -> anak diambil dari note/field (existing behavior) dengan retry
                         child_incs = self.extract_child_incs_excluding_parent(note)
                         if not child_incs:
-                            child_incs = self.read_child_incs_from_field(ticket_page)
+                            child_incs = self.read_child_incs_with_retry(ticket_page, retries=3, log=log)
                     else:
-                        # FALLBACK: bot TIDAK menemukan parser induk -> deteksi otomatis by source.
+                        # FALLBACK: bot TIDAK menemukan parser induk -> deteksi otomatis by source (retry 3x baca field).
                         all_incs = re.findall(r'INC\d+', note or '', re.IGNORECASE)
                         all_incs = [i.upper() for i in all_incs]
-                        for i in self.read_child_incs_from_field(ticket_page):
+                        for i in self.read_child_incs_with_retry(ticket_page, retries=3, log=log):
                             if i not in all_incs:
                                 all_incs.append(i)
                         if not all_incs:
-                            log(f"    Tidak ada INC di note/field. SKIP")
+                            log(f"    Tidak ada INC di note/field setelah 3x retry. COMPLETE dengan reply 'harap sertakan juga induk gamas nya'.")
+                            self._complete_gamas_reply(page, ticket_page, code, "harap sertakan juga induk gamas nya", results, log)
                             continue
                         log(f"    FALLBACK deteksi by source untuk {len(all_incs)} INC: {','.join(all_incs[:8])}...")
                         child_check = biscuit.check_children(all_incs)
@@ -2106,11 +2148,12 @@ class SygapService:
                                 # Fallback: parser induk salah → cek semua INC di note/field untuk cari GAMAS yang benar
                                 all_incs_fb = re.findall(r'INC\d+', note or '', re.IGNORECASE)
                                 all_incs_fb = [i.upper() for i in all_incs_fb]
-                                for i in self.read_child_incs_from_field(ticket_page):
+                                for i in self.read_child_incs_with_retry(ticket_page, retries=3, log=log):
                                     if i not in all_incs_fb:
                                         all_incs_fb.append(i)
                                 if not all_incs_fb:
-                                    log(f"    Fallback: tidak ada INC di note/field. SKIP")
+                                    log(f"    Fallback: tidak ada INC di note/field setelah 3x retry. COMPLETE dengan reply 'harap sertakan juga induk gamas nya'.")
+                                    self._complete_gamas_reply(page, ticket_page, code, "harap sertakan juga induk gamas nya", results, log)
                                     continue
                                 log(f"    Fallback cek {len(all_incs_fb)} INC via /cekticket: {','.join(all_incs_fb[:8])}...")
                                 fb_check = biscuit.check_children(all_incs_fb)
