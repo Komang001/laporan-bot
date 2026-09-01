@@ -1438,7 +1438,8 @@ class SygapService:
 
                 ticket_page = self.click_ticket(page, row_info)
                 if ticket_page is None:
-                    log(f"    Failed to open {code}")
+                    log(f"    Failed to open {code} — retry next loop (tidak permanen)")
+                    self.skipped_ids[code] = time.time()
                     continue
 
                 try:
@@ -2022,9 +2023,8 @@ class SygapService:
 
                 ticket_page = self.click_ticket(page, row_info, skip_close=True)
                 if ticket_page is None:
-                    log(f"    Failed to open {code}")
+                    log(f"    Failed to open {code} — retry next loop (tidak permanen)")
                     self.skipped_ids[code] = time.time()
-                    self._save_persistent_skipped(code)
                     continue
 
                 try:
@@ -2382,9 +2382,8 @@ class SygapService:
 
                 ticket_page = self.click_ticket(page, row_info)
                 if ticket_page is None:
-                    log(f"    Failed to open {code}")
+                    log(f"    Failed to open {code} — retry next loop (tidak permanen)")
                     self.skipped_ids[code] = time.time()
-                    self._save_persistent_skipped(code)
                     continue
 
                 try:
@@ -2887,9 +2886,8 @@ class SygapService:
 
                 ticket_page = self.click_ticket(page, row_info)
                 if ticket_page is None:
-                    log(f"    Failed to open {code}")
+                    log(f"    Failed to open {code} — retry next loop (tidak permanen)")
                     self.skipped_ids[code] = time.time()
-                    self._save_persistent_skipped(code)
                     continue
 
                 try:
@@ -3312,7 +3310,8 @@ class SygapService:
 
                 ticket_page = self.click_ticket(page, row_info)
                 if ticket_page is None:
-                    log(f"    Failed to open {code}")
+                    log(f"    Failed to open {code} — retry next loop (tidak permanen)")
+                    self.skipped_ids[code] = time.time()
                     continue
 
                 try:
