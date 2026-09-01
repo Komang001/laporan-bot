@@ -656,6 +656,22 @@ class SygapService:
         from datetime import datetime as _dt
         return _dt.now().strftime("%Y-%m-%d %H:%M:%S")
 
+    def _handle_new_incident_status(self, biscuit, inc_number, log):
+        """Untuk DISPATCH INCIDENT status NEW: /duplicateprosess + /truecorrective lalu dispatch lagi. Agar tidak reply 'status masih NEW'."""
+        try:
+            for cmd in [f"/duplicateprosess {inc_number}", f"/truecorrective {inc_number}"]:
+                log(f"    [NEW-HANDLER] Sending: {cmd}")
+                resp = biscuit.execute(cmd, "INSERA")
+                log(f"    [NEW-HANDLER] {cmd} -> {resp.status} - {resp.message}")
+                try:
+                    biscuit.wait_for_ready()
+                except Exception:
+                    pass
+            return True
+        except Exception as e:
+            log(f"    [NEW-HANDLER] error: {e}")
+            return False
+
     def extract_parent_gamas_from_note(self, note):
         """Extract parent GAMAS INC from note.
         
@@ -2524,6 +2540,14 @@ class SygapService:
                                     log(f"    BISCUIT timeout, retrying...")
                                     biscuit.wait_for_ready()
 
+                            # Handle NEW per inc
+                            if response and response.status == "FAILED" and "NEW" in (response.message or "").upper():
+                                log(f"    {inc} FAILED karena NEW -> handle duplicateprosess/truecorrective lalu retry...")
+                                self._handle_new_incident_status(biscuit, inc, log)
+                                retry_cmd = f"/dispatchticket {inc} {bulk_og}"
+                                log(f"    Retry {retry_cmd}")
+                                response = biscuit.execute(retry_cmd, "INSERA")
+                                log(f"    Retry response: {response.status} - {response.message}")
                             if response.status == "SUCCESS":
                                 log(f"    {inc} -> OK")
                             else:
@@ -3000,6 +3024,11 @@ class SygapService:
                         if not biscuit.open():
                             log(f"    BISCUIT tab not found!")
                             continue
+                        # Handle NEW status sebelum bulk dispatch
+                        if status == "NEW":
+                            log(f"    Status NEW terdeteksi (bulk) -> handle duplicateprosess/truecorrective untuk {bulk_incs[0] if bulk_incs else inc}...")
+                            # Handle untuk inc pertama sebagai representatif (atau semua)
+                            self._handle_new_incident_status(biscuit, bulk_incs[0] if bulk_incs else inc_number if 'inc_number' in locals() else bulk_incs[0], log)
                         all_success = True
                         failed_incs = []
                         for idx, inc in enumerate(bulk_incs):
@@ -3016,6 +3045,14 @@ class SygapService:
                                 if attempt < max_retries:
                                     log(f"    BISCUIT timeout, retrying...")
                                     biscuit.wait_for_ready()
+                            # Handle NEW per inc
+                            if response and response.status == "FAILED" and "NEW" in (response.message or "").upper():
+                                log(f"    {inc} FAILED karena NEW -> handle duplicateprosess/truecorrective lalu retry...")
+                                self._handle_new_incident_status(biscuit, inc, log)
+                                retry_cmd = f"/dispatchticket {inc} {bulk_og}"
+                                log(f"    Retry {retry_cmd}")
+                                response = biscuit.execute(retry_cmd, "INSERA")
+                                log(f"    Retry response: {response.status} - {response.message}")
                             if response.status == "SUCCESS":
                                 log(f"    {inc} -> OK")
                             else:
@@ -3133,6 +3170,10 @@ class SygapService:
                         if not biscuit.open():
                             log(f"    BISCUIT tab not found!")
                             continue
+                        # Handle NEW status sebelum dispatch (single) — agar tidak error NEW
+                        if status == "NEW":
+                            log(f"    Status NEW terdeteksi (single) -> handle duplicateprosess/truecorrective dulu...")
+                            self._handle_new_incident_status(biscuit, inc_number, log)
                         command = f"/dispatchticket {inc_number} {owner_group}"
                         log(f"    Sending: {command}")
                         max_retries = 2
@@ -3146,6 +3187,13 @@ class SygapService:
                             if attempt < max_retries:
                                 log(f"    BISCUIT timeout, retrying...")
                                 biscuit.wait_for_ready()
+                        # Jika dispatch gagal karena status masih NEW, handle lalu retry sekali agar tidak reply error NEW
+                        if response and response.status == "FAILED" and "NEW" in (response.message or "").upper():
+                            log(f"    Dispatch FAILED karena status NEW -> handle duplicateprosess/truecorrective lalu retry...")
+                            self._handle_new_incident_status(biscuit, inc_number, log)
+                            log(f"    Retry dispatch setelah handle NEW: {command}")
+                            response = biscuit.execute(command, "INSERA")
+                            log(f"    Retry response: {response.status} - {response.message}")
                         if response.status == "SUCCESS":
                             log(f"    BISCUIT SUKSES! Complete ticket...")
                             complete_note = "Cek Kembali"
