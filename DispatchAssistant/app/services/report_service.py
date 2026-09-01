@@ -1474,17 +1474,29 @@ def _generate_report_impl(log_callback=None):
                 break
             except Exception as e:
                 msg = str(e)
-                # Timeout 180s via connect_over_cdp → Chrome hang, coba bunuh & relaunch
+                # Timeout 180s via connect_over_cdp → Chrome hang, coba relaunch tanpa kill semua browser
                 if "Timeout" in msg and "connect_over_cdp" in msg and attempt < 3:
-                    log(f"Report: connect timeout attempt {attempt} — coba kill & relaunch Chrome...")
-                    try:
-                        # Kill chrome di port tersebut
-                        import subprocess as _sp
-                        _sp.run(["taskkill", "/F", "/IM", "chrome.exe"], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
-                    except Exception:
-                        pass
+                    log(f"Report: connect timeout attempt {attempt} — coba disconnect & relaunch Chrome port {REPORT_CDP_PORT} (tidak kill browser pribadi)...")
                     try:
                         bm.disconnect()
+                    except Exception:
+                        pass
+                    # Kill HANYA Chrome di port REPORT, jangan semua chrome (biar browser pribadi tidak tertutup)
+                    try:
+                        import subprocess as _sp
+                        out = _sp.check_output(f'netstat -ano | findstr :{REPORT_CDP_PORT}', shell=True, text=True, stderr=_sp.DEVNULL)
+                        for line in out.splitlines():
+                            parts = line.strip().split()
+                            if parts and parts[-1].isdigit():
+                                pid = parts[-1]
+                                # Pastikan PID ini memang chrome
+                                try:
+                                    name = _sp.check_output(f'tasklist /FI \"PID eq {pid}\"', shell=True, text=True, stderr=_sp.DEVNULL)
+                                    if "chrome" in name.lower():
+                                        log(f"Report: kill Chrome PID {pid} di port {REPORT_CDP_PORT}...")
+                                        _sp.run(["taskkill", "/F", "/PID", pid], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+                                except Exception:
+                                    pass
                     except Exception:
                         pass
                     import time as _t
