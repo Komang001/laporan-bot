@@ -395,7 +395,7 @@ class ReportService:
             if next_page > max_page:
                 break
             try:
-                safe_eval(page,f"jQuery('#{table_id}').DataTable().page({next_page}).draw();")
+                safe_eval(page,f"jQuery('#{table_id}').DataTable().page({next_page}).draw(false);")
                 page.wait_for_timeout(2000)
             except Exception:
                 break
@@ -879,13 +879,16 @@ class ReportService:
                 continue
             self.log(f"  Table: #{table_id}")
 
-            # ---- 1. Saldo: OPEN + Created at hari ini ----
+            # ---- 1. Saldo: OPEN (seluruh antrean aktif saat ini) ----
+            self._clear_select2(page, "solverGroupSearch")
+            self._clear_select2(page, "solverSearch")
+            self._set_select_filter(page, "solverGroupSearch", "")
             self._set_status(page, cat, "OPEN")
-            self._set_date_filter(page, today, f"{today} 23:59:59", REPORT_DATE_FILTER_VALUE)
+            self._set_date_filter(page, None, None, None)
             self._apply_filter(page)
             open_rows, _ = self._fetch_all_rows(page, table_id)
-            masuk = [r for r in open_rows if self._created_today(r)]
-            self.log(f"  Saldo (OPEN, masuk hari ini): {len(masuk)} dari {len(open_rows)} baris")
+            masuk = open_rows
+            self.log(f"  Saldo (OPEN aktif): {len(masuk)} baris")
 
             colors = {"green": 0, "yellow": 0, "red": 0}
             created_dates = []
@@ -1077,6 +1080,16 @@ class ReportService:
         else:
             block.append("• (tidak terbaca / tanggal di luar jadwal sheet)")
 
+        # ---- Catatan tukar shift (override) ----
+        try:
+            tukar_notes = _build_tukar_note(now)
+            if tukar_notes:
+                block.append("")
+                block.append("🔄 Catatan Tukar Shift:")
+                block.extend(tukar_notes)
+        except Exception:
+            pass
+
         return "\n".join(block)
 
 
@@ -1156,6 +1169,215 @@ def clear_piket(date=None):
 
 
 # ==================================================
+# Tukar Shift - Override per shift (Opsi 1)
+# ==================================================
+# Struktur file: data/shift_overrides.json
+# {
+#   "2026-09-02": {
+#     "Shift 1": ["@annemaswa27", "@komangwindu"],
+#     "Shift 2": ["@dikaprndx"],
+#     "Shift 3": ["@rizkayln"]
+#   }
+# }
+# Prioritas di _shift_people_tags: override per shift > sheet > daily_piket > REPORT_PERSONNEL
+
+_override_lock = threading.Lock()
+
+
+def _override_path():
+    base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data")
+    return os.path.join(base, "shift_overrides.json")
+
+
+def _load_overrides():
+    try:
+        with open(_override_path(), "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _save_overrides(data):
+    path = _override_path()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logger.error(f"Gagal simpan shift_overrides: {e}")
+
+
+def _normalize_shift_label(label):
+    """Normalisasi label shift: 'shift1','1','Shift 1','SHIFT1' -> 'Shift 1'."""
+    s = str(label or "").strip().lower().replace(" ", "")
+    if s in ("1", "shift1", "s1"):
+        return "Shift 1"
+    if s in ("2", "shift2", "s2"):
+        return "Shift 2"
+    if s in ("3", "shift3", "s3"):
+        return "Shift 3"
+    # coba parse "shift 2" dengan spasi
+    m = re.match(r"shift\s*([123])", str(label or "").strip().lower())
+    if m:
+        return f"Shift {m.group(1)}"
+    # fallback title case
+    raw = str(label or "").strip()
+    for cand in ("Shift 1", "Shift 2", "Shift 3"):
+        if raw.lower() == cand.lower():
+            return cand
+    return raw.title() if raw else ""
+
+
+def get_shift_overrides(date=None):
+    """Ambil semua override per shift untuk tanggal tertentu. {} jika tidak ada."""
+    date = date or datetime.now().strftime("%Y-%m-%d")
+    with _override_lock:
+        data = _load_overrides()
+        day = data.get(date)
+        if not isinstance(day, dict):
+            return {}
+        # filter hanya Shift 1/2/3, normalisasi tag
+        out = {}
+        for k, v in day.items():
+            nk = _normalize_shift_label(k)
+            if nk in ("Shift 1", "Shift 2", "Shift 3"):
+                if isinstance(v, list):
+                    out[nk] = _norm_piket_names(v)
+                elif isinstance(v, str):
+                    out[nk] = _norm_piket_names([v])
+        return out
+
+
+def get_shift_override(date, shift_label):
+    """Ambil override untuk 1 shift. None jika tidak ada."""
+    norm = _normalize_shift_label(shift_label)
+    return get_shift_overrides(date).get(norm)
+
+
+def save_shift_override(names, date=None, shift_label=None):
+    """Simpan override per shift.
+
+    names: list tag/nama atau single string
+    date: YYYY-MM-DD (default hari ini)
+    shift_label: 'Shift 1' / 'Shift 2' / 'Shift 3' (wajib)
+    Return: list tag yang disimpan.
+    """
+    if not shift_label:
+        raise ValueError("shift_label wajib: Shift 1 / Shift 2 / Shift 3")
+    norm = _normalize_shift_label(shift_label)
+    if norm not in ("Shift 1", "Shift 2", "Shift 3"):
+        raise ValueError(f"shift_label tidak valid: {shift_label}")
+    date = date or datetime.now().strftime("%Y-%m-%d")
+    tags = _norm_piket_names(names if isinstance(names, (list, tuple)) else [names])
+    with _override_lock:
+        data = _load_overrides()
+        if date not in data or not isinstance(data[date], dict):
+            data[date] = {}
+        data[date][norm] = tags
+        _save_overrides(data)
+    return tags
+
+
+def clear_shift_override(date=None, shift_label=None):
+    """Hapus override.
+
+    - date=None, shift_label=None -> hapus semua hari ini
+    - date=YYYY-MM-DD, shift_label=None -> hapus semua shift di tanggal itu
+    - date, shift_label -> hapus 1 shift saja
+    Return True jika ada yang dihapus.
+    """
+    date = date or datetime.now().strftime("%Y-%m-%d")
+    with _override_lock:
+        data = _load_overrides()
+        if date not in data:
+            return False
+        if shift_label is None:
+            del data[date]
+            _save_overrides(data)
+            return True
+        norm = _normalize_shift_label(shift_label)
+        if norm in data[date]:
+            del data[date][norm]
+            if not data[date]:
+                del data[date]
+            _save_overrides(data)
+            return True
+        return False
+
+
+def get_effective_piket_map(date=None):
+    """Piket per shift efektif untuk tanggal: sheet dimerge dengan override.
+
+    Return dict {jam_mulai_menit: [tags]} atau None jika sheet gagal & tidak ada override.
+    Override mengganti total shift tersebut (bukan append).
+    """
+    date = date or datetime.now()
+    if isinstance(date, str):
+        try:
+            date = datetime.strptime(date, "%Y-%m-%d")
+        except Exception:
+            date = datetime.now()
+    sheet_map = _sheet_piket_map(date)
+    overrides = get_shift_overrides(date.strftime("%Y-%m-%d"))
+    if sheet_map is None and not overrides:
+        return None
+    # base dari sheet (jika ada), kalau tidak ada buat map kosong
+    effective = dict(sheet_map) if sheet_map else {}
+    # mapping label -> start_m untuk override
+    label_to_start = {}
+    for s in REPORT_SHIFTS:
+        sh, sm = (int(x) for x in s["start"].split(":"))
+        label_to_start[s["label"]] = sh * 60 + sm
+    for label, tags in overrides.items():
+        start_m = label_to_start.get(label)
+        if start_m is not None:
+            effective[start_m] = tags
+    return effective if effective else None
+
+
+def _build_tukar_note(date=None, now=None):
+    """Susun catatan tukar shift untuk footer laporan.
+
+    Bandingkan sheet asli vs override. Return list baris catatan atau [].
+    Contoh: '• Tukar Shift 2: @dikaprndx → @annemaswa27'
+    """
+    date = date or (now or datetime.now())
+    if isinstance(date, str):
+        try:
+            date = datetime.strptime(date, "%Y-%m-%d")
+        except Exception:
+            date = datetime.now()
+    date_str = date.strftime("%Y-%m-%d")
+    overrides = get_shift_overrides(date_str)
+    if not overrides:
+        return []
+    sheet_map = _sheet_piket_map(date)
+    label_to_start = {}
+    for s in REPORT_SHIFTS:
+        sh, sm = (int(x) for x in s["start"].split(":"))
+        label_to_start[s["label"]] = sh * 60 + sm
+    notes = []
+    for label in ("Shift 1", "Shift 2", "Shift 3"):
+        if label not in overrides:
+            continue
+        start_m = label_to_start.get(label)
+        orig = []
+        if sheet_map is not None and start_m is not None:
+            # cari key sheet yang match (via _match_shift_slot)
+            key = _match_shift_slot(sheet_map, start_m)
+            if key is not None:
+                orig = sheet_map.get(key, [])
+        new = overrides[label]
+        if set(orig) != set(new):
+            if orig:
+                notes.append(f"• Tukar {label}: {', '.join(orig)} → {', '.join(new)}")
+            else:
+                notes.append(f"• Override {label}: {', '.join(new)} (jadwal kosong)")
+    return notes
+
+
+# ==================================================
 # Piket otomatis dari Google Sheet jadwal shift
 # ==================================================
 
@@ -1164,12 +1386,175 @@ _sheet_lock = threading.Lock()
 
 _L1_SUMMARY_ROWS = {"SHIFT 1", "SHIFT 2", "SHIFT 3", "TOTAL MASUK PER HARI"}
 
+_MONTH_ABBR = {
+    "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MEI": 5, "JUN": 6,
+    "JUL": 7, "AGU": 8, "SEP": 9, "OKT": 10, "NOV": 11, "DES": 12,
+}
 
-def _fetch_sheet_csv():
+_sheet_tabs_cache = {"ts": 0, "tabs": []}
+_sheet_gid_cache = {}
+_sheet_tabs_lock = threading.Lock()
+_TABS_CACHE_TTL = 3600  # 1 jam
+
+
+def _extract_spreadsheet_id(url=None):
+    url = url or JADWAL_SHEET_URL
+    m = re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", url)
+    return m.group(1) if m else None
+
+
+def _fetch_sheet_tabs(sheet_id):
+    """Ambil daftar (nama_tab, gid) dari halaman htmlview Google Spreadsheet."""
+    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/htmlview"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            html = resp.read().decode("utf-8", errors="replace")
+        return re.findall(r'name:\s*"([^"]+)"[^\}]+?gid:\s*"(\d+)"', html)
+    except Exception as e:
+        logger.warning(f"Gagal baca tabs htmlview: {e}")
+        return []
+
+
+def _get_cached_sheet_tabs(sheet_id, force_refresh=False):
+    now_ts = datetime.now().timestamp()
+    with _sheet_tabs_lock:
+        if not force_refresh and _sheet_tabs_cache["tabs"] and (now_ts - _sheet_tabs_cache["ts"] < _TABS_CACHE_TTL):
+            return _sheet_tabs_cache["tabs"]
+    tabs = _fetch_sheet_tabs(sheet_id)
+    if tabs:
+        with _sheet_tabs_lock:
+            _sheet_tabs_cache["ts"] = now_ts
+            _sheet_tabs_cache["tabs"] = tabs
+    return tabs
+
+
+def _parse_tab_months(tab_name):
+    """Ambil (bulan_1, bulan_2) dari nama tab mis. 'Agu-Sep' -> (8, 9)."""
+    clean = re.sub(r'[^a-zA-Z]', ' ', tab_name).upper()
+    tokens = clean.split()
+    matched = []
+    for t in tokens:
+        for k, v in _MONTH_ABBR.items():
+            if t.startswith(k):
+                matched.append(v)
+                break
+    if len(matched) >= 2:
+        return matched[0], matched[1]
+    return None, None
+
+
+def _check_tab_has_date(sheet_id, gid, m1, m2, target_month, target_day):
+    """Periksa apakah tab Google Sheet memiliki kolom untuk target tanggal & bulan."""
+    csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
+    raw = _fetch_sheet_csv(csv_url)
+    if not raw:
+        return False
+    try:
+        rows = list(csv.reader(io.StringIO(raw)))
+    except Exception:
+        return False
+
+    start = None
+    for i, r in enumerate(rows):
+        if r and r[0] == "NAMA":
+            start = i
+            break
+    if start is None:
+        return False
+
+    header = rows[start]
+    cur_m = m1
+    prev_d = 0
+    for j in range(2, len(header)):
+        val = (header[j] or "").strip().split(".")[0]
+        if not val.isdigit():
+            continue
+        d = int(val)
+        if prev_d and d < prev_d and m2 is not None:
+            cur_m = m2
+        prev_d = d
+        if cur_m == target_month and d == target_day:
+            return True
+    return False
+
+
+def _resolve_sheet_gid(target_date=None):
+    """Cari gid tab sheet yang sesuai untuk tanggal tertentu secara otomatis.
+
+    1. Cek cache per tanggal.
+    2. Ambil daftar tab dari /htmlview Google Sheet.
+    3. Filter tab kandidat yang mencakup bulan berjalan.
+    4. Validasi keberadaan kolom tanggal pada tab.
+    5. Fallback ke None jika tidak ditemukan (akan memakai default JADWAL_SHEET_URL).
+    """
+    target_date = target_date or datetime.now()
+    date_str = target_date.strftime("%Y-%m-%d")
+    with _sheet_tabs_lock:
+        if date_str in _sheet_gid_cache:
+            return _sheet_gid_cache[date_str]
+
+    sheet_id = _extract_spreadsheet_id()
+    if not sheet_id:
+        return None
+
+    tabs = _get_cached_sheet_tabs(sheet_id)
+    if not tabs:
+        return None
+
+    target_m = target_date.month
+    target_d = target_date.day
+
+    candidate_tabs = []
+    other_tabs = []
+    for name, gid in tabs:
+        m1, m2 = _parse_tab_months(name)
+        if m1 == target_m or m2 == target_m:
+            candidate_tabs.append((name, gid, m1, m2))
+        else:
+            other_tabs.append((name, gid, m1, m2))
+
+    for name, gid, m1, m2 in candidate_tabs:
+        if _check_tab_has_date(sheet_id, gid, m1, m2, target_m, target_d):
+            with _sheet_tabs_lock:
+                _sheet_gid_cache[date_str] = gid
+            logger.info(f"Otomatis menggunakan tab sheet '{name}' (gid={gid}) untuk {date_str}")
+            return gid
+
+    for name, gid, m1, m2 in other_tabs:
+        if _check_tab_has_date(sheet_id, gid, m1, m2, target_m, target_d):
+            with _sheet_tabs_lock:
+                _sheet_gid_cache[date_str] = gid
+            logger.info(f"Otomatis menggunakan tab sheet '{name}' (gid={gid}) untuk {date_str}")
+            return gid
+
+    return None
+
+
+def _get_sheet_csv_url_for_date(target_date=None):
+    gid = _resolve_sheet_gid(target_date)
+    if gid:
+        sheet_id = _extract_spreadsheet_id()
+        if sheet_id:
+            return f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
+    return JADWAL_SHEET_URL
+
+
+def _get_sheet_xlsx_url_for_date(target_date=None):
+    gid = _resolve_sheet_gid(target_date)
+    if gid:
+        sheet_id = _extract_spreadsheet_id()
+        if sheet_id:
+            return f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx&gid={gid}"
+    return _sheet_xlsx_url()
+
+
+def _fetch_sheet_csv(url=None):
     """Ambil CSV jadwal dari Google Sheet (public export). None jika gagal."""
+    target_url = url or JADWAL_SHEET_URL
     try:
         req = urllib.request.Request(
-            JADWAL_SHEET_URL, headers={"User-Agent": "Mozilla/5.0"}
+            target_url, headers={"User-Agent": "Mozilla/5.0"}
         )
         with urllib.request.urlopen(req, timeout=15) as resp:
             return resp.read().decode("utf-8", errors="replace")
@@ -1213,7 +1598,8 @@ def _sheet_piket_map(date=None):
     with _sheet_lock:
         if _sheet_cache["date"] == date_str:
             return _sheet_cache["tags"]
-    raw = _fetch_sheet_csv()
+    csv_url = _get_sheet_csv_url_for_date(date)
+    raw = _fetch_sheet_csv(csv_url)
     result = None
     if raw is not None:
         result = _parse_sheet_tags(raw, date)
@@ -1268,13 +1654,28 @@ def _parse_sheet_tags(raw, date):
 
 
 def _shift_people_tags(now=None):
-    """Tags piket yang MASUK pada shift aktif saat ini (prioritas sheet jadwal).
+    """Tags piket yang MASUK pada shift aktif saat ini (prioritas override > sheet).
 
-    Jika sheet jadwal tersedia -> orang per shift dari sheet (bisa kosong).
-    Jika sheet tidak tersedia -> piket manual (data/daily_piket.json) atau
-    REPORT_PERSONNEL sebagai fallback.
+    Prioritas:
+      1. Override tukar shift (data/shift_overrides.json) per shift
+      2. Google Sheet jadwal (per shift)
+      3. Piket manual harian (data/daily_piket.json) atau REPORT_PERSONNEL
     """
     now = now or datetime.now()
+    date_str = now.strftime("%Y-%m-%d")
+
+    # 1. Override per shift punya prioritas tertinggi
+    try:
+        overrides = get_shift_overrides(date_str)
+        if overrides:
+            shift = _current_shift(now)
+            if shift:
+                norm = _normalize_shift_label(shift["label"])
+                if norm in overrides:
+                    return overrides[norm]
+    except Exception:
+        pass
+
     sheet_map = _sheet_piket_map(now)
     if sheet_map is not None:
         shift = _current_shift(now)
@@ -1284,7 +1685,7 @@ def _shift_people_tags(now=None):
             if key is not None:
                 return sheet_map.get(key, [])
         return []
-    return get_piket(now.strftime("%Y-%m-%d")) or REPORT_PERSONNEL
+    return get_piket(date_str) or REPORT_PERSONNEL
 
 
 # ==================================================
@@ -1304,15 +1705,20 @@ def _cell_day(value, day):
     return str(value).strip().split(".")[0] == str(day)
 
 
-def _sheet_xlsx_url():
+def _sheet_xlsx_url(gid=None):
+    if gid:
+        sheet_id = _extract_spreadsheet_id()
+        if sheet_id:
+            return f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx&gid={gid}"
     return JADWAL_SHEET_URL.replace("export?format=csv", "export?format=xlsx")
 
 
-def _fetch_sheet_xlsx():
+def _fetch_sheet_xlsx(url=None):
     """Ambil tab jadwal sebagai .xlsx (memuat warna sel). None jika gagal."""
+    target_url = url or _sheet_xlsx_url()
     try:
         req = urllib.request.Request(
-            _sheet_xlsx_url(), headers={"User-Agent": "Mozilla/5.0"}
+            target_url, headers={"User-Agent": "Mozilla/5.0"}
         )
         with urllib.request.urlopen(req, timeout=15) as resp:
             return resp.read()
@@ -1341,7 +1747,8 @@ def _sheet_pic_map(date=None):
     with _sheet_pic_lock:
         if _sheet_pic_cache["date"] == date_str:
             return _sheet_pic_cache["data"]
-    raw = _fetch_sheet_xlsx()
+    xlsx_url = _get_sheet_xlsx_url_for_date(date)
+    raw = _fetch_sheet_xlsx(xlsx_url)
     result = None
     if raw is not None:
         result = _parse_sheet_pic(raw, date)
@@ -1402,14 +1809,20 @@ def _parse_sheet_pic(raw, date):
 def build_jadwal_piket_text(date=None):
     """Susun blok 'Jadwal Piket Hari Ini' (piket semua shift + PIC hijau).
 
-    Format persis sama dengan scripts/send_daily_jadwal.py supaya /cekpiket
-    dan report konsisten. None jika sheet tidak terbaca.
+    Menampilkan override tukar shift jika ada (ditandai 🔄 Tukar).
     """
     date = date or datetime.now()
     piket_map = _sheet_piket_map(date)
     pic_map = _sheet_pic_map(date)
-    if piket_map is None and pic_map is None:
+    effective = get_effective_piket_map(date)
+    if effective is None and piket_map is None and pic_map is None:
         return None
+    # fallback effective ke piket_map jika tidak ada override
+    if effective is None:
+        effective = piket_map
+
+    date_str = date.strftime("%Y-%m-%d")
+    overrides = get_shift_overrides(date_str)
 
     lines = [
         "📋 Jadwal Piket Hari Ini",
@@ -1419,19 +1832,33 @@ def build_jadwal_piket_text(date=None):
     for s in REPORT_SHIFTS:
         sh, sm = (int(x) for x in s["start"].split(":"))
         start_m = sh * 60 + sm
-        key = _match_shift_slot(piket_map, start_m) if piket_map else None
-        tags = piket_map.get(key) if key is not None else None
-        lines.append(f"👥 {s['label']} ({s['start']} - {s['end']}):")
+        key_eff = _match_shift_slot(effective, start_m) if effective else None
+        key_orig = _match_shift_slot(piket_map, start_m) if piket_map else None
+        tags = effective.get(key_eff) if key_eff is not None else None
+        orig_tags = piket_map.get(key_orig) if key_orig is not None and piket_map else None
+        is_override = s["label"] in overrides
+        label_extra = " — 🔄 Tukar" if is_override else ""
+        lines.append(f"👥 {s['label']} ({s['start']} - {s['end']}):{label_extra}")
         if not tags:
             lines.append("• (tidak ada)")
         else:
             for t in tags:
                 pic_mark = (
-                    " — ⭐ PIC" if pic_map and key is not None and pic_map.get(key) == t else ""
+                    " — ⭐ PIC" if pic_map and key_eff is not None and pic_map.get(key_eff) == t else ""
                 )
-                lines.append(f"• {t}{pic_mark}")
+                # jika override, tampilkan asal jika berbeda
+                tukar_mark = ""
+                if is_override and orig_tags is not None and t not in orig_tags:
+                    tukar_mark = f" (ganti {', '.join(orig_tags)})"
+                lines.append(f"• {t}{pic_mark}{tukar_mark}")
         lines.append("")
-    lines.append("Sumber: Google Sheet jadwal")
+    # catatan tukar ringkas
+    tukar_notes = _build_tukar_note(date)
+    if tukar_notes:
+        lines.append("🔄 Catatan Tukar Shift:")
+        lines.extend(tukar_notes)
+        lines.append("")
+    lines.append("Sumber: Google Sheet jadwal" + (" + override tukar shift" if overrides else ""))
     return "\n".join(lines)
 
 

@@ -274,7 +274,7 @@ class TelegramRemote:
             logger.info("Telegram bot token not set, skipping.")
             return False
 
-        self.app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+        self.app = Application.builder().token(TELEGRAM_BOT_TOKEN).post_init(self._post_init).build()
 
         self.app.add_handler(CommandHandler("start", self._cmd_start))
         self.app.add_handler(CommandHandler("stop", self._cmd_stop))
@@ -284,6 +284,7 @@ class TelegramRemote:
         self.app.add_handler(CommandHandler("report", self._cmd_report))
         self.app.add_handler(CommandHandler("piket", self._cmd_piket))
         self.app.add_handler(CommandHandler("cekpiket", self._cmd_cekpiket))
+        self.app.add_handler(CommandHandler("tukarshift", self._cmd_tukarshift))
         self.app.add_handler(CommandHandler("canclwork", self._cmd_start_canclwork))
         self.app.add_handler(CommandHandler("dispatch", self._cmd_start_dispatch))
         self.app.add_handler(CommandHandler("dispatch_incident", self._cmd_start_dispatch_incident))
@@ -312,6 +313,7 @@ class TelegramRemote:
             BotCommand("report", "Kirim laporan harian sekarang"),
             BotCommand("piket", "Set/lihat piket (@nama1 @nama2 ...)"),
             BotCommand("cekpiket", "Cek piket shift aktif & PIC hari ini"),
+            BotCommand("tukarshift", "Atur tukar shift per shift (override)"),
             BotCommand("canclwork", "Start CANCLWORK WO"),
             BotCommand("dispatch", "Start DISPATCH"),
             BotCommand("dispatch_incident", "Start DISPATCH INCIDENT"),
@@ -500,6 +502,175 @@ class TelegramRemote:
             return "⚠️ Gagal membaca jadwal piket dari Google Sheet."
         return text
 
+    async def _cmd_tukarshift(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        """Atur override tukar shift per shift.
+
+        /tukarshift                          -> lihat override hari ini
+        /tukarshift Shift2 @anne @windu      -> set Shift 2 hari ini
+        /tukarshift 2026-09-03 Shift1 @dika  -> set tanggal tertentu
+        /tukarshift clear                    -> hapus semua hari ini
+        /tukarshift clear Shift2             -> hapus Shift 2 hari ini
+        /tukarshift clear 2026-09-02 Shift1  -> hapus Shift 1 tgl tertentu
+        """
+        if not self._is_authorized(update):
+            await update.message.reply_text("Akses ditolak.")
+            return
+        from app.services.report_service import (
+            get_shift_overrides,
+            save_shift_override,
+            clear_shift_override,
+            _normalize_shift_label,
+            _sheet_piket_map,
+            _match_shift_slot,
+            _build_tukar_note,
+        )
+        from config.settings import REPORT_SHIFTS
+
+        args = ctx.args or []
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        # ---- tanpa argumen: tampilkan status hari ini ----
+        if not args:
+            overrides = get_shift_overrides(today)
+            # tampilkan jadwal asli vs override untuk konteks
+            try:
+                now = datetime.now()
+                sheet_map = _sheet_piket_map(now)
+                lines = [f"🔄 Tukar Shift {today}:"]
+                if not overrides:
+                    lines.append("• Tidak ada override (laporan pakai Google Sheet).")
+                else:
+                    for lbl in ("Shift 1", "Shift 2", "Shift 3"):
+                        if lbl in overrides:
+                            lines.append(f"• {lbl}: {', '.join(overrides[lbl])}  [OVERRIDE]")
+                        else:
+                            # tampilkan jadwal asli untuk shift yg tidak di-override
+                            if sheet_map is not None:
+                                # cari tag asli
+                                for s in REPORT_SHIFTS:
+                                    if s["label"] == lbl:
+                                        sh, sm = (int(x) for x in s["start"].split(":"))
+                                        key = _match_shift_slot(sheet_map, sh * 60 + sm)
+                                        orig = sheet_map.get(key, []) if key is not None else []
+                                        lines.append(f"• {lbl}: {', '.join(orig) if orig else '(kosong)'}  [Sheet]")
+                                        break
+                            else:
+                                lines.append(f"• {lbl}: (sheet tidak terbaca)")
+                notes = _build_tukar_note(today)
+                if notes:
+                    lines.append("")
+                    lines.extend(notes)
+                lines.append("")
+                lines.append("Set: /tukarshift Shift2 @anne @windu")
+                lines.append("Set tgl tertentu: /tukarshift 2026-09-03 Shift1 @dika")
+                lines.append("Hapus: /tukarshift clear [Shift2] | /tukarshift clear 2026-09-02 [Shift1]")
+                await update.message.reply_text("\n".join(lines))
+            except Exception as e:
+                await update.message.reply_text(f"⚠️ Error baca override: {e}")
+            return
+
+        # ---- handle clear ----
+        if args[0].lower() in ("clear", "reset", "hapus"):
+            target_date = today
+            shift_label = None
+            rest = args[1:]
+            # /tukarshift clear 2026-09-02 Shift1
+            if rest and re.fullmatch(r"\d{4}-\d{2}-\d{2}", rest[0]):
+                target_date = rest[0]
+                rest = rest[1:]
+            if rest:
+                # sisa dianggap shift label (ambil token pertama yg mirip shift)
+                # contoh: "Shift2" atau "Shift 2"
+                # gabung sisa jika ada spasi? untuk now, join dan coba normalisasi
+                cand = " ".join(rest)
+                norm = _normalize_shift_label(cand)
+                if norm in ("Shift 1", "Shift 2", "Shift 3"):
+                    shift_label = norm
+                else:
+                    # coba token pertama saja
+                    norm2 = _normalize_shift_label(rest[0])
+                    if norm2 in ("Shift 1", "Shift 2", "Shift 3"):
+                        shift_label = norm2
+            ok = clear_shift_override(target_date, shift_label)
+            if ok:
+                if shift_label:
+                    await update.message.reply_text(f"✅ Override {shift_label} pada {target_date} dihapus. Laporan kembali pakai Sheet.")
+                else:
+                    await update.message.reply_text(f"✅ Semua override pada {target_date} dihapus. Laporan kembali pakai Sheet.")
+            else:
+                await update.message.reply_text(f"Tidak ada override pada {target_date}" + (f" {shift_label}" if shift_label else "") + " untuk dihapus.")
+            return
+
+        # ---- handle set ----
+        # parse: [date] ShiftX @user...
+        target_date = today
+        rest = args
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", args[0]):
+            target_date = args[0]
+            rest = args[1:]
+            if not rest:
+                await update.message.reply_text("Format: /tukarshift [YYYY-MM-DD] ShiftX @user1 @user2 ...")
+                return
+        # rest[0] harus shift label
+        shift_label = None
+        names_start = 0
+        # coba deteksi shift label: bisa "Shift2" atau "Shift 2" (dua token)
+        # cek 1 token
+        cand1 = _normalize_shift_label(rest[0])
+        if cand1 in ("Shift 1", "Shift 2", "Shift 3"):
+            shift_label = cand1
+            names_start = 1
+        elif len(rest) >= 2:
+            cand2 = _normalize_shift_label(rest[0] + " " + rest[1])
+            if cand2 in ("Shift 1", "Shift 2", "Shift 3"):
+                shift_label = cand2
+                names_start = 2
+            else:
+                # coba "shift" + "2" terpisah?
+                # handle case "shift 2"
+                if rest[0].lower() == "shift" and rest[1] in ("1", "2", "3"):
+                    shift_label = f"Shift {rest[1]}"
+                    names_start = 2
+        if not shift_label:
+            await update.message.reply_text(
+                "Shift tidak dikenali. Pakai Shift 1 / Shift 2 / Shift 3.\n"
+                "Contoh: /tukarshift Shift2 @anne @windu\n"
+                "Atau: /tukarshift 2026-09-03 Shift1 @dika"
+            )
+            return
+        names = rest[names_start:]
+        if not names:
+            await update.message.reply_text(
+                f"Nama/tag untuk {shift_label} belum diisi.\n"
+                f"Contoh: /tukarshift {shift_label} @anne @windu"
+            )
+            return
+        try:
+            saved = save_shift_override(names, target_date, shift_label)
+            # tampilkan perbandingan dengan sheet asli
+            try:
+                dt = datetime.strptime(target_date, "%Y-%m-%d")
+                sheet_map = _sheet_piket_map(dt)
+                orig = []
+                for s in REPORT_SHIFTS:
+                    if s["label"] == shift_label:
+                        sh, sm = (int(x) for x in s["start"].split(":"))
+                        key = _match_shift_slot(sheet_map, sh * 60 + sm) if sheet_map else None
+                        orig = sheet_map.get(key, []) if key is not None and sheet_map else []
+                        break
+                msg = f"✅ Override {shift_label} {target_date} disimpan:\n" + ", ".join(saved)
+                if orig:
+                    msg += f"\nJadwal asli: {', '.join(orig)}"
+                    msg += f"\n→ Laporan & Resolved Per Person untuk {shift_label} sekarang pakai override."
+                notes = _build_tukar_note(target_date)
+                if notes:
+                    msg += "\n\n" + "\n".join(notes)
+                await update.message.reply_text(msg)
+            except Exception:
+                await update.message.reply_text(f"✅ Override {shift_label} {target_date} disimpan: " + ", ".join(saved))
+        except Exception as e:
+            await update.message.reply_text(f"⚠️ Gagal simpan: {e}")
+
     async def _build_report_async(self):
         loop = asyncio.get_running_loop()
         fut = loop.create_future()
@@ -578,6 +749,7 @@ class TelegramRemote:
             "/report   - Kirim laporan harian sekarang",
             "/piket    - Set/lihat piket hari ini (@user1 @user2 ...)",
             "/cekpiket - Cek piket shift aktif & PIC hari ini",
+            "/tukarshift - Atur tukar shift per shift (override)",
             "/help     - Lihat semua perintah",
             "",
             "Mulai fitur:",

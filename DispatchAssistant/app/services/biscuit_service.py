@@ -29,6 +29,76 @@ def _save_cached_token(token):
         pass
 
 
+def _is_token_valid(token):
+    """Cek apakah token JWT masih berlaku (exp > now + 60s)."""
+    if not token or not isinstance(token, str):
+        return False
+    try:
+        import base64
+        import json
+        import time
+
+        parts = token.strip().split(".")
+        if len(parts) < 2:
+            return False
+        payload_b64 = parts[1] + "=" * (-len(parts[1]) % 4)
+        payload = json.loads(base64.b64decode(payload_b64).decode("utf-8", errors="ignore"))
+        exp = payload.get("exp", 0)
+        return exp > (time.time() + 60)
+    except Exception:
+        return False
+
+
+def _sync_token_from_other_browsers():
+    """Cari tab BISCUIT di port Chrome mana pun yang aktif dan ambil token fresh."""
+    import socket
+    import urllib.request
+    import json
+
+    ports_to_check = [9224, 9223, 9222, 9225]
+    found_port = None
+    for port in ports_to_check:
+        s = socket.socket()
+        s.settimeout(0.3)
+        try:
+            s.connect(("127.0.0.1", port))
+            s.close()
+        except Exception:
+            continue
+
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/json", timeout=0.5) as resp:
+                tabs = json.loads(resp.read().decode())
+                for t in tabs:
+                    if "biscuit" in t.get("url", "").lower():
+                        found_port = port
+                        break
+        except Exception:
+            continue
+        if found_port:
+            break
+
+    if not found_port:
+        return None
+
+    try:
+        from playwright.sync_api import sync_playwright
+
+        with sync_playwright() as p:
+            browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{found_port}")
+            for ctx in browser.contexts:
+                for page in ctx.pages:
+                    if "biscuit" in page.url.lower():
+                        token = page.evaluate("localStorage.getItem('biscuit_token')")
+                        if token and _is_token_valid(token):
+                            _save_cached_token(token)
+                            print(f"BISCUIT: Berhasil auto-sync token baru dari port {found_port}")
+                            return token
+    except Exception as e:
+        print(f"Auto-sync token dari port {found_port} gagal: {e}")
+    return None
+
+
 class BiscuitService:
 
     def __init__(self, browser_manager=None):
@@ -216,7 +286,14 @@ class BiscuitService:
                     return token
             except Exception:
                 pass
-        return _load_cached_token()
+        cached = _load_cached_token()
+        if cached and _is_token_valid(cached):
+            return cached
+        # Jika token cache kosong atau expired, otomatis sync dari tab BISCUIT browser lain
+        synced = _sync_token_from_other_browsers()
+        if synced:
+            return synced
+        return cached
 
     def _api_execute_raw(self, command, page_scope):
         """POST /api/execute. Return dict respons mentah, atau None jika gagal."""

@@ -1,6 +1,8 @@
+import csv
 import re
 import sys
 import time
+from datetime import datetime
 
 from app.parser import (
     extract_owner_group,
@@ -20,6 +22,23 @@ LOOP_INTERVAL = 180
 
 # File untuk ingat tiket yang pernah di-SKIP (permanen, tidak pernah dibuka lagi) — anti duplikat bulanan
 _PERSISTENT_SKIPPED_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "skipped_tickets.json")
+
+# Log reason SKIP permanen biar diagnosa tidak tebak (fix INC2026090200IWJCC)
+_SKIP_LOG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "logs", "skip_reasons.csv")
+
+def _log_skip_reason(code, reason, note=""):
+    try:
+        os.makedirs(os.path.dirname(_SKIP_LOG_PATH), exist_ok=True)
+        header = ["Waktu","Kode","Reason","NoteSnippet"]
+        row = [datetime.now().strftime("%Y-%m-%d %H:%M:%S"), code, reason, (note[:120].replace("\n"," ") if note else "")]
+        write_header = not os.path.exists(_SKIP_LOG_PATH)
+        with open(_SKIP_LOG_PATH, "a", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            if write_header:
+                w.writerow(header)
+            w.writerow(row)
+    except Exception:
+        pass
 
 
 class SygapService:
@@ -46,9 +65,11 @@ class SygapService:
         except Exception:
             self.persistent_skipped = set()
 
-    def _save_persistent_skipped(self, code):
+    def _save_persistent_skipped(self, code, reason=""):
         try:
             self.persistent_skipped.add(code)
+            if reason:
+                _log_skip_reason(code, reason)
             os.makedirs(os.path.dirname(_PERSISTENT_SKIPPED_PATH), exist_ok=True)
             # Simpan sebagai dict code -> timestamp
             data = {}
@@ -60,14 +81,56 @@ class SygapService:
                             data = {k: "" for k in data}
                 except Exception:
                     data = {}
-            data[code] = __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            data[code] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             with open(_PERSISTENT_SKIPPED_PATH, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
         except Exception:
             pass
 
     def _is_persistent_skipped(self, code):
+        try:
+            # Cek file dulu biar hapus manual langsung efektif tanpa restart (fix MMTNB 12:49)
+            if os.path.exists(_PERSISTENT_SKIPPED_PATH):
+                with open(_PERSISTENT_SKIPPED_PATH, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    in_file = False
+                    if isinstance(data, dict):
+                        in_file = code in data
+                    elif isinstance(data, list):
+                        in_file = code in data
+                    if in_file:
+                        self.persistent_skipped.add(code)
+                        return True
+                    else:
+                        # Tidak ada di file tapi ada di memory → sudah dihapus manual, sync
+                        if code in self.persistent_skipped:
+                            self.persistent_skipped.discard(code)
+                            self.skipped_ids.pop(code, None)
+                        return False
+            else:
+                if code in self.persistent_skipped:
+                    self.persistent_skipped.discard(code)
+                return False
+        except Exception:
+            pass
         return code in self.persistent_skipped
+
+    def reload_persistent_skipped(self):
+        self._load_persistent_skipped()
+
+    def clear_persistent_skipped(self, code):
+        try:
+            self.persistent_skipped.discard(code)
+            self.skipped_ids.pop(code, None)
+            if os.path.exists(_PERSISTENT_SKIPPED_PATH):
+                with open(_PERSISTENT_SKIPPED_PATH, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                if isinstance(data, dict) and code in data:
+                    del data[code]
+                    with open(_PERSISTENT_SKIPPED_PATH, "w", encoding="utf-8") as f:
+                        json.dump(data, f, indent=2, ensure_ascii=False)
+        except Exception:
+            pass
 
     def _stopped(self):
         return bool(self.stop_check and self.stop_check())
@@ -1432,7 +1495,7 @@ class SygapService:
                 filter_idx += 1
                 if filter_idx < len(filters):
                     current_filter = filters[filter_idx]
-                    log(f"No {filters[filter_idx-1]} tickets. Switching to {current_filter}...")
+                    log(f"No {filters[filter_idx-1][0]} tickets. Switching to {current_filter[0]} [{current_filter[1]}]...")
                     if not apply_filter(current_filter):
                         log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
                         return results
@@ -1473,6 +1536,8 @@ class SygapService:
                     quick_status = self.read_ticket_status(ticket_page)
                     if quick_status and "COMPLETED" in quick_status:
                         log(f"    SKIP: tiket sudah COMPLETED di form")
+                        self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code, "COMPLETED di form")
                         continue
 
                     note = self.read_ticket_note(ticket_page)
@@ -1482,9 +1547,13 @@ class SygapService:
                     note_upper = note.upper()
                     if current_filter == "CANCLWORK" and "CANCLWORK" not in note_upper:
                         log(f"    SAFETY: No CANCLWORK in note, SKIP")
+                        self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code, "No CANCLWORK")
                         continue
                     if current_filter == "CANCELWORK" and "CANCELWORK" not in note_upper:
                         log(f"    SAFETY: No CANCELWORK in note, SKIP")
+                        self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code, "No CANCELWORK")
                         continue
 
                     current_solver = ticket_page.locator("#id_coordinator")
@@ -1496,6 +1565,8 @@ class SygapService:
 
                     if self.is_coordinator_in_skip_list(ticket_page):
                         log(f"    SKIP: solver {solver_val} di daftar skip (Rizky Senja Budiman/CRS2018192)")
+                        self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code)
                         continue
 
                     if solver_val != my_uid:
@@ -1595,8 +1666,9 @@ class SygapService:
                     log(f"    Error: {e}")
                 finally:
                     if code not in self.processed_ids and code not in self.related_ids:
-                        self.skipped_ids[code] = time.time()
-                        self._save_persistent_skipped(code)
+                        if code not in self.skipped_ids:
+                            self.skipped_ids[code] = time.time()
+                        # Persistent now explicit in permanent branches
                     try:
                         if not ticket_page.is_closed():
                             ticket_page.close()
@@ -1615,7 +1687,7 @@ class SygapService:
                 filter_idx += 1
                 if filter_idx < len(filters):
                     current_filter = filters[filter_idx]
-                    log(f"No {filters[filter_idx-1]} tickets. Switching to {current_filter}...")
+                    log(f"No {filters[filter_idx-1][0]} tickets. Switching to {current_filter[0]} [{current_filter[1]}]...")
                     if not apply_filter(current_filter):
                         log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
                         return results
@@ -1628,7 +1700,7 @@ class SygapService:
                 filter_idx += 1
                 if filter_idx < len(filters):
                     current_filter = filters[filter_idx]
-                    log(f"No actionable {filters[filter_idx-1]} tickets. Switching to {current_filter}...")
+                    log(f"No actionable {filters[filter_idx-1][0]} tickets. Switching to {current_filter[0]} [{current_filter[1]}]...")
                     if not apply_filter(current_filter):
                         log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
                         return results
@@ -1702,19 +1774,23 @@ class SygapService:
         except Exception as e:
             print(f"Filter DISPATCH error: {e}")
 
-    def filter_dispatch_incident(self, page):
-        """Filter untuk INCIDENT dispatch: OPEN + notes=dispatch + MO-INSERA (tabel incidentTable)."""
+    def filter_dispatch_incident(self, page, notes_value="dispatch", status_value="OPEN"):
+        """Filter untuk INCIDENT dispatch: status_value + notes=notes_value + MO-INSERA (tabel incidentTable).
+
+        notes_value: "dispatch" atau "Owner Group" — dipakai bergantian.
+        status_value: "OPEN" untuk dispatch, "ASSIGNED" untuk Owner Group (request user INC2026090200LRWTV).
+        """
         try:
-            # Status OPEN - incident pakai #statusSearch, fallback #searchSelect
+            # Status - incident pakai #statusSearch, fallback #searchSelect
             status_sel = None
             for sel_id in ["#statusSearch", "#searchSelect"]:
                 loc = page.locator(sel_id)
                 if loc.count() > 0:
                     try:
-                        loc.select_option(label="OPEN")
+                        loc.select_option(label=status_value)
                         page.wait_for_timeout(500)
                         status_sel = sel_id
-                        print(f"Filter INCIDENT: status OPEN via {sel_id}")
+                        print(f"Filter INCIDENT: status {status_value} via {sel_id}")
                         break
                     except Exception:
                         continue
@@ -1727,21 +1803,39 @@ class SygapService:
             page.wait_for_selector("#multiCollapseExample1.show", timeout=5000)
             page.wait_for_timeout(500)
 
-            notes_input = page.locator("#notes")
-            if notes_input.count() == 0:
-                notes_input = page.locator("input[name='notes']")
-            if notes_input.count() > 0:
-                notes_input.fill("")
-                page.wait_for_timeout(300)
-                notes_input.fill("dispatch")
+            # Notes input incident pakai #notesSearch (name=notes), request pakai #notes — coba semua
+            notes_sel = None
+            for sel in ["#notesSearch", "#notes", "input[name='notes']"]:
+                loc = page.locator(sel)
+                if loc.count() > 0:
+                    notes_sel = sel
+                    break
+            if notes_sel:
+                # Pakai evaluate biar reliable untuk select2/input hidden
+                page.evaluate(f"""() => {{
+                    var el = document.querySelector("{notes_sel}") || document.querySelector("#notesSearch") || document.querySelector("#notes") || document.querySelector("input[name='notes']");
+                    if(el) {{
+                        el.value = `{notes_value}`;
+                        el.dispatchEvent(new Event('input', {{bubbles:true}}));
+                        el.dispatchEvent(new Event('change', {{bubbles:true}}));
+                    }}
+                }}""")
                 page.wait_for_timeout(500)
+                # Fallback fill via locator juga
+                try:
+                    page.locator(notes_sel).fill(notes_value)
+                    page.wait_for_timeout(300)
+                except: pass
             else:
                 print("WARNING: Notes input field not found!")
                 return
 
-            verify_val = notes_input.input_value().strip()
+            verify_val = page.evaluate("""() => {
+                var el = document.querySelector("#notesSearch") || document.querySelector("#notes") || document.querySelector("input[name='notes']");
+                return el ? el.value : "";
+            }""").strip()
             print(f"Notes filter value: '{verify_val}'")
-            if "dispatch" not in verify_val.lower():
+            if notes_value.lower() not in verify_val.lower():
                 print("FAILED to set Notes filter!")
                 return
 
@@ -2058,10 +2152,14 @@ class SygapService:
                     quick_status = self.read_ticket_status(ticket_page)
                     if quick_status and "COMPLETED" in quick_status:
                         log(f"    SKIP: tiket sudah COMPLETED di form")
+                        self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code, "COMPLETED di form")
                         continue
 
                     if self.is_coordinator_in_skip_list(ticket_page):
                         log(f"    SKIP: koordinator di daftar skip (Rizky Senja Budiman/CRS2018192)")
+                        self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code, "koordinator skip 55652")
                         continue
 
                     if self.is_my_ticket(ticket_page):
@@ -2074,6 +2172,8 @@ class SygapService:
                         confirmed = self.wait_for_in_progress(ticket_page)
                         if not confirmed:
                             log(f"    TO FAILED: {code}")
+                            self.skipped_ids[code] = time.time()
+                            # transient only, biar retry 180s (fix INC2026090200IWJCC)
                             continue
                         log(f"    TO CONFIRMED: {code}")
 
@@ -2316,11 +2416,10 @@ class SygapService:
                 except Exception as e:
                     log(f"    Error: {e}")
                 finally:
-                    # Catat tiket yg di-SKIP (bukan yg berhasil di-process/relasi)
-                    # agar tidak dibuka berulang dalam sesi yang sama (cooldown LOOP_INTERVAL).
                     if code not in self.processed_ids and code not in self.related_ids:
-                        self.skipped_ids[code] = time.time()
-                        self._save_persistent_skipped(code)
+                        if code not in self.skipped_ids:
+                            self.skipped_ids[code] = time.time()
+                        # Persistent now explicit in permanent branches; transient only cooldown
                     try:
                         if not ticket_page.is_closed():
                             ticket_page.close()
@@ -2417,10 +2516,14 @@ class SygapService:
                     quick_status = self.read_ticket_status(ticket_page)
                     if quick_status and "COMPLETED" in quick_status:
                         log(f"    SKIP: tiket sudah COMPLETED di form")
+                        self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code, "COMPLETED di form")
                         continue
 
                     if self.is_coordinator_in_skip_list(ticket_page):
                         log(f"    SKIP: koordinator di daftar skip (Rizky Senja Budiman/CRS2018192)")
+                        self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code, "koordinator skip 55652")
                         continue
 
                     note = self.read_ticket_note(ticket_page)
@@ -2429,10 +2532,14 @@ class SygapService:
 
                     if "dispatch" not in note.lower():
                         log(f"    SAFETY: No 'dispatch' in note, SKIP")
+                        self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code, "No dispatch in note")
                         continue
 
                     if "workzone" in note.lower() or "work zone" in note.lower():
                         log(f"    SAFETY: 'workzone'/'work zone' found in note, SKIP")
+                        self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code, "workzone in note")
                         continue
 
                     note_upper = note.upper()
@@ -2448,6 +2555,8 @@ class SygapService:
 
                         if not bulk_og:
                             log(f"    Cannot parse bulk OG target, SKIP")
+                            self.skipped_ids[code] = time.time()
+                            self._save_persistent_skipped(code, "Cannot parse bulk OG")
                             continue
 
                         if "C4" in bulk_og.upper():
@@ -2569,6 +2678,12 @@ class SygapService:
                             if idx < len(bulk_incs) - 1:
                                 biscuit.wait_for_ready()
 
+                        # Jika bulk ada UNKNOWN/503/HTML jangan complete dengan Timeout/HTML — retry 180s
+                        has_unknown_timeout = any("Timeout" in (m or "") or "BISCUIT" in (m or "") or "Application is not available" in (m or "") or "503" in (m or "") or "<html>" in (m or "").lower() or "not found" in (m or "").lower() for m in failed_incs)
+                        if has_unknown_timeout and not all_success:
+                            log(f"    Bulk ada UNKNOWN/503 Timeout — SKIP tanpa complete, akan retry 180s")
+                            self.skipped_ids[code] = time.time()
+                            continue
                         if all_success:
                             log(f"    All INCs dispatched successfully")
                             complete_note = "Cek Kembali"
@@ -2715,6 +2830,11 @@ class SygapService:
                                 log(f"    BISCUIT timeout, retrying...")
                                 biscuit.wait_for_ready()
 
+                        # Jika BISCUIT timeout/503/HTML jangan balas SYGAP dengan Timeout/HTML — retry 180s
+                        if response.status in ("UNKNOWN","FAILED") and (any(k in (response.message or "") for k in ["Timeout","BISCUIT","Application is not available","503","<html>"]) or "not found" in (response.message or "").lower()):
+                            log(f"    BISCUIT {response.status} Timeout/503 — SKIP tanpa complete, akan retry 180s")
+                            self.skipped_ids[code] = time.time()
+                            continue
                         if response.status == "SUCCESS":
                             log(f"    BISCUIT SUKSES! Complete ticket...")
                             complete_note = "Cek Kembali"
@@ -2798,14 +2918,17 @@ class SygapService:
 
                     else:
                         log(f"    No OG and no C4, SKIP")
+                        self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code, "No OG and no C4")
                         continue
 
                 except Exception as e:
                     log(f"    Error: {e}")
                 finally:
                     if code not in self.processed_ids and code not in self.related_ids:
-                        self.skipped_ids[code] = time.time()
-                        self._save_persistent_skipped(code)
+                        if code not in self.skipped_ids:
+                            self.skipped_ids[code] = time.time()
+                        # Persistent now explicit in permanent branches
                     try:
                         if not ticket_page.is_closed():
                             ticket_page.close()
@@ -2858,16 +2981,36 @@ class SygapService:
         except Exception:
             pass
 
-        self.filter_dispatch_incident(page)
-        log("Filtered: dispatch INCIDENT")
+        # === Filter: dispatch (OPEN) -> Owner Group (ASSIGNED) ===
+        # Contoh INC2026090200LRWTV: Memunculkan_Ownergroup_Kosong INC52655149 ... Owner Group TIF ASR FBB DISTRICT DENPASAR, status ASSIGNED
+        filters = [("dispatch", "OPEN"), ("Owner Group", "ASSIGNED")]
+        filter_idx = 0
+        current_filter = filters[filter_idx]
 
-        table_id = self._get_dispatch_table_id(page)
-        try:
-            page.wait_for_selector(f"#{table_id} tbody tr", timeout=15000)
-        except Exception:
-            log("No INCIDENT tickets found after filter")
-            return results
-        page.wait_for_timeout(2000)
+        def apply_filter(filter_tuple):
+            notes_val, status_val = filter_tuple
+            self.filter_dispatch_incident(page, notes_value=notes_val, status_value=status_val)
+            try:
+                tid = self._get_dispatch_table_id(page)
+                page.wait_for_selector(f"#{tid} tbody tr", timeout=15000)
+                page.wait_for_timeout(2000)
+                return True
+            except Exception:
+                log(f"No rows found for {notes_val} [{status_val}]")
+                return False
+
+        if not apply_filter(current_filter):
+            log(f"No tickets for {current_filter[0]} [{current_filter[1]}]. Switching...")
+            filter_idx += 1
+            if filter_idx < len(filters):
+                current_filter = filters[filter_idx]
+                if not apply_filter(current_filter):
+                    log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                    return results
+            else:
+                log(f"No tickets found. Waiting {LOOP_INTERVAL // 60} minutes...")
+                return results
+        log(f"Filtered: {current_filter[0]} [{current_filter[1]}] INCIDENT")
 
         total_processed = 0
 
@@ -2877,18 +3020,27 @@ class SygapService:
                 info_text = page.locator(f"#{table_id}_info").inner_text()
             except Exception:
                 info_text = ""
-            log(f"--- {info_text} [{table_id}] ---")
+            log(f"--- {info_text} [{table_id}] [{current_filter[0]} {current_filter[1]}] ---")
 
             if self._stopped():
                 log("STOP requested - aborting scan")
                 return results
 
             rows = self.get_ticket_rows_generic(page)
-            log(f"Found {len(rows)} row(s) [incident]")
+            log(f"Found {len(rows)} row(s) [incident] [{current_filter[0]}]")
 
             if len(rows) == 0:
-                log(f"No INCIDENT tickets found. Waiting {LOOP_INTERVAL // 60} minutes...")
-                return results
+                filter_idx += 1
+                if filter_idx < len(filters):
+                    current_filter = filters[filter_idx]
+                    log(f"No {filters[filter_idx-1][0]} tickets. Switching to {current_filter[0]} [{current_filter[1]}]...")
+                    if not apply_filter(current_filter):
+                        log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                        return results
+                    continue
+                else:
+                    log(f"No INCIDENT tickets found. Waiting {LOOP_INTERVAL // 60} minutes...")
+                    return results
 
             processed_this_round = 0
 
@@ -2929,22 +3081,34 @@ class SygapService:
                     quick_status = self.read_ticket_status(ticket_page)
                     if quick_status and any(s in quick_status for s in ("COMPLETED", "RESOLVED")):
                         log(f"    SKIP: tiket sudah COMPLETED/RESOLVED di form")
+                        self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code, "COMPLETED di form")
                         continue
 
                     if self.is_coordinator_in_skip_list(ticket_page):
                         log(f"    SKIP: koordinator di daftar skip (Rizky Senja Budiman/CRS2018192)")
+                        self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code, "koordinator skip 55652")
                         continue
 
                     note = self.read_ticket_note(ticket_page)
                     note_short = note[:100] + "..." if len(note) > 100 else note
                     log(f"    Note: {note_short}")
 
-                    if "dispatch" not in note.lower():
-                        log(f"    SAFETY: No 'dispatch' in note, SKIP")
-                        continue
+                    # Filter-aware: dispatch vs Owner Group - jangan permanen biar Owner Group tetap ke-handle
+                    if current_filter[0].lower() == "owner group":
+                        if "owner group" not in note.lower() and "ownergroup" not in note.lower():
+                            log(f"    SAFETY: No 'Owner Group' in note, SKIP (filter {current_filter[0]})")
+                            continue
+                    else:
+                        if "dispatch" not in note.lower():
+                            log(f"    SAFETY: No 'dispatch' in note, SKIP (filter {current_filter[0]})")
+                            continue
 
                     if "workzone" in note.lower() or "work zone" in note.lower():
                         log(f"    SAFETY: 'workzone'/'work zone' found in note, SKIP")
+                        self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code, "workzone in note")
                         continue
 
                     note_upper = note.upper()
@@ -3072,12 +3236,19 @@ class SygapService:
                                 failed_incs.append(f"{inc}: {response.message}")
                             if idx < len(bulk_incs) - 1:
                                 biscuit.wait_for_ready()
+                        # Jika bulk ada UNKNOWN/503/HTML jangan complete dengan Timeout/HTML — retry 180s
+                        has_unknown_timeout = any("Timeout" in (m or "") or "BISCUIT" in (m or "") or "Application is not available" in (m or "") or "503" in (m or "") or "<html>" in (m or "").lower() or "not found" in (m or "").lower() for m in failed_incs)
+                        if has_unknown_timeout and not all_success:
+                            log(f"    Bulk ada UNKNOWN/503 Timeout — SKIP tanpa complete, akan retry 180s")
+                            self.skipped_ids[code] = time.time()
+                            continue
                         if all_success:
                             log(f"    All INCs dispatched successfully")
                             complete_note = "Cek Kembali"
                         else:
                             log(f"    Some INCs failed: {len(failed_incs)}")
                             complete_note = "; ".join(failed_incs)[:200]
+
                         page.bring_to_front()
                         page.wait_for_timeout(1000)
                         if not ticket_page.is_closed():
@@ -3205,6 +3376,11 @@ class SygapService:
                             log(f"    Retry dispatch setelah handle NEW: {command}")
                             response = biscuit.execute(command, "INSERA")
                             log(f"    Retry response: {response.status} - {response.message}")
+                        # Jika BISCUIT timeout/503/HTML jangan balas SYGAP dengan Timeout/HTML — retry 180s
+                        if response.status in ("UNKNOWN","FAILED") and (any(k in (response.message or "") for k in ["Timeout","BISCUIT","Application is not available","503","<html>"]) or "not found" in (response.message or "").lower()):
+                            log(f"    BISCUIT {response.status} Timeout/503 — SKIP tanpa complete, akan retry 180s")
+                            self.skipped_ids[code] = time.time()
+                            continue
                         if response.status == "SUCCESS":
                             log(f"    BISCUIT SUKSES! Complete ticket...")
                             complete_note = "Cek Kembali"
@@ -3279,8 +3455,9 @@ class SygapService:
                     log(f"    Error: {e}")
                 finally:
                     if code not in self.processed_ids and code not in self.related_ids:
-                        self.skipped_ids[code] = time.time()
-                        self._save_persistent_skipped(code)
+                        if code not in self.skipped_ids:
+                            self.skipped_ids[code] = time.time()
+                        # Persistent skip now explicit in permanent branches; transient only cooldown 180s biar retry (fix INC2026090200IWJCC)
                     try:
                         if not ticket_page.is_closed():
                             ticket_page.close()
@@ -3290,23 +3467,37 @@ class SygapService:
                     page.wait_for_timeout(1500)
 
             if processed_this_round == 0:
-                log(f"No actionable INCIDENT tickets (all rows skipped/already processed). Waiting {LOOP_INTERVAL // 60} minutes...")
-                return results
+                filter_idx += 1
+                if filter_idx < len(filters):
+                    current_filter = filters[filter_idx]
+                    log(f"No actionable {filters[filter_idx-1][0]} tickets. Switching to {current_filter[0]} [{current_filter[1]}]...")
+                    if not apply_filter(current_filter):
+                        log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                        return results
+                    continue
+                else:
+                    log(f"No actionable INCIDENT tickets (all rows skipped/already processed). Waiting {LOOP_INTERVAL // 60} minutes...")
+                    return results
 
-            log(f"Page done. Re-applying filter...")
-            self.filter_dispatch_incident(page)
-            try:
-                table_id = self._get_dispatch_table_id(page)
-                page.wait_for_selector(f"#{table_id} tbody tr", timeout=15000)
-                page.wait_for_timeout(2000)
-            except Exception:
-                pass
+            log(f"Page done. Re-applying filter [{current_filter[0]} {current_filter[1]}]...")
+            if not apply_filter(current_filter):
+                log(f"No tickets after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                return results
             try:
                 table_id = self._get_dispatch_table_id(page)
                 info_after = page.locator(f"#{table_id}_info").inner_text()
                 if "0 entries" in info_after or "0 of 0" in info_after:
-                    log(f"No INCIDENT tickets after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
-                    return results
+                    filter_idx += 1
+                    if filter_idx < len(filters):
+                        current_filter = filters[filter_idx]
+                        log(f"No tickets after filter {filters[filter_idx-1][0]}. Switching to {current_filter[0]} [{current_filter[1]}]...")
+                        if not apply_filter(current_filter):
+                            log(f"No INCIDENT tickets after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                            return results
+                        continue
+                    else:
+                        log(f"No INCIDENT tickets after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                        return results
             except Exception:
                 pass
         return results
@@ -3377,10 +3568,14 @@ class SygapService:
                     quick_status = self.read_ticket_status(ticket_page)
                     if quick_status and "COMPLETED" in quick_status:
                         log(f"    SKIP: tiket sudah COMPLETED di form")
+                        self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code, "COMPLETED di form")
                         continue
 
                     if self.is_coordinator_in_skip_list(ticket_page):
                         log(f"    SKIP: koordinator di daftar skip (Rizky Senja Budiman/CRS2018192)")
+                        self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code, "koordinator skip 55652")
                         continue
 
                     note = self.read_ticket_note(ticket_page)
@@ -3389,6 +3584,8 @@ class SygapService:
 
                     if "service" not in note.lower():
                         log(f"    SAFETY: No 'service' in note, SKIP")
+                        self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code, "No service in note")
                         continue
 
                     service_id = extract_service_id(note)
@@ -3397,6 +3594,8 @@ class SygapService:
 
                     if not service_id and not service_type:
                         log(f"    Neither Service ID nor Service Type found in note, SKIP")
+                        self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code, "No Service ID/Type")
                         continue
 
                     if not inc_number:
@@ -3536,8 +3735,9 @@ class SygapService:
                     log(f"    Error: {e}")
                 finally:
                     if code not in self.processed_ids and code not in self.related_ids:
-                        self.skipped_ids[code] = time.time()
-                        self._save_persistent_skipped(code)
+                        if code not in self.skipped_ids:
+                            self.skipped_ids[code] = time.time()
+                        # Persistent now explicit
                     try:
                         if not ticket_page.is_closed():
                             ticket_page.close()

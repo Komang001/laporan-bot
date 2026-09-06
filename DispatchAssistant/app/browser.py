@@ -516,6 +516,17 @@ class BrowserManager:
 
         self.refresh_cache()
 
+        # Auto-sync token BISCUIT ke cache jika tab BISCUIT sudah login
+        try:
+            biscuit_pg = self.cache.get("biscuit")
+            if biscuit_pg:
+                tok = biscuit_pg.evaluate("localStorage.getItem('biscuit_token')")
+                if tok:
+                    from app.services.biscuit_service import _save_cached_token
+                    _save_cached_token(tok)
+        except Exception:
+            pass
+
         if has_sygap and has_biscuit:
             log("SYGAP & BISCUIT tabs already open.")
         elif has_sygap:
@@ -589,6 +600,17 @@ class BrowserManager:
             pass
 
         self.refresh_cache()
+
+        # Auto-sync token BISCUIT ke cache jika tab BISCUIT sudah login
+        try:
+            biscuit_pg = self.cache.get("biscuit")
+            if biscuit_pg:
+                tok = biscuit_pg.evaluate("localStorage.getItem('biscuit_token')")
+                if tok:
+                    from app.services.biscuit_service import _save_cached_token
+                    _save_cached_token(tok)
+        except Exception:
+            pass
 
         if has_incident and has_biscuit:
             log("SYGAP INCIDENT & BISCUIT tabs already open.")

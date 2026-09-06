@@ -155,7 +155,7 @@ REPORT_SHIFTS = [
 # Ganti gid untuk tab lain (current: tab jadwal L1/L2&L3).
 JADWAL_SHEET_URL = (
     "https://docs.google.com/spreadsheets/d/"
-    "1VlLQx0CxMeWStMjpkwQWiq8nbXaYqO2fJABAe7JNhmg/export?format=csv&gid=909284534"
+    "1VlLQx0CxMeWStMjpkwQWiq8nbXaYqO2fJABAe7JNhmg/export?format=csv&gid=890618279"
 )
 
 # Nama di sheet jadwal yang berbeda dengan kunci TELEGRAM_USERNAMES.

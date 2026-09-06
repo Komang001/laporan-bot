@@ -19,6 +19,7 @@ import csv
 import datetime
 import io
 import os
+import re
 import sys
 import urllib.parse
 import urllib.request
@@ -27,7 +28,7 @@ from zoneinfo import ZoneInfo
 SHEET_URL = os.environ.get(
     "JADWAL_SHEET_URL",
     "https://docs.google.com/spreadsheets/d/"
-    "1VlLQx0CxMeWStMjpkwQWiq8nbXaYqO2fJABAe7JNhmg/export?format=csv&gid=909284534",
+    "1VlLQx0CxMeWStMjpkwQWiq8nbXaYqO2fJABAe7JNhmg/export?format=csv&gid=890618279",
 )
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
@@ -67,11 +68,46 @@ DAY_NAMES = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu", "Minggu"]
 MONTH_NAMES = ["Januari", "Februari", "Maret", "April", "Mei", "Juni",
                "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
 
+_MONTH_ABBR = {
+    "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MEI": 5, "JUN": 6,
+    "JUL": 7, "AGU": 8, "SEP": 9, "OKT": 10, "NOV": 11, "DES": 12,
+}
+
 
 def http_get(url, timeout=20):
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read()
+
+
+def resolve_sheet_url(now):
+    """Deteksi tab sheet yang memuat tanggal target secara otomatis."""
+    if "JADWAL_SHEET_URL" in os.environ:
+        return SHEET_URL
+    m = re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", SHEET_URL)
+    if not m:
+        return SHEET_URL
+    sheet_id = m.group(1)
+    try:
+        html = http_get(f"https://docs.google.com/spreadsheets/d/{sheet_id}/htmlview").decode("utf-8", errors="replace")
+        tabs = re.findall(r'name:\s*"([^"]+)"[^\}]+?gid:\s*"(\d+)"', html)
+        target_m = now.month
+        target_d = now.day
+        for name, gid in tabs:
+            clean = re.sub(r'[^a-zA-Z]', ' ', name).upper()
+            matched_m = [v for k, v in _MONTH_ABBR.items() if any(t.startswith(k) for t in clean.split())]
+            if target_m in matched_m:
+                csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
+                csv_raw = http_get(csv_url).decode("utf-8", errors="replace")
+                rows = list(csv.reader(io.StringIO(csv_raw)))
+                for r in rows:
+                    if r and r[0] == "NAMA":
+                        if any(_cell_day(h, target_d) for h in r):
+                            return csv_url
+                        break
+    except Exception:
+        pass
+    return SHEET_URL
 
 
 def _cell_day(value, day):
@@ -191,9 +227,11 @@ def parse_pic_xlsx(raw, day):
 
 def build_message(now):
     day = now.day
-    piket = parse_piket_csv(http_get(SHEET_URL).decode("utf-8", errors="replace"), day)
+    csv_url = resolve_sheet_url(now)
+    xlsx_url = csv_url.replace("export?format=csv", "export?format=xlsx")
+    piket = parse_piket_csv(http_get(csv_url).decode("utf-8", errors="replace"), day)
     pic = parse_pic_xlsx(
-        http_get(SHEET_URL.replace("export?format=csv", "export?format=xlsx")), day
+        http_get(xlsx_url), day
     )
     if piket is None:
         raise RuntimeError("Tanggal tidak ada di jadwal sheet / CSV tidak terbaca")
