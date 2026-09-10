@@ -3097,7 +3097,8 @@ class SygapService:
 
                     # Filter-aware: dispatch vs Owner Group - jangan permanen biar Owner Group tetap ke-handle
                     if current_filter[0].lower() == "owner group":
-                        if "owner group" not in note.lower() and "ownergroup" not in note.lower():
+                        note_lower = note.lower()
+                        if "owner group" not in note_lower and "ownergroup" not in note_lower:
                             log(f"    SAFETY: No 'Owner Group' in note, SKIP (filter {current_filter[0]})")
                             continue
                     else:
@@ -3655,12 +3656,12 @@ class SygapService:
                             continue
 
                         command = f"/changeserviceid {inc_number} {service_id}"
-                        log(f"    Sending via BISCUIT UI: {command}")
+                        log(f"    Sending: {command}")
 
                         max_retries = 2
                         for attempt in range(1, max_retries + 1):
-                            log(f"    Command sent via UI (attempt {attempt})")
-                            response = biscuit.execute_ui(command, "INSERA")
+                            log(f"    Command sent (attempt {attempt})")
+                            response = biscuit.execute(command, "INSERA")
                             log(f"    BISCUIT response: {response.status} - {response.message}")
 
                             if response.status != "UNKNOWN":

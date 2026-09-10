@@ -80,8 +80,72 @@ def http_get(url, timeout=20):
         return resp.read()
 
 
+def _month_num(word):
+    """Nomor bulan dari nama Indonesia penuh/singkat (case-insensitive)."""
+    key = re.sub(r'[^a-zA-Z]', '', word or '').upper()[:3]
+    return _MONTH_ABBR.get(key)
+
+
+def _parse_range_title(title, ref):
+    """Parse judul periode tab, mis. '7 SEPTEMBER - 4 OKTOBER' atau
+    '9 AGUSTUS - SEPTEMBER' (tanpa tanggal akhir = akhir bulan).
+
+    Return (start_date, end_date) atau None jika tidak bisa diparse.
+    """
+    import calendar
+
+    if not title:
+        return None
+    m = re.search(
+        r"(\d{1,2})\s+([A-Za-z]+)\s*-\s*(?:(\d{1,2})\s+)?([A-Za-z]+)",
+        str(title).strip(),
+    )
+    if not m:
+        return None
+    d1, w1, d2, w2 = int(m.group(1)), m.group(2), m.group(3), m.group(4)
+    m1, m2 = _month_num(w1), _month_num(w2)
+    if not m1 or not m2:
+        return None
+    try:
+        start = datetime.date(ref.year, m1, d1)
+    except ValueError:
+        return None
+    if d2:
+        end = datetime.date(ref.year, m2, int(d2))
+    else:
+        end = datetime.date(ref.year, m2, calendar.monthrange(ref.year, m2)[1])
+    if end < start:
+        # Rentang lewat tahun baru, mis. Des-Jan.
+        try:
+            end = datetime.date(ref.year + 1, m2, end.day)
+        except ValueError:
+            return None
+    if ref.date() < start:
+        # Hari ini sebelum periode tahun ini -> periode tahun lalu.
+        try:
+            start = datetime.date(ref.year - 1, m1, d1)
+            end = datetime.date(end.year - 1, end.month, end.day)
+        except ValueError:
+            return None
+    return (start, end)
+
+
+def _tab_title(rows):
+    """Ambil judul periode dari baris-baris awal CSV (mis. '7 SEPTEMBER - 4 OKTOBER')."""
+    for r in (rows or [])[:4]:
+        for cell in r or []:
+            if cell and re.search(r"\d{1,2}\s+[A-Za-z]+\s*-", str(cell)):
+                return str(cell).strip()
+    return ""
+
+
 def resolve_sheet_url(now):
-    """Deteksi tab sheet yang memuat tanggal target secara otomatis."""
+    """Deteksi tab sheet yang memuat tanggal target secara otomatis.
+
+    Beberapa tab bisa overlap (mis. 'Agu-Sep' dan 'Sep-Okt' sama-sama
+    memuat September). Jika begitu, pilih tab yang periodenya mencakup
+    hari ini dengan tanggal mulai paling baru (jadwal yang berlaku).
+    """
     if "JADWAL_SHEET_URL" in os.environ:
         return SHEET_URL
     m = re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", SHEET_URL)
@@ -93,7 +157,12 @@ def resolve_sheet_url(now):
         tabs = re.findall(r'name:\s*"([^"]+)"[^\}]+?gid:\s*"(\d+)"', html)
         target_m = now.month
         target_d = now.day
+        seen = set()
+        candidates = []  # (csv_url, start_or_None)
         for name, gid in tabs:
+            if gid in seen:
+                continue
+            seen.add(gid)
             clean = re.sub(r'[^a-zA-Z]', ' ', name).upper()
             matched_m = [v for k, v in _MONTH_ABBR.items() if any(t.startswith(k) for t in clean.split())]
             if target_m in matched_m:
@@ -103,8 +172,20 @@ def resolve_sheet_url(now):
                 for r in rows:
                     if r and r[0] == "NAMA":
                         if any(_cell_day(h, target_d) for h in r):
-                            return csv_url
+                            rng = _parse_range_title(_tab_title(rows), now)
+                            if rng and rng[0] <= now.date() <= rng[1]:
+                                candidates.append((csv_url, rng[0]))
+                            else:
+                                # Rentang tak terparse / tak mencakup: fallback
+                                # (perilaku lama: tab cocok pertama menang).
+                                candidates.append((csv_url, None))
                         break
+        covering = [(u, s) for u, s in candidates if s is not None]
+        if covering:
+            covering.sort(key=lambda t: t[1], reverse=True)
+            return covering[0][0]
+        if candidates:
+            return candidates[0][0]
     except Exception:
         pass
     return SHEET_URL

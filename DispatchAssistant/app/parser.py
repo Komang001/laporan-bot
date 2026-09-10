@@ -212,13 +212,15 @@ def extract_service_id(text: str):
     clean = re.sub(r"<[^>]+>", " ", text)
     clean = re.sub(r"\s+", " ", clean).strip()
 
-    # Pattern 1: Explicit "Service ID" label
+    # Pattern 1: Explicit "Service ID" label - but validate format looks like service ID
     pattern_explicit = r"(?i)\b(?:service\s*id|service_id|serviceid)\s*(?:menjadi|jadi|ke|adalah|:|:|=|\->|->)?\s*([A-Za-z0-9_\-\.]+)"
     match = re.search(pattern_explicit, clean)
     if match:
         candidate = match.group(1).strip().rstrip(".,;:!")
         if candidate and candidate.lower() not in ("menjadi", "jadi", "ke", "adalah", "null", "none", "tidak", "ada"):
-            return candidate
+            # Validate: service ID should contain underscore and digits (format: DIGITS_DIGITS_WORD)
+            if re.search(r"\d+_\d+", candidate):
+                return candidate
 
     # Pattern 2: Fallback - Service ID format is typically DIGITS_DIGITS_WORD
     # e.g. 20780_0224233814_VOICE, 5480832_0214711635_VOICE
