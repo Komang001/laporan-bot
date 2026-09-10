@@ -1,3 +1,4 @@
+import calendar
 import csv
 import io
 import json
@@ -6,7 +7,7 @@ import os
 import re
 import threading
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from config.settings import (
     JADWAL_SHEET_NAMES,
@@ -1381,7 +1382,7 @@ def _build_tukar_note(date=None, now=None):
 # Piket otomatis dari Google Sheet jadwal shift
 # ==================================================
 
-_sheet_cache = {"date": None, "tags": None}
+_sheet_cache = {"date": None, "tags": None, "ts": 0}
 _sheet_lock = threading.Lock()
 
 _L1_SUMMARY_ROWS = {"SHIFT 1", "SHIFT 2", "SHIFT 3", "TOTAL MASUK PER HARI"}
@@ -1395,6 +1396,68 @@ _sheet_tabs_cache = {"ts": 0, "tabs": []}
 _sheet_gid_cache = {}
 _sheet_tabs_lock = threading.Lock()
 _TABS_CACHE_TTL = 3600  # 1 jam
+
+# Cache isi sheet (piket & PIC) diberi TTL agar koreksi sheet di siang hari
+# langsung terbaca tanpa restart bot (kasus: Anne masih muncul padahal sheet
+# sudah dikoreksi).
+_SHEET_CACHE_TTL = 600  # 10 menit
+
+
+def _month_num(word):
+    """Nomor bulan dari nama Indonesia penuh/singkat (case-insensitive)."""
+    key = re.sub(r'[^a-zA-Z]', '', word or '').upper()[:3]
+    return _MONTH_ABBR.get(key)
+
+
+def _parse_range_title(title, ref):
+    """Parse judul periode tab, mis. '7 SEPTEMBER - 4 OKTOBER' atau
+    '9 AGUSTUS - SEPTEMBER' (tanpa tanggal akhir = akhir bulan).
+
+    Return (start_date, end_date) atau None jika tidak bisa diparse.
+    """
+    if not title:
+        return None
+    m = re.search(
+        r"(\d{1,2})\s+([A-Za-z]+)\s*-\s*(?:(\d{1,2})\s+)?([A-Za-z]+)",
+        str(title).strip(),
+    )
+    if not m:
+        return None
+    d1, w1, d2, w2 = int(m.group(1)), m.group(2), m.group(3), m.group(4)
+    m1, m2 = _month_num(w1), _month_num(w2)
+    if not m1 or not m2:
+        return None
+    try:
+        start = date(ref.year, m1, d1)
+    except ValueError:
+        return None
+    if d2:
+        end = date(ref.year, m2, int(d2))
+    else:
+        end = date(ref.year, m2, calendar.monthrange(ref.year, m2)[1])
+    if end < start:
+        # Rentang lewat tahun baru, mis. Des-Jan.
+        try:
+            end = date(ref.year + 1, m2, end.day)
+        except ValueError:
+            return None
+    if ref.date() < start:
+        # Hari ini sebelum periode tahun ini -> periode tahun lalu.
+        try:
+            start = date(ref.year - 1, m1, d1)
+            end = date(end.year - 1, end.month, end.day)
+        except ValueError:
+            return None
+    return (start, end)
+
+
+def _tab_title(rows):
+    """Ambil judul periode dari baris-baris awal CSV (mis. '7 SEPTEMBER - 4 OKTOBER')."""
+    for r in (rows or [])[:4]:
+        for cell in r or []:
+            if cell and re.search(r"\d{1,2}\s+[A-Za-z]+\s*-", str(cell)):
+                return str(cell).strip()
+    return ""
 
 
 def _extract_spreadsheet_id(url=None):
@@ -1445,15 +1508,19 @@ def _parse_tab_months(tab_name):
 
 
 def _check_tab_has_date(sheet_id, gid, m1, m2, target_month, target_day):
-    """Periksa apakah tab Google Sheet memiliki kolom untuk target tanggal & bulan."""
+    """Periksa apakah tab Google Sheet memiliki kolom untuk target tanggal & bulan.
+
+    Return (ditemukan: bool, judul_periode: str). Judul dipakai untuk memilih
+    tab terbaru saat beberapa tab overlap.
+    """
     csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
     raw = _fetch_sheet_csv(csv_url)
     if not raw:
-        return False
+        return False, ""
     try:
         rows = list(csv.reader(io.StringIO(raw)))
     except Exception:
-        return False
+        return False, ""
 
     start = None
     for i, r in enumerate(rows):
@@ -1461,7 +1528,7 @@ def _check_tab_has_date(sheet_id, gid, m1, m2, target_month, target_day):
             start = i
             break
     if start is None:
-        return False
+        return False, ""
 
     header = rows[start]
     cur_m = m1
@@ -1475,8 +1542,8 @@ def _check_tab_has_date(sheet_id, gid, m1, m2, target_month, target_day):
             cur_m = m2
         prev_d = d
         if cur_m == target_month and d == target_day:
-            return True
-    return False
+            return True, _tab_title(rows)
+    return False, ""
 
 
 def _resolve_sheet_gid(target_date=None):
@@ -1486,7 +1553,10 @@ def _resolve_sheet_gid(target_date=None):
     2. Ambil daftar tab dari /htmlview Google Sheet.
     3. Filter tab kandidat yang mencakup bulan berjalan.
     4. Validasi keberadaan kolom tanggal pada tab.
-    5. Fallback ke None jika tidak ditemukan (akan memakai default JADWAL_SHEET_URL).
+    5. Jika beberapa tab overlap (mis. 'Agu-Sep' & 'Sep-Okt' sama-sama memuat
+       September), pilih yang periodenya mencakup hari ini dengan tanggal
+       mulai paling baru (jadwal yang berlaku).
+    6. Fallback ke None jika tidak ditemukan (akan memakai default JADWAL_SHEET_URL).
     """
     target_date = target_date or datetime.now()
     date_str = target_date.strftime("%Y-%m-%d")
@@ -1507,28 +1577,44 @@ def _resolve_sheet_gid(target_date=None):
 
     candidate_tabs = []
     other_tabs = []
+    seen_gids = set()
     for name, gid in tabs:
+        if gid in seen_gids:
+            continue
+        seen_gids.add(gid)
         m1, m2 = _parse_tab_months(name)
         if m1 == target_m or m2 == target_m:
             candidate_tabs.append((name, gid, m1, m2))
         else:
             other_tabs.append((name, gid, m1, m2))
 
-    for name, gid, m1, m2 in candidate_tabs:
-        if _check_tab_has_date(sheet_id, gid, m1, m2, target_m, target_d):
-            with _sheet_tabs_lock:
-                _sheet_gid_cache[date_str] = gid
-            logger.info(f"Otomatis menggunakan tab sheet '{name}' (gid={gid}) untuk {date_str}")
-            return gid
+    hits = []  # (gid, name, start_or_None)
+    for pool in (candidate_tabs, other_tabs):
+        for name, gid, m1, m2 in pool:
+            found, title = _check_tab_has_date(sheet_id, gid, m1, m2, target_m, target_d)
+            if found:
+                rng = _parse_range_title(title, target_date)
+                if rng and rng[0] <= target_date.date() <= rng[1]:
+                    hits.append((gid, name, rng[0]))
+                else:
+                    hits.append((gid, name, None))
+        if hits:
+            break
 
-    for name, gid, m1, m2 in other_tabs:
-        if _check_tab_has_date(sheet_id, gid, m1, m2, target_m, target_d):
-            with _sheet_tabs_lock:
-                _sheet_gid_cache[date_str] = gid
-            logger.info(f"Otomatis menggunakan tab sheet '{name}' (gid={gid}) untuk {date_str}")
-            return gid
-
-    return None
+    if not hits:
+        return None
+    covering = [h for h in hits if h[2] is not None]
+    if covering:
+        # Periode overlap -> tab dengan tanggal mulai paling baru menang.
+        best = max(covering, key=lambda t: t[2])
+    else:
+        # Rentang tak terparse -> perilaku lama (kandidat pertama menang).
+        best = hits[0]
+    gid, name = best[0], best[1]
+    with _sheet_tabs_lock:
+        _sheet_gid_cache[date_str] = gid
+    logger.info(f"Otomatis menggunakan tab sheet '{name}' (gid={gid}) untuk {date_str}")
+    return gid
 
 
 def _get_sheet_csv_url_for_date(target_date=None):
@@ -1595,8 +1681,9 @@ def _sheet_piket_map(date=None):
     """
     date = date or datetime.now()
     date_str = date.strftime("%Y-%m-%d")
+    now_ts = datetime.now().timestamp()
     with _sheet_lock:
-        if _sheet_cache["date"] == date_str:
+        if _sheet_cache["date"] == date_str and (now_ts - _sheet_cache["ts"] < _SHEET_CACHE_TTL):
             return _sheet_cache["tags"]
     csv_url = _get_sheet_csv_url_for_date(date)
     raw = _fetch_sheet_csv(csv_url)
@@ -1606,6 +1693,7 @@ def _sheet_piket_map(date=None):
     with _sheet_lock:
         _sheet_cache["date"] = date_str
         _sheet_cache["tags"] = result
+        _sheet_cache["ts"] = now_ts
     return result
 
 
@@ -1692,7 +1780,7 @@ def _shift_people_tags(now=None):
 # PIC Report & SCMT (sel hijau #00FF00 di jadwal)
 # ==================================================
 
-_sheet_pic_cache = {"date": None, "data": None}
+_sheet_pic_cache = {"date": None, "data": None, "ts": 0}
 _sheet_pic_lock = threading.Lock()
 
 _GREEN_FILL = "FF00FF00"
@@ -1744,8 +1832,9 @@ def _sheet_pic_map(date=None):
     """
     date = date or datetime.now()
     date_str = date.strftime("%Y-%m-%d")
+    now_ts = datetime.now().timestamp()
     with _sheet_pic_lock:
-        if _sheet_pic_cache["date"] == date_str:
+        if _sheet_pic_cache["date"] == date_str and (now_ts - _sheet_pic_cache["ts"] < _SHEET_CACHE_TTL):
             return _sheet_pic_cache["data"]
     xlsx_url = _get_sheet_xlsx_url_for_date(date)
     raw = _fetch_sheet_xlsx(xlsx_url)
@@ -1755,6 +1844,7 @@ def _sheet_pic_map(date=None):
     with _sheet_pic_lock:
         _sheet_pic_cache["date"] = date_str
         _sheet_pic_cache["data"] = result
+        _sheet_pic_cache["ts"] = now_ts
     return result
 
 
