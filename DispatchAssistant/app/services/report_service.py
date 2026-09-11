@@ -1727,6 +1727,9 @@ def _parse_sheet_tags(raw, date):
             continue
         name = (r[0] or "").strip()
         if name:
+            # Header blok berikutnya (L2) / penanda JADWAL -> selesai blok L1.
+            if name == "NAMA" or name.upper().startswith("JADWAL"):
+                break
             cur_name = name
         slot = (r[1] or "").strip() if len(r) > 1 else ""
         if slot:
@@ -1878,10 +1881,12 @@ def _parse_sheet_pic(raw, date):
     for r in range(header_row + 1, ws.max_row + 1):
         name = ws.cell(r, 1).value
         slot = ws.cell(r, 2).value
-        if name and str(name).strip().upper() in _L1_SUMMARY_ROWS:
+        if name and str(name).strip() == "NAMA":
             break
         if str(name or "").strip().upper().startswith("JADWAL"):
             break
+        if name and str(name).strip().upper() in _L1_SUMMARY_ROWS:
+            continue
         if name:
             cur_name = str(name).strip()
         if slot:

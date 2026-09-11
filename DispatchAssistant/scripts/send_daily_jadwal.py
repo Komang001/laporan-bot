@@ -48,6 +48,7 @@ SHIFT_START_M = {
 NAMES_MAP = {
     "I NYOMAN WINDU": "WINDU",
     "RIZKY SENJA BUDIMAN": "RIZKY",
+    "RIZKY SENJA": "RIZKY",
     "RIZKY": "RIZKY",
 }
 USERNAMES = {
@@ -246,9 +247,14 @@ def parse_piket_csv(raw, day):
             continue
         name = (r[0] or "").strip()
         if name:
+            # Header blok berikutnya (L2) / penanda JADWAL -> selesai blok L1.
+            if name == "NAMA" or name.upper().startswith("JADWAL"):
+                break
             cur_name = name
+        # Baris ringkasan SHIFT/TOTAL: lewati saja, jangan berhenti —
+        # blok anggota bisa ada sesudahnya (mis. RIZKY SENJA di tab Sep-Okt).
         if cur_name and cur_name.upper() in SUMMARY_ROWS:
-            break
+            continue
         slot = (r[1] or "").strip() if len(r) > 1 else ""
         if slot:
             cur_shift_m = _slot_start_min(slot)
@@ -285,10 +291,12 @@ def parse_pic_xlsx(raw, day):
     cur_shift_m = None
     for r in range(header_row + 1, ws.max_row + 1):
         name = ws.cell(r, 1).value
-        if name and str(name).strip().upper() in SUMMARY_ROWS:
+        if name and str(name).strip() == "NAMA":
             break
         if str(name or "").strip().upper().startswith("JADWAL"):
             break
+        if name and str(name).strip().upper() in SUMMARY_ROWS:
+            continue
         if name:
             cur_name = str(name).strip()
         slot = ws.cell(r, 2).value
