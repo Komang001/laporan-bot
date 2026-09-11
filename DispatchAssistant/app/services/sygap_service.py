@@ -41,6 +41,24 @@ def _log_skip_reason(code, reason, note=""):
         pass
 
 
+# Reply note SYGAP saat BISCUIT menolak dispatch karena owner group tidak valid.
+INVALID_OG_REPLY = "owner group tidak terdaftar di INSERA tolong diperhatikan kembali format owner group nya"
+
+
+def is_invalid_owner_group_error(message):
+    """True jika pesan error BISCUIT menunjukkan owner group tidak valid.
+
+    Cocok untuk varian: 'Owner Group Invalid', 'Invalid Owner Group',
+    'owner_group invalid', 'ownergroup invalid', dll (case-insensitive).
+    """
+    if not message:
+        return False
+    m = str(message).lower()
+    return "invalid" in m and (
+        "owner group" in m or "ownergroup" in m or "owner_group" in m
+    )
+
+
 class SygapService:
 
     def __init__(self, browser_manager=None, stop_check=None):
@@ -2687,6 +2705,9 @@ class SygapService:
                         if all_success:
                             log(f"    All INCs dispatched successfully")
                             complete_note = "Cek Kembali"
+                        elif any(is_invalid_owner_group_error(m) for m in failed_incs):
+                            log(f"    Bulk gagal karena owner group invalid -> balas note format OG")
+                            complete_note = INVALID_OG_REPLY
                         else:
                             log(f"    Some INCs failed: {len(failed_incs)}")
                             complete_note = "; ".join(failed_incs)[:200]
@@ -2838,6 +2859,9 @@ class SygapService:
                         if response.status == "SUCCESS":
                             log(f"    BISCUIT SUKSES! Complete ticket...")
                             complete_note = "Cek Kembali"
+                        elif is_invalid_owner_group_error(response.message if response else ""):
+                            log(f"    BISCUIT: owner group invalid -> balas note format OG")
+                            complete_note = INVALID_OG_REPLY
                         else:
                             log(f"    BISCUIT GAGAL! Complete dengan alasan error...")
                             complete_note = response.message[:200]
@@ -3246,6 +3270,9 @@ class SygapService:
                         if all_success:
                             log(f"    All INCs dispatched successfully")
                             complete_note = "Cek Kembali"
+                        elif any(is_invalid_owner_group_error(m) for m in failed_incs):
+                            log(f"    Bulk gagal karena owner group invalid -> balas note format OG")
+                            complete_note = INVALID_OG_REPLY
                         else:
                             log(f"    Some INCs failed: {len(failed_incs)}")
                             complete_note = "; ".join(failed_incs)[:200]
@@ -3385,6 +3412,9 @@ class SygapService:
                         if response.status == "SUCCESS":
                             log(f"    BISCUIT SUKSES! Complete ticket...")
                             complete_note = "Cek Kembali"
+                        elif is_invalid_owner_group_error(response.message if response else ""):
+                            log(f"    BISCUIT: owner group invalid -> balas note format OG")
+                            complete_note = INVALID_OG_REPLY
                         else:
                             log(f"    BISCUIT GAGAL! Complete dengan alasan error...")
                             complete_note = response.message[:200]
