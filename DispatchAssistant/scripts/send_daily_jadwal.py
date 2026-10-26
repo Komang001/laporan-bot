@@ -37,8 +37,8 @@ THREAD_ID = os.environ.get("TELEGRAM_MESSAGE_THREAD_ID", "").strip()
 
 SHIFTS = [
     ("Shift 1", "00:00", "09:00"),
-    ("Shift 2", "09:00", "16:30"),
-    ("Shift 3", "16:30", "23:59"),
+    ("Shift 2", "08:00", "17:00"),
+    ("Shift 3", "15:00", "24:00"),
 ]
 SHIFT_START_M = {
     int(st.split(":")[0]) * 60 + int(st.split(":")[1]): (label, st, en)

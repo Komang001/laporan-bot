@@ -153,19 +153,19 @@ REPORT_SCHEDULE_INTERVAL_MINUTES = 30
 
 # Shift kerja: header laporan mengikuti shift yang sedang aktif saat report
 # dijalankan. Deteksi otomatis dari jam server.
-#   Shift 1: 00:00-09:00, Shift 2: 09:00-16:30, Shift 3: 16:30-23:59
-# Pergantian shift 1 -> 2 di 09:00, shift 2 -> 3 di 16:30; report tepat di
+#   Shift 1: 00:00-09:00, Shift 2: 08:00-17:00, Shift 3: 15:00-24:00
+# Pergantian shift 1 -> 2 di 09:00, shift 2 -> 3 di 17:00; report tepat di
 # jam AKHIR sebuah shift masih dihitung shift itu (mis. 09:00 -> Shift 1,
-# 16:30 -> Shift 2). Khusus 00:00 -> Shift 1 (bukan Shift 3), karena hari
+# 17:00 -> Shift 2). Khusus 00:00 -> Shift 1 (bukan Shift 3), karena hari
 # baru dimulai. Jika dua shift memuat waktu sama (overlap), shift yang
 # BERAKHIR paling awal menang.
 # Daftar orang per report = hanya yang MASUK di shift aktif (dari sheet
 # jadwal), bukan semua piket hari itu.
-# 'end' = "00:00" berarti akhir hari (lewat tengah malam).
+# 'end' = "00:00" atau "24:00" berarti akhir hari (lewat tengah malam).
 REPORT_SHIFTS = [
     {"label": "Shift 1", "level": "L1", "start": "00:00", "end": "09:00"},
-    {"label": "Shift 2", "level": "L1", "start": "09:00", "end": "16:30"},
-    {"label": "Shift 3", "level": "L1", "start": "16:30", "end": "23:59"},
+    {"label": "Shift 2", "level": "L1", "start": "08:00", "end": "17:00"},
+    {"label": "Shift 3", "level": "L1", "start": "15:00", "end": "24:00"},
 ]
 
 # Google Sheet jadwal shift (export CSV public, tanpa login).
