@@ -159,6 +159,37 @@ def _current_shift(now=None):
     return min(candidates, key=lambda c: c["end_m"])
 
 
+L2_SHIFTS = [
+    {"label": "Shift 1", "level": "L2", "start": "08:00", "end": "17:00"},
+    {"label": "Shift 2", "level": "L2", "start": "17:00", "end": "24:00"},
+]
+
+
+def _current_l2_shift(now=None):
+    now = now or datetime.now()
+    minutes = now.hour * 60 + now.minute
+    for s in L2_SHIFTS:
+        sh, sm = (int(x) for x in s["start"].split(":"))
+        eh, em = (int(x) for x in s["end"].split(":"))
+        start_m = sh * 60 + sm
+        end_m = 24 * 60 if eh == 24 or (eh == 0 and em == 0) else eh * 60 + em
+        if start_m <= minutes <= end_m:
+            return s
+    return None
+
+
+def _l2_people_tags(now=None):
+    now = now or datetime.now()
+    shift = _current_l2_shift(now)
+    if not shift:
+        return []
+    piket_all = _sheet_piket_all(now) or {}
+    piket_l2 = piket_all.get("L2", {})
+    sh, sm = (int(x) for x in shift["start"].split(":"))
+    key = _match_shift_slot(piket_l2, sh * 60 + sm)
+    return piket_l2.get(key, []) if key is not None else []
+
+
 class ReportService:
 
     def __init__(self, browser_manager=None, log_callback=None):
@@ -1277,6 +1308,9 @@ class ReportService:
             else "-"
         )
 
+        l2_shift = _current_l2_shift(now)
+        l2_piket = _l2_people_tags(now)
+
         block = [
             f"📄 {REPORT_TITLE}",
             REPORT_CHANNEL,
@@ -1288,6 +1322,11 @@ class ReportService:
             shift_line,
         ]
         block += piket
+        if l2_piket:
+            l2_line = f"L2 ({l2_shift['start']} - {l2_shift['end']}):" if l2_shift else "L2:"
+            block += ["", l2_line]
+            block += l2_piket
+
         block += [
             "",
             "————————————————————",
@@ -1308,6 +1347,8 @@ class ReportService:
             "",
         ]
         pic_map = _sheet_pic_map(now)
+        pic_all = _sheet_pic_all(now) or {}
+        pic_l2_map = pic_all.get("L2", {})
         if pic_map:
             pic_line = None
             if shift:
@@ -1322,6 +1363,13 @@ class ReportService:
                 block.append("• (tidak ada PIC hijau di shift ini)")
         else:
             block.append("• (tidak terbaca / tanggal di luar jadwal sheet)")
+
+        if l2_shift and pic_l2_map:
+            sh, sm = (int(x) for x in l2_shift["start"].split(":"))
+            key_l2 = _match_shift_slot(pic_l2_map, sh * 60 + sm)
+            tag_l2 = pic_l2_map.get(key_l2) if key_l2 is not None else None
+            if tag_l2:
+                block.append(f"• PIC L2 ({l2_shift['label']}): {tag_l2}")
 
         # ---- Catatan tukar shift (override) ----
         try:
