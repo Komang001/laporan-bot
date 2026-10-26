@@ -26,6 +26,7 @@ CHROME_PORTS = {
     "REPORT": 9226,
     "CHANGE_SERVICE_ID": 9227,
     "DISPATCH_INCIDENT": 9228,
+    "MYASSISTANCE": 9229,
 }
 
 CHROME_PROFILES = {
@@ -36,6 +37,7 @@ CHROME_PROFILES = {
     9226: r"C:\ChromeDebug_REPORT",
     9227: r"C:\ChromeDebug_CHANGE_SERVICE_ID",
     9228: r"C:\ChromeDebug_INCIDENT",
+    9229: r"C:\ChromeDebug_MYASSISTANCE",
 }
 
 
@@ -112,11 +114,26 @@ TELEGRAM_CHAT_IDS = {
     "change_service_id": [],
 }
 
-TELEGRAM_ALLOWED_USER_IDS = []  # chat ID admin/pemilik bot; kosongkan = semua boleh akses
+_raw_allowed = os.environ.get("TELEGRAM_ALLOWED_USER_IDS", "").strip()
+if _raw_allowed:
+    TELEGRAM_ALLOWED_USER_IDS = [int(x.strip()) for x in _raw_allowed.split(",") if x.strip().isdigit()]
+else:
+    TELEGRAM_ALLOWED_USER_IDS = []  # chat ID user yang boleh akses; kosongkan = semua boleh akses
+
+# Admin yang berhak menjalankan perintah kontrol sensitif (/stop, start fitur bot, dsb).
+# Default: [903566652] (ID Bli Komang). Bisa ditambah via .env: TELEGRAM_ADMIN_USER_IDS=903566652,123456
+_raw_admins = os.environ.get("TELEGRAM_ADMIN_USER_IDS", "").strip()
+if _raw_admins:
+    TELEGRAM_ADMIN_USER_IDS = [int(x.strip()) for x in _raw_admins.split(",") if x.strip().isdigit()]
+else:
+    TELEGRAM_ADMIN_USER_IDS = [903566652]
 
 # Request Coordinator (solver) yang tiketnya TIDAK boleh disentuh bot (skip semua fitur).
 # Rizky Senja Budiman (CRS2018192) = 55652.
-SKIP_COORDINATOR_USER_IDS = ["55652"]
+# ID angka dicocokkan persis ke value field; nama/username dicocokkan sebagian
+# (case-insensitive) ke label — menutup kasus form incident yang valuenya
+# berupa username, bukan ID angka.
+SKIP_COORDINATOR_USER_IDS = ["55652", "Rizky Senja Budiman", "CRS2018192"]
 
 # ==================================================
 # Report Harian Helpdesk Operasional
@@ -158,12 +175,48 @@ JADWAL_SHEET_URL = (
     "1VlLQx0CxMeWStMjpkwQWiq8nbXaYqO2fJABAe7JNhmg/export?format=csv&gid=890618279"
 )
 
+# Katalog Owner Group INSERA untuk koreksi typo dispatch.
+# Isi dengan link Google Sheet (tab berisi kolom 'Person Group Name' + 'Status',
+# share "Anyone with the link" Viewer), atau kosongkan untuk memakai file lokal
+# DispatchAssistant/data/owner_groups.xlsx|.csv.
+OG_SHEET_URL = os.environ.get("OG_SHEET_URL", "")
+
 # Nama di sheet jadwal yang berbeda dengan kunci TELEGRAM_USERNAMES.
 JADWAL_SHEET_NAMES = {
     "I NYOMAN WINDU": "WINDU",
     "RIZKY SENJA BUDIMAN": "RIZKY",
     "RIZKY SENJA": "RIZKY",
     "RIZKY": "RIZKY",
+    # L2
+    "ADAM (L2)": "ADAM",
+    "ADAM": "ADAM",
+    "RIYAN (L2)": "RIYAN",
+    "RIYAN": "RIYAN",
+    "ADYTAMA (L2)": "ADY",
+    "ADYTAMA": "ADY",
+    "ADY": "ADY",
+    "FAISHAL (L2)": "FAISAL",
+    "FAISHAL": "FAISAL",
+    "FAISAL (L2)": "FAISAL",
+    "FAISAL": "FAISAL",
+    "ERWIN (L2)": "ERWIN",
+    "ERWIN": "ERWIN",
+    "RIZKY ARDIAN (L2)": "RIZKY ARDIAN",
+    "RIZKY ARDIAN": "RIZKY ARDIAN",
+    # DEV
+    "REZA (DEV INSERA)": "REZA",
+    "REZA": "REZA",
+    "AJI (DEV BIMA)": "AJI",
+    "AJI": "AJI",
+    "WILDAN (DEV BIMA)": "WILDAN",
+    "WILDAN": "WILDAN",
+    # L3
+    "KEVIN (L3)": "KEVIN",
+    "KEVIN": "KEVIN",
+    "GUNTUR (L3)": "GUNTUR",
+    "GUNTUR": "GUNTUR",
+    "DANA (L3)": "DANA",
+    "DANA": "DANA",
 }
 
 # Header laporan
@@ -175,6 +228,7 @@ REPORT_PERSONNEL = ["@dikaprndx", "@komangwindu", "@rizkysenjab"]
 # Input piket (GUI/Telegram) cukup nama saja, otomatis diubah ke tag ini.
 # Pencocokan tidak peka huruf besar/kecil, mis. "windu" -> @komangwindu.
 TELEGRAM_USERNAMES = {
+    # L1
     "ANNE": "@annemaswa27",
     "ALFIRA": "@hifirrr",
     "TYAS": "@ikhpani",
@@ -184,6 +238,14 @@ TELEGRAM_USERNAMES = {
     "DIKA": "@dikaprndx",
     "WINDU": "@komangwindu",
     "RIZKY": "@rizkysenjab",
+    # L2 & DEV
+    "RIYAN": "@riyanalwandika",
+    "ADAM": "@Adamilhamm",
+    "ADY": "@ady_tama",
+    "FAISAL": "@ishal223",
+    "AJI": "@aifllvyy",
+    "WILDAN": "@wildanfariz",
+    "REZA": "@rezzamf",
 }
 
 # Solver ID SYGAP per nama (value opsi #solverSearch).

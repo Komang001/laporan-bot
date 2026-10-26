@@ -15,6 +15,7 @@ from telegram.ext import (
 from config.settings import (
     TELEGRAM_BOT_TOKEN,
     TELEGRAM_ALLOWED_USER_IDS,
+    TELEGRAM_ADMIN_USER_IDS,
     CHROME_PORTS,
     REPORT_CHAT_IDS,
     REPORT_SCHEDULE_INTERVAL_MINUTES,
@@ -183,6 +184,16 @@ class FeatureTelegramBot:
             return True
         return update.effective_user.id in TELEGRAM_ALLOWED_USER_IDS
 
+    def _is_admin(self, update: Update) -> bool:
+        if not update or not update.effective_user:
+            return False
+        user_id = update.effective_user.id
+        if user_id in TELEGRAM_ADMIN_USER_IDS:
+            return True
+        if TELEGRAM_ALLOWED_USER_IDS and user_id in TELEGRAM_ALLOWED_USER_IDS:
+            return True
+        return False
+
     def _label(self):
         return self.FEATURE_LABELS.get(self.key, self.key)
 
@@ -200,6 +211,10 @@ class FeatureTelegramBot:
         if not self._is_authorized(update):
             await update.message.reply_text("Akses ditolak.")
             return
+        if not self._is_admin(update):
+            user_name = update.effective_user.first_name if update.effective_user else "User"
+            await update.message.reply_text(f"⛔ Akses ditolak untuk {user_name}.\nHanya Admin yang dapat memulai {self._label()}.")
+            return
         if self._is_running():
             await update.message.reply_text(f"{self._label()} sudah running.")
             return
@@ -213,6 +228,20 @@ class FeatureTelegramBot:
         if not self._is_authorized(update):
             await update.message.reply_text("Akses ditolak.")
             return
+
+        if not self._is_admin(update):
+            user_id = update.effective_user.id if update.effective_user else 0
+            now = time.time()
+            if not hasattr(self, "_last_stop_warn"):
+                self._last_stop_warn = {}
+            if now - self._last_stop_warn.get(user_id, 0) > 15:
+                self._last_stop_warn[user_id] = now
+                user_name = update.effective_user.first_name if update.effective_user else "User"
+                await update.message.reply_text(
+                    f"⛔ Akses ditolak untuk {user_name}.\nPerintah /stop hanya dapat dijalankan oleh Admin bot."
+                )
+            return
+
         if not self.gui:
             await update.message.reply_text("GUI tidak terhubung.")
             return
@@ -268,6 +297,11 @@ class TelegramRemote:
         self.log_buffer = []
         self.max_buffer = 50
         self._original_write_log = None
+        self._is_generating_report = False
+        self._current_report_task = None
+        self._last_report_text = ""
+        self._last_report_time = 0
+        self._report_debounce_seconds = 30  # cooldown 30 detik untuk request BARU
 
     def start(self):
         if not TELEGRAM_BOT_TOKEN:
@@ -284,6 +318,7 @@ class TelegramRemote:
         self.app.add_handler(CommandHandler("report", self._cmd_report))
         self.app.add_handler(CommandHandler("piket", self._cmd_piket))
         self.app.add_handler(CommandHandler("cekpiket", self._cmd_cekpiket))
+        self.app.add_handler(CommandHandler("allrole", self._cmd_allrole))
         self.app.add_handler(CommandHandler("tukarshift", self._cmd_tukarshift))
         self.app.add_handler(CommandHandler("canclwork", self._cmd_start_canclwork))
         self.app.add_handler(CommandHandler("dispatch", self._cmd_start_dispatch))
@@ -313,6 +348,7 @@ class TelegramRemote:
             BotCommand("report", "Kirim laporan harian sekarang"),
             BotCommand("piket", "Set/lihat piket (@nama1 @nama2 ...)"),
             BotCommand("cekpiket", "Cek piket shift aktif & PIC hari ini"),
+            BotCommand("allrole", "Cek jadwal piket semua role (L1, L2, Dev, L3)"),
             BotCommand("tukarshift", "Atur tukar shift per shift (override)"),
             BotCommand("canclwork", "Start CANCLWORK WO"),
             BotCommand("dispatch", "Start DISPATCH"),
@@ -392,10 +428,22 @@ class TelegramRemote:
         if not chat_ids:
             logger.warning("REPORT_CHAT_IDS kosong, report terjadwal dilewati.")
             return
+        import time as _t
         try:
-            text = await self._build_report_async()
+            # Jika ada task yang sedang jalan, tunggu task tersebut (shared)
+            active_task = getattr(self, "_current_report_task", None)
+            if active_task is not None and not active_task.done():
+                text = await active_task
+            else:
+                task = asyncio.create_task(self._build_report_async())
+                self._current_report_task = task
+                text = await task
+                self._last_report_text = text
+                self._last_report_time = _t.time()
         except Exception as e:
             text = f"⚠️ Gagal membuat laporan: {e}"
+        finally:
+            self._current_report_task = None
         for chat_id in chat_ids:
             try:
                 await context.bot.send_message(
@@ -410,12 +458,48 @@ class TelegramRemote:
         if not self._is_authorized(update):
             await update.message.reply_text("Akses ditolak.")
             return
+
+        import time as _t
+        now = _t.time()
+
+        # 1. PIGGYBACK / SHARED FUTURE:
+        # Jika sedang ada pembuatan laporan yang sedang berjalan (baik dari schedule otomatis
+        # jam 09.00 / 09.30 atau dari user lain), TITIPKAN request ini ke task tersebut.
+        # Pengguna TIDAK DITOLAK, melainkan akan langsung dikirimi hasilnya begitu selesai!
+        active_task = getattr(self, "_current_report_task", None)
+        if active_task is not None and not active_task.done():
+            await update.message.reply_text("Laporan sedang disusun... Anda akan langsung menerima hasilnya setelah selesai 🔄")
+            try:
+                text = await active_task
+            except Exception as e:
+                text = f"⚠️ Gagal membuat laporan: {e}"
+            await update.message.reply_text(text, disable_web_page_preview=True)
+            return
+
+        # 2. CACHE HIT: Jika laporan baru saja selesai dibuat dalam 30 detik terakhir,
+        # langsung kirimkan hasil laporan tersebut secara instan tanpa scraping ulang Chrome.
+        time_since_last = now - getattr(self, "_last_report_time", 0)
+        cached_text = getattr(self, "_last_report_text", "")
+        if cached_text and time_since_last < getattr(self, "_report_debounce_seconds", 30):
+            await update.message.reply_text(
+                f"ℹ️ Menggunakan laporan terbaru ({int(time_since_last)} detik lalu):\n\n" + cached_text,
+                disable_web_page_preview=True
+            )
+            return
+
+        # 3. REQUEST BARU: Mulai tugas pembuatan laporan baru
         await update.message.reply_text("Menyusun laporan... mohon tunggu 🔄")
         try:
-            text = await self._build_report_async()
+            task = asyncio.create_task(self._build_report_async())
+            self._current_report_task = task
+            text = await task
+            self._last_report_text = text
+            self._last_report_time = _t.time()
         except Exception as e:
             logger.error(f"Report error: {e}")
             text = f"⚠️ Gagal membuat laporan: {e}"
+        finally:
+            self._current_report_task = None
         await update.message.reply_text(text, disable_web_page_preview=True)
 
     async def _cmd_piket(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -486,18 +570,33 @@ class TelegramRemote:
         if not self._is_authorized(update):
             await update.message.reply_text("Akses ditolak.")
             return
+        args = ctx.args or []
+        role = "all" if (args and args[0].lower() == "all") else "default"
         await update.message.reply_text("Menyusun info piket... 🔄")
         try:
-            text = await asyncio.to_thread(self._cekpiket_sync)
+            text = await asyncio.to_thread(self._cekpiket_sync, role)
         except Exception as e:
             logger.error(f"Cekpiket error: {e}")
             text = f"⚠️ Gagal membaca jadwal: {e}"
         await update.message.reply_text(text, disable_web_page_preview=True)
 
-    def _cekpiket_sync(self):
+    async def _cmd_allrole(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        """Tampilkan jadwal semua role (L1, L2, Dev, L3) dari jadwal sheet."""
+        if not self._is_authorized(update):
+            await update.message.reply_text("Akses ditolak.")
+            return
+        await update.message.reply_text("Menyusun info piket semua role... 🔄")
+        try:
+            text = await asyncio.to_thread(self._cekpiket_sync, "all")
+        except Exception as e:
+            logger.error(f"Allrole error: {e}")
+            text = f"⚠️ Gagal membaca jadwal: {e}"
+        await update.message.reply_text(text, disable_web_page_preview=True)
+
+    def _cekpiket_sync(self, role="default"):
         from app.services.report_service import build_jadwal_piket_text
 
-        text = build_jadwal_piket_text(datetime.now())
+        text = build_jadwal_piket_text(datetime.now(), role=role)
         if text is None:
             return "⚠️ Gagal membaca jadwal piket dari Google Sheet."
         return text
@@ -731,6 +830,16 @@ class TelegramRemote:
             return True
         return update.effective_user.id in TELEGRAM_ALLOWED_USER_IDS
 
+    def _is_admin(self, update: Update) -> bool:
+        if not update or not update.effective_user:
+            return False
+        user_id = update.effective_user.id
+        if user_id in TELEGRAM_ADMIN_USER_IDS:
+            return True
+        if TELEGRAM_ALLOWED_USER_IDS and user_id in TELEGRAM_ALLOWED_USER_IDS:
+            return True
+        return False
+
     # ==========================================
     # Commands
     # ==========================================
@@ -749,6 +858,7 @@ class TelegramRemote:
             "/report   - Kirim laporan harian sekarang",
             "/piket    - Set/lihat piket hari ini (@user1 @user2 ...)",
             "/cekpiket - Cek piket shift aktif & PIC hari ini",
+            "/allrole  - Cek jadwal piket semua role (L1, L2, Dev, L3)",
             "/tukarshift - Atur tukar shift per shift (override)",
             "/help     - Lihat semua perintah",
             "",
@@ -771,6 +881,19 @@ class TelegramRemote:
     async def _cmd_stop(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not self._is_authorized(update):
             await update.message.reply_text("Akses ditolak.")
+            return
+
+        if not self._is_admin(update):
+            user_id = update.effective_user.id if update.effective_user else 0
+            now = time.time()
+            if not hasattr(self, "_last_stop_warn"):
+                self._last_stop_warn = {}
+            if now - self._last_stop_warn.get(user_id, 0) > 15:
+                self._last_stop_warn[user_id] = now
+                user_name = update.effective_user.first_name if update.effective_user else "User"
+                await update.message.reply_text(
+                    f"⛔ Akses ditolak untuk {user_name}.\nPerintah /stop hanya dapat dijalankan oleh Admin bot."
+                )
             return
 
         if not self.gui:
@@ -857,6 +980,11 @@ class TelegramRemote:
         await self._start_feature(update, "gamas_relations", None, None)
 
     async def _start_feature(self, update, key, group_label, group_id):
+        if not self._is_admin(update):
+            user_name = update.effective_user.first_name if update.effective_user else "User"
+            await update.message.reply_text(f"⛔ Akses ditolak untuk {user_name}.\nHanya Admin yang dapat memulai fitur {key}.")
+            return
+
         if not self.gui:
             await update.message.reply_text("GUI tidak terhubung.")
             return

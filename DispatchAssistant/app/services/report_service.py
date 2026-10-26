@@ -412,6 +412,193 @@ class ReportService:
         return all_rows, headers
 
     # --------------------------------------------------
+    # Direct In-Browser AJAX API (Fast Path)
+    # --------------------------------------------------
+
+    def _api_fetch_category_data(self, page, category, table_id, today):
+        """Ambil data Saldo (OPEN) dan Total Resolved hari ini via Direct in-browser AJAX API.
+
+        Mengembalikan tuple: (saldo_rows, total_resolved) atau None jika gagal.
+        """
+        resolved_status = "RESOLVED" if category == "incident" else "COMPLETED"
+        fallback_path = "/incident/json_datatable" if category == "incident" else "/req_fulfillment/getAjaxDatatable"
+        js_code = f"""
+        async () => {{
+            var t = jQuery('#{table_id}').DataTable();
+            var s = t ? t.settings()[0] : null;
+            var ajaxUrl = (s && s.ajax && (typeof s.ajax === 'string' ? s.ajax : s.ajax.url)) ||
+                          (s && s.sAjaxSource) ||
+                          (window.location.origin + '{fallback_path}');
+            var csrf = document.querySelector('input[name="csrf_sygap"]')?.value || '';
+
+            function getBasePayload() {{
+                var p = {{
+                    draw: 1,
+                    start: 0,
+                    length: 10,
+                    search: {{ value: '' }},
+                    csrf_sygap: csrf,
+                    sortList: 'desc',
+                    sortBySearch: 'created_date'
+                }};
+                if (s && s.ajax && typeof s.ajax.data === 'function') {{
+                    try {{ s.ajax.data(p); }} catch (e) {{}}
+                }}
+                return p;
+            }}
+
+            function postApi(dataObj) {{
+                return new Promise((resolve) => {{
+                    jQuery.ajax({{
+                        url: ajaxUrl,
+                        type: 'POST',
+                        dataType: 'json',
+                        data: dataObj,
+                        success: function(resp) {{
+                            if (typeof resp === 'string') {{
+                                try {{ resp = JSON.parse(resp); }} catch (e) {{}}
+                            }}
+                            resolve({{ success: true, data: resp }});
+                        }},
+                        error: function(err) {{
+                            resolve({{ success: false, error: err.statusText }});
+                        }}
+                    }});
+                }});
+            }}
+
+            // 1. Saldo (OPEN aktif)
+            var pSaldo = getBasePayload();
+            pSaldo.length = 500;
+            pSaldo.solverSearch = '';
+            pSaldo.solverGroupSearch = '';
+            pSaldo.start_date = '';
+            pSaldo.end_date = '';
+            if ('statusSearch' in pSaldo) pSaldo.statusSearch = 'OPEN';
+            if ('type' in pSaldo) pSaldo.type = 'OPEN';
+            var resSaldo = await postApi(pSaldo);
+
+            // 2. Resolved Hari Ini
+            var pResolved = getBasePayload();
+            pResolved.length = 1;
+            pResolved.solverSearch = '';
+            pResolved.solverGroupSearch = '';
+            pResolved.start_date = '{today} 00:00:00';
+            pResolved.end_date = '{today} 23:59:59';
+            pResolved.filterDateType = '{REPORT_DATE_FILTER_VALUE}';
+            if ('statusSearch' in pResolved) pResolved.statusSearch = '{resolved_status}';
+            if ('type' in pResolved) pResolved.type = '{resolved_status}';
+            var resResolved = await postApi(pResolved);
+
+            return {{
+                saldo: resSaldo,
+                resolved: resResolved
+            }};
+        }}
+        """
+        try:
+            res = safe_eval(page, f"({js_code})()")
+            if not res or not res.get("saldo", {}).get("success") or not res.get("resolved", {}).get("success"):
+                return None
+
+            saldo_data = res["saldo"]["data"]
+            resolved_data = res["resolved"]["data"]
+
+            rows = saldo_data.get("data", []) if isinstance(saldo_data, dict) else (saldo_data if isinstance(saldo_data, list) else [])
+            norm_rows = [{str(k).lower(): v for k, v in r.items()} if isinstance(r, dict) else r for r in rows]
+
+            total_resolved = 0
+            if isinstance(resolved_data, dict):
+                total_resolved = resolved_data.get("recordsFiltered") if resolved_data.get("recordsFiltered") is not None else resolved_data.get("recordsTotal", 0)
+            elif isinstance(resolved_data, list):
+                total_resolved = len(resolved_data)
+
+            return norm_rows, int(total_resolved or 0)
+        except Exception as e:
+            self.log(f"  [api] _api_fetch_category_data error: {e}")
+            return None
+
+    def _api_fetch_agents_count(self, page, category, table_id, today, agents):
+        """Ambil hitungan tiket resolved per agent secara paralel via Direct in-browser AJAX API.
+
+        Mengembalikan dict: {agent_name: count, ...} atau None jika gagal.
+        """
+        resolved_status = "RESOLVED" if category == "incident" else "COMPLETED"
+        fallback_path = "/incident/json_datatable" if category == "incident" else "/req_fulfillment/getAjaxDatatable"
+        agent_payloads = []
+        for a in agents:
+            sid = str(a.get("solver_id") or "")
+            if sid:
+                agent_payloads.append({"name": a["name"], "sid": sid})
+
+        if not agent_payloads:
+            return {}
+
+        js_code = f"""
+        async (agentsList) => {{
+            var t = jQuery('#{table_id}').DataTable();
+            var s = t ? t.settings()[0] : null;
+            var ajaxUrl = (s && s.ajax && (typeof s.ajax === 'string' ? s.ajax : s.ajax.url)) ||
+                          (s && s.sAjaxSource) ||
+                          (window.location.origin + '{fallback_path}');
+            var csrf = document.querySelector('input[name="csrf_sygap"]')?.value || '';
+
+            function postApi(p) {{
+                return new Promise((resolve) => {{
+                    jQuery.ajax({{
+                        url: ajaxUrl,
+                        type: 'POST',
+                        dataType: 'json',
+                        data: p,
+                        success: function(resp) {{
+                            if (typeof resp === 'string') {{
+                                try {{ resp = JSON.parse(resp); }} catch (e) {{}}
+                            }}
+                            var n = resp.recordsFiltered !== undefined ? resp.recordsFiltered : (resp.recordsTotal || 0);
+                            resolve(n);
+                        }},
+                        error: function() {{ resolve(0); }}
+                    }});
+                }});
+            }}
+
+            var promises = agentsList.map(ag => {{
+                var p = {{
+                    draw: 1,
+                    start: 0,
+                    length: 1,
+                    search: {{ value: '' }},
+                    csrf_sygap: csrf,
+                    sortList: 'desc',
+                    sortBySearch: 'created_date'
+                }};
+                if (s && s.ajax && typeof s.ajax.data === 'function') {{
+                    try {{ s.ajax.data(p); }} catch (e) {{}}
+                }}
+                p.length = 1;
+                p.solverSearch = ag.sid;
+                p.solverGroupSearch = '';
+                p.start_date = '{today} 00:00:00';
+                p.end_date = '{today} 23:59:59';
+                p.filterDateType = '{REPORT_DATE_FILTER_VALUE}';
+                if ('statusSearch' in p) p.statusSearch = '{resolved_status}';
+                if ('type' in p) p.type = '{resolved_status}';
+                return postApi(p).then(count => ({{ name: ag.name, count: count }}));
+            }});
+
+            return await Promise.all(promises);
+        }}
+        """
+        try:
+            res = safe_eval(page, f"({js_code})({json.dumps(agent_payloads)})")
+            if isinstance(res, list):
+                return {item["name"]: int(item.get("count", 0)) for item in res if "name" in item}
+            return None
+        except Exception as e:
+            self.log(f"  [api] _api_fetch_agents_count error: {e}")
+            return None
+
+    # --------------------------------------------------
     # Filters
     # --------------------------------------------------
 
@@ -849,7 +1036,7 @@ class ReportService:
         except Exception:
             pass
 
-    def collect_all(self):
+    def collect_all(self, now=None):
         """Kumpulkan semua data laporan (metode terkonfirmasi user).
 
         Per kategori:
@@ -860,9 +1047,17 @@ class ReportService:
           3. Per person -> SERVER-SIDE #solverSearch per agen (id solver),
                          dijumlahkan dari request COMPLETED + incident RESOLVED.
         Total Resolved All Shift = jumlah resolved/Completed kedua kategori.
+
+        Snapshot piket diambil SEKALI di awal (now) dan dipakai untuk
+        per-person MAUPUN header laporan, supaya keduanya tidak bisa beda
+        (kasus: piket tampil 4 orang benar tapi per-person masih 3 orang
+        fallback karena fetch sheet di awal vs akhir berbeda hasil).
         """
+        now = now or datetime.now()
         categories = {}
-        agents = self._personnel_agents()
+        piket_tags = _shift_people_tags(now)
+        self.log(f"Piket snapshot ({now.strftime('%H:%M')}): {', '.join(piket_tags) if piket_tags else '(kosong)'}")
+        agents = self._personnel_agents(tags=piket_tags)
         agent_totals = {a["name"]: 0 for a in agents}
         agent_detail = {a["name"]: {c: 0 for c in REPORT_PAGES} for a in agents}
         today = datetime.now().strftime("%Y-%m-%d")
@@ -879,6 +1074,45 @@ class ReportService:
                 categories[cat] = self._empty_category(cat)
                 continue
             self.log(f"  Table: #{table_id}")
+
+            # ---- FAST PATH: Direct In-Browser AJAX API ----
+            api_res = self._api_fetch_category_data(page, cat, table_id, today)
+            agent_counts = self._api_fetch_agents_count(page, cat, table_id, today, agents)
+
+            if api_res is not None and agent_counts is not None:
+                masuk, resolved = api_res
+                self.log(f"  [API Fast Path] Saldo (OPEN aktif): {len(masuk)} baris | Resolved: {resolved} baris")
+
+                colors = {"green": 0, "yellow": 0, "red": 0}
+                created_dates = []
+                for r in masuk:
+                    color = self._color_for(r)
+                    if color:
+                        colors[color] += 1
+                    dt = self._first_date(r, REPORT_CREATED_DATE_FIELDS)
+                    if dt:
+                        created_dates.append(dt)
+
+                for a in agents:
+                    n = agent_counts.get(a["name"], 0)
+                    agent_detail[a["name"]][cat] = n
+                    agent_totals[a["name"]] += n
+                    self.log(f"  {a['name']} [{cat}]: {n}")
+
+                categories[cat] = {
+                    "category": cat,
+                    "label": label,
+                    "saldo": len(masuk),
+                    "green": colors["green"],
+                    "yellow": colors["yellow"],
+                    "red": colors["red"],
+                    "oldest": min(created_dates) if created_dates else None,
+                    "newest": max(created_dates) if created_dates else None,
+                    "resolved": resolved,
+                }
+                continue
+
+            self.log("  [Fallback] Menggunakan metode DOM lama...")
 
             # ---- 1. Saldo: OPEN (seluruh antrean aktif saat ini) ----
             self._clear_select2(page, "solverGroupSearch")
@@ -945,17 +1179,21 @@ class ReportService:
             {"name": name, "total": agent_totals[name], "detail": agent_detail[name]}
             for name in agent_totals
         ]
-        return {"categories": categories, "agents": agents}
+        return {"categories": categories, "agents": agents, "piket": list(piket_tags or []), "as_of": now}
 
-    def _personnel_agents(self):
+    def _personnel_agents(self, tags=None, now=None):
         """Daftar agen 'Resolved Per Person': hanya yang MASUK di shift aktif.
 
         Prioritas: piket per-shift dari Google Sheet jadwal (orang yang masuk
         di shift sekarang) -> simpanan harian (data/daily_piket.json) ->
         REPORT_PERSONNEL. Setiap tag diresolusi ke nama (TELEGRAM_USERNAMES)
         lalu ke solver ID SYGAP (TELEGRAM_SOLVER_IDS) untuk filter server-side.
+
+        `tags` boleh diisi snapshot piket dari collect_all agar per-person
+        selalu konsisten dengan header laporan (jangan fetch ulang).
         """
-        tags = _shift_people_tags()
+        if tags is None:
+            tags = _shift_people_tags(now)
         name_by_tag = {v.strip().lower(): k for k, v in TELEGRAM_USERNAMES.items()}
         agents = []
         for tag in tags or []:
@@ -1000,6 +1238,10 @@ class ReportService:
         agents = data["agents"]
 
         piket = personnel
+        if piket is None:
+            # Utamakan snapshot piket dari collect_all agar header selalu
+            # sama dengan daftar per-person (satu fetch sheet, bukan dua).
+            piket = data.get("piket")
         if piket is None:
             piket = _shift_people_tags(now)
 
@@ -1385,7 +1627,10 @@ def _build_tukar_note(date=None, now=None):
 _sheet_cache = {"date": None, "tags": None, "ts": 0}
 _sheet_lock = threading.Lock()
 
-_L1_SUMMARY_ROWS = {"SHIFT 1", "SHIFT 2", "SHIFT 3", "TOTAL MASUK PER HARI"}
+_L1_SUMMARY_ROWS = {
+    "SHIFT 1", "SHIFT 2", "SHIFT 3", "TOTAL MASUK PER HARI",
+    "WANTIMPRES", "NAMA", "JAM KERJA",
+}
 
 _MONTH_ABBR = {
     "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MEI": 5, "JUN": 6,
@@ -1401,6 +1646,9 @@ _TABS_CACHE_TTL = 3600  # 1 jam
 # langsung terbaca tanpa restart bot (kasus: Anne masih muncul padahal sheet
 # sudah dikoreksi).
 _SHEET_CACHE_TTL = 600  # 10 menit
+# Hasil gagal (None) hanya di-cache singkat agar tidak terjebak fallback
+# REPORT_PERSONNEL selama 10 menit (kasus: Dika muncul padahal sheet sudah benar).
+_SHEET_FAIL_TTL = 60  # 1 menit
 
 
 def _month_num(word):
@@ -1635,18 +1883,27 @@ def _get_sheet_xlsx_url_for_date(target_date=None):
     return _sheet_xlsx_url()
 
 
-def _fetch_sheet_csv(url=None):
+def _fetch_sheet_csv(url=None, retries=3):
     """Ambil CSV jadwal dari Google Sheet (public export). None jika gagal."""
     target_url = url or JADWAL_SHEET_URL
-    try:
-        req = urllib.request.Request(
-            target_url, headers={"User-Agent": "Mozilla/5.0"}
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return resp.read().decode("utf-8", errors="replace")
-    except Exception as e:
-        logger.warning(f"Gagal ambil jadwal dari sheet: {e}")
-        return None
+    last_err = None
+    for attempt in range(1, retries + 1):
+        try:
+            req = urllib.request.Request(
+                target_url, headers={"User-Agent": "Mozilla/5.0"}
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return resp.read().decode("utf-8", errors="replace")
+        except Exception as e:
+            last_err = e
+            logger.warning(f"Gagal ambil jadwal dari sheet (attempt {attempt}/{retries}): {e}")
+            if attempt < retries:
+                try:
+                    import time as _t
+                    _t.sleep(2)
+                except Exception:
+                    pass
+    return None
 
 
 def _slot_to_minutes(slot):
@@ -1678,18 +1935,29 @@ def _sheet_piket_map(date=None):
     """Piket L1 per shift (key: jam mulai shift dalam menit) pada tanggal
     tertentu dari Google Sheet jadwal. Di-cache per tanggal. None jika gagal
     (sheet tak bisa diambil / tanggal tidak ada di sheet).
+
+    Hasil gagal (None) hanya di-cache singkat (_SHEET_FAIL_TTL) agar retry
+    segera mencoba lagi, tidak terjebak fallback REPORT_PERSONNEL selama
+    10 menit penuh.
     """
     date = date or datetime.now()
     date_str = date.strftime("%Y-%m-%d")
     now_ts = datetime.now().timestamp()
     with _sheet_lock:
-        if _sheet_cache["date"] == date_str and (now_ts - _sheet_cache["ts"] < _SHEET_CACHE_TTL):
-            return _sheet_cache["tags"]
+        if _sheet_cache["date"] == date_str:
+            ttl = _SHEET_CACHE_TTL if _sheet_cache["tags"] is not None else _SHEET_FAIL_TTL
+            if now_ts - _sheet_cache["ts"] < ttl:
+                return _sheet_cache["tags"]
     csv_url = _get_sheet_csv_url_for_date(date)
     raw = _fetch_sheet_csv(csv_url)
     result = None
     if raw is not None:
         result = _parse_sheet_tags(raw, date)
+    if result is None:
+        logger.warning(
+            f"Jadwal sheet tanggal {date_str} gagal dibaca "
+            f"(raw={'ada' if raw is not None else 'None'}) - report pakai fallback"
+        )
     with _sheet_lock:
         _sheet_cache["date"] = date_str
         _sheet_cache["tags"] = result
@@ -1697,8 +1965,8 @@ def _sheet_piket_map(date=None):
     return result
 
 
-def _parse_sheet_tags(raw, date):
-    """Parse CSV sheet: blok pertama (L1) -> {jam_mulai_shift: [tags]} tanggal tsb."""
+def _parse_sheet_tags_all(raw, date):
+    """Parse CSV sheet -> {'L1': {slot_m: [tags]}, 'L2': {...}, 'DEV': {...}, 'L3': {...}}."""
     try:
         rows = list(csv.reader(io.StringIO(raw)))
     except Exception as e:
@@ -1706,42 +1974,71 @@ def _parse_sheet_tags(raw, date):
         return None
     day_col = str(date.day)
     col = None
-    start = None
-    for i, r in enumerate(rows):
-        if not r:
-            continue
-        if r[0] == "NAMA":
-            start = i
+    for r in rows:
+        if r and r[0] == "NAMA":
             for j, h in enumerate(r):
                 if _cell_day(h, date.day):
                     col = j
                     break
-            break
-    if start is None or col is None:
-        return None
-    result = {}
-    cur_name = None
-    cur_shift_m = None
-    for r in rows[start + 1:]:
-        if not r or len(r) <= col:
-            continue
-        name = (r[0] or "").strip()
-        if name:
-            # Header blok berikutnya (L2) / penanda JADWAL -> selesai blok L1.
-            if name == "NAMA" or name.upper().startswith("JADWAL"):
+            if col is not None:
                 break
-            cur_name = name
-        slot = (r[1] or "").strip() if len(r) > 1 else ""
-        if slot:
-            cur_shift_m = _slot_to_minutes(slot)
-        if not cur_name or cur_name.upper() in _L1_SUMMARY_ROWS or cur_shift_m is None:
+    if col is None:
+        return None
+
+    result = {"L1": {}, "L2": {}, "DEV": {}, "L3": {}}
+    cur_section = "L1"
+    cur_name = None
+
+    for r in rows:
+        if not r:
             continue
+        c0 = (r[0] or "").strip()
+        if c0:
+            c0_u = c0.upper()
+            if c0_u in ["L2", "JADWAL L2"]:
+                cur_section = "L2"
+                cur_name = None
+                continue
+            elif "DEV" in c0_u and "JADWAL" in c0_u:
+                cur_section = "DEV"
+                cur_name = None
+                continue
+            elif "L3" in c0_u and "JADWAL" in c0_u:
+                cur_section = "L3"
+                cur_name = None
+                continue
+            cur_name = c0
+
+        if not cur_name or cur_name.upper() in _L1_SUMMARY_ROWS:
+            continue
+
+        slot = (r[1] or "").strip() if len(r) > 1 else ""
+        slot_m = _slot_to_minutes(slot) if slot else None
+        if slot_m is None or len(r) <= col:
+            continue
+
         if (r[col] or "").strip() == "1":
-            key = JADWAL_SHEET_NAMES.get(cur_name.upper(), cur_name.upper())
-            tag = TELEGRAM_USERNAMES.get(key)
-            if tag and tag not in result.setdefault(cur_shift_m, []):
-                result[cur_shift_m].append(tag)
-    return result or None
+            role = cur_section
+            c_u = cur_name.upper()
+            if "(L2)" in c_u:
+                role = "L2"
+            elif "DEV" in c_u:
+                role = "DEV"
+            elif "(L3)" in c_u:
+                role = "L3"
+
+            key = JADWAL_SHEET_NAMES.get(c_u, c_u)
+            tag = TELEGRAM_USERNAMES.get(key, cur_name)
+            if tag and tag not in result[role].setdefault(slot_m, []):
+                result[role][slot_m].append(tag)
+
+    return result
+
+
+def _parse_sheet_tags(raw, date):
+    """Parse CSV sheet: blok pertama (L1) -> {jam_mulai_shift: [tags]} tanggal tsb."""
+    tags_all = _parse_sheet_tags_all(raw, date)
+    return tags_all.get("L1") if tags_all else None
 
 
 def _shift_people_tags(now=None):
@@ -1804,18 +2101,25 @@ def _sheet_xlsx_url(gid=None):
     return JADWAL_SHEET_URL.replace("export?format=csv", "export?format=xlsx")
 
 
-def _fetch_sheet_xlsx(url=None):
+def _fetch_sheet_xlsx(url=None, retries=3):
     """Ambil tab jadwal sebagai .xlsx (memuat warna sel). None jika gagal."""
     target_url = url or _sheet_xlsx_url()
-    try:
-        req = urllib.request.Request(
-            target_url, headers={"User-Agent": "Mozilla/5.0"}
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            return resp.read()
-    except Exception as e:
-        logger.warning(f"Gagal ambil xlsx jadwal: {e}")
-        return None
+    for attempt in range(1, retries + 1):
+        try:
+            req = urllib.request.Request(
+                target_url, headers={"User-Agent": "Mozilla/5.0"}
+            )
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                return resp.read()
+        except Exception as e:
+            logger.warning(f"Gagal ambil xlsx jadwal (attempt {attempt}/{retries}): {e}")
+            if attempt < retries:
+                try:
+                    import time as _t
+                    _t.sleep(2)
+                except Exception:
+                    pass
+    return None
 
 
 def _cell_is_green(cell):
@@ -1837,8 +2141,10 @@ def _sheet_pic_map(date=None):
     date_str = date.strftime("%Y-%m-%d")
     now_ts = datetime.now().timestamp()
     with _sheet_pic_lock:
-        if _sheet_pic_cache["date"] == date_str and (now_ts - _sheet_pic_cache["ts"] < _SHEET_CACHE_TTL):
-            return _sheet_pic_cache["data"]
+        if _sheet_pic_cache["date"] == date_str:
+            ttl = _SHEET_CACHE_TTL if _sheet_pic_cache["data"] is not None else _SHEET_FAIL_TTL
+            if now_ts - _sheet_pic_cache["ts"] < ttl:
+                return _sheet_pic_cache["data"]
     xlsx_url = _get_sheet_xlsx_url_for_date(date)
     raw = _fetch_sheet_xlsx(xlsx_url)
     result = None
@@ -1851,8 +2157,8 @@ def _sheet_pic_map(date=None):
     return result
 
 
-def _parse_sheet_pic(raw, date):
-    """Parse xlsx tab jadwal: blok L1, kolom tanggal, ambil PIC sel hijau."""
+def _parse_sheet_pic_all(raw, date):
+    """Parse xlsx tab jadwal: ambil PIC sel hijau per role."""
     try:
         import openpyxl
 
@@ -1862,47 +2168,127 @@ def _parse_sheet_pic(raw, date):
         logger.warning(f"Gagal buka xlsx jadwal: {e}")
         return None
     day = date.day
-    header_row = None
     day_col = None
-    for r in range(1, 30):
+    for r in range(1, 40):
         if ws.cell(r, 1).value == "NAMA":
-            header_row = r
             for c in range(1, ws.max_column + 1):
                 v = ws.cell(r, c).value
                 if _cell_day(v, day):
                     day_col = c
                     break
-            break
-    if header_row is None or day_col is None:
+            if day_col is not None:
+                break
+    if day_col is None:
         return None
-    result = {}
+
+    result = {"L1": {}, "L2": {}, "DEV": {}, "L3": {}}
+    cur_section = "L1"
     cur_name = None
-    cur_shift_m = None
-    for r in range(header_row + 1, ws.max_row + 1):
-        name = ws.cell(r, 1).value
-        slot = ws.cell(r, 2).value
-        if name and str(name).strip() == "NAMA":
-            break
-        if str(name or "").strip().upper().startswith("JADWAL"):
-            break
-        if name and str(name).strip().upper() in _L1_SUMMARY_ROWS:
+
+    for r in range(1, ws.max_row + 1):
+        c1 = ws.cell(r, 1).value
+        c0 = str(c1).strip() if c1 else ""
+        if c0:
+            c0_u = c0.upper()
+            if c0_u in ["L2", "JADWAL L2"]:
+                cur_section = "L2"
+                cur_name = None
+                continue
+            elif "DEV" in c0_u and "JADWAL" in c0_u:
+                cur_section = "DEV"
+                cur_name = None
+                continue
+            elif "L3" in c0_u and "JADWAL" in c0_u:
+                cur_section = "L3"
+                cur_name = None
+                continue
+            cur_name = c0
+
+        if not cur_name or cur_name.upper() in _L1_SUMMARY_ROWS:
             continue
-        if name:
-            cur_name = str(name).strip()
-        if slot:
-            cur_shift_m = _slot_to_minutes(str(slot))
-        if not cur_name or cur_shift_m is None:
+
+        c2 = ws.cell(r, 2).value
+        slot = str(c2).strip() if c2 else ""
+        slot_m = _slot_to_minutes(slot) if slot else None
+        if slot_m is None:
             continue
+
         if _cell_is_green(ws.cell(r, day_col)):
-            key = JADWAL_SHEET_NAMES.get(cur_name.upper(), cur_name.upper())
-            tag = TELEGRAM_USERNAMES.get(key)
-            if tag and cur_shift_m not in result:
-                result[cur_shift_m] = tag
-    return result or None
+            role = cur_section
+            c_u = cur_name.upper()
+            if "(L2)" in c_u:
+                role = "L2"
+            elif "DEV" in c_u:
+                role = "DEV"
+            elif "(L3)" in c_u:
+                role = "L3"
+
+            key = JADWAL_SHEET_NAMES.get(c_u, c_u)
+            tag = TELEGRAM_USERNAMES.get(key, cur_name)
+            if tag and slot_m not in result[role]:
+                result[role][slot_m] = tag
+
+    return result
 
 
-def build_jadwal_piket_text(date=None):
-    """Susun blok 'Jadwal Piket Hari Ini' (piket semua shift + PIC hijau).
+def _parse_sheet_pic(raw, date):
+    """Parse xlsx tab jadwal: blok L1, kolom tanggal, ambil PIC sel hijau."""
+    pics_all = _parse_sheet_pic_all(raw, date)
+    return pics_all.get("L1") if pics_all else None
+
+
+_sheet_all_cache = {"date": None, "data": None, "ts": 0}
+_sheet_all_lock = threading.Lock()
+
+
+def _sheet_piket_all(date=None):
+    date = date or datetime.now()
+    date_str = date.strftime("%Y-%m-%d")
+    now_ts = datetime.now().timestamp()
+    with _sheet_all_lock:
+        if _sheet_all_cache["date"] == date_str:
+            ttl = _SHEET_CACHE_TTL if _sheet_all_cache["data"] is not None else _SHEET_FAIL_TTL
+            if now_ts - _sheet_all_cache["ts"] < ttl:
+                return _sheet_all_cache["data"]
+    csv_url = _get_sheet_csv_url_for_date(date)
+    raw = _fetch_sheet_csv(csv_url)
+    result = None
+    if raw is not None:
+        result = _parse_sheet_tags_all(raw, date)
+    with _sheet_all_lock:
+        _sheet_all_cache["date"] = date_str
+        _sheet_all_cache["data"] = result
+        _sheet_all_cache["ts"] = now_ts
+    return result
+
+
+_sheet_pic_all_cache = {"date": None, "data": None, "ts": 0}
+_sheet_pic_all_lock = threading.Lock()
+
+
+def _sheet_pic_all(date=None):
+    date = date or datetime.now()
+    date_str = date.strftime("%Y-%m-%d")
+    now_ts = datetime.now().timestamp()
+    with _sheet_pic_all_lock:
+        if _sheet_pic_all_cache["date"] == date_str:
+            ttl = _SHEET_CACHE_TTL if _sheet_pic_all_cache["data"] is not None else _SHEET_FAIL_TTL
+            if now_ts - _sheet_pic_all_cache["ts"] < ttl:
+                return _sheet_pic_all_cache["data"]
+    xlsx_url = _get_sheet_xlsx_url_for_date(date)
+    raw = _fetch_sheet_xlsx(xlsx_url)
+    result = None
+    if raw is not None:
+        result = _parse_sheet_pic_all(raw, date)
+    with _sheet_pic_all_lock:
+        _sheet_pic_all_cache["date"] = date_str
+        _sheet_pic_all_cache["data"] = result
+        _sheet_pic_all_cache["ts"] = now_ts
+    return result
+
+
+def build_jadwal_piket_text(date=None, role="default"):
+    """Susun blok 'Jadwal Piket Hari Ini' (L1 + L2). Jika role='all', tampilkan juga DEV & L3.
 
     Menampilkan override tukar shift jika ada (ditandai 🔄 Tukar).
     """
@@ -1919,10 +2305,12 @@ def build_jadwal_piket_text(date=None):
     date_str = date.strftime("%Y-%m-%d")
     overrides = get_shift_overrides(date_str)
 
+    title = "📋 Jadwal Piket Semua Role" if role == "all" else "📋 Jadwal Piket Hari Ini"
     lines = [
-        "📋 Jadwal Piket Hari Ini",
+        title,
         f"{DAY_NAMES[date.weekday()]}, {date.day} {MONTH_NAMES[date.month - 1]} {date.year}",
         "",
+        "🔹 Jadwal L1:",
     ]
     for s in REPORT_SHIFTS:
         sh, sm = (int(x) for x in s["start"].split(":"))
@@ -1953,6 +2341,75 @@ def build_jadwal_piket_text(date=None):
         lines.append("🔄 Catatan Tukar Shift:")
         lines.extend(tukar_notes)
         lines.append("")
+
+    # L2
+    piket_all = _sheet_piket_all(date) or {}
+    pic_all = _sheet_pic_all(date) or {}
+    piket_l2 = piket_all.get("L2", {})
+    pic_l2 = pic_all.get("L2", {})
+
+    lines.append("🔹 Jadwal L2:")
+    for label, start, end in [("Shift 1", "08:00", "17:00"), ("Shift 2", "17:00", "24:00")]:
+        lines.append(f"👥 {label} ({start} - {end}):")
+        sh, sm = (int(x) for x in start.split(":"))
+        start_m = sh * 60 + sm
+        key = _match_shift_slot(piket_l2, start_m)
+        tags = piket_l2.get(key) if key is not None else None
+        if not tags:
+            lines.append("• (tidak ada)")
+        else:
+            for t in tags:
+                pic_mark = (
+                    " — ⭐ PIC" if pic_l2 and key is not None and pic_l2.get(key) == t else ""
+                )
+                lines.append(f"• {t}{pic_mark}")
+        lines.append("")
+
+    if role == "all":
+        # DEV
+        piket_dev = piket_all.get("DEV", {})
+        pic_dev = pic_all.get("DEV", {})
+        lines.append("🔹 Jadwal DEV (Insera & Bima):")
+        has_dev = False
+        for label, start, end in [("Shift 1", "08:00", "17:00"), ("Shift 2", "17:00", "24:00")]:
+            sh, sm = (int(x) for x in start.split(":"))
+            start_m = sh * 60 + sm
+            key = _match_shift_slot(piket_dev, start_m)
+            tags = piket_dev.get(key) if key is not None else None
+            if tags:
+                has_dev = True
+                lines.append(f"👥 {label} ({start} - {end}):")
+                for t in tags:
+                    pic_mark = (
+                        " — ⭐ PIC" if pic_dev and key is not None and pic_dev.get(key) == t else ""
+                    )
+                    lines.append(f"• {t}{pic_mark}")
+        if not has_dev:
+            lines.append("• (tidak ada)")
+        lines.append("")
+
+        # L3
+        piket_l3 = piket_all.get("L3", {})
+        pic_l3 = pic_all.get("L3", {})
+        lines.append("🔹 Jadwal L3:")
+        has_l3 = False
+        for label, start, end in [("Shift 1", "08:00", "17:00"), ("Shift 2", "17:00", "24:00")]:
+            sh, sm = (int(x) for x in start.split(":"))
+            start_m = sh * 60 + sm
+            key = _match_shift_slot(piket_l3, start_m)
+            tags = piket_l3.get(key) if key is not None else None
+            if tags:
+                has_l3 = True
+                lines.append(f"👥 {label} ({start} - {end}):")
+                for t in tags:
+                    pic_mark = (
+                        " — ⭐ PIC" if pic_l3 and key is not None and pic_l3.get(key) == t else ""
+                    )
+                    lines.append(f"• {t}{pic_mark}")
+        if not has_l3:
+            lines.append("• (tidak ada)")
+        lines.append("")
+
     lines.append("Sumber: Google Sheet jadwal" + (" + override tukar shift" if overrides else ""))
     return "\n".join(lines)
 
@@ -2042,8 +2499,9 @@ def _generate_report_impl(log_callback=None):
 
         svc = ReportService(browser_manager=bm, log_callback=log)
         log("Report: mengumpulkan data...")
-        data = svc.collect_all()
-        text = svc.format_report(data)
+        report_now = datetime.now()
+        data = svc.collect_all(now=report_now)
+        text = svc.format_report(data, now=report_now, personnel=data.get("piket"))
         return text
     finally:
         if connected:
