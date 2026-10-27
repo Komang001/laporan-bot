@@ -8,9 +8,10 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime
-from zoneinfo import ZoneInfo
-from flask import Flask, request, jsonify
+import urllib.request
+import urllib.parse
+from datetime import datetime, timezone, timedelta
+from flask import Flask, request
 
 # Pastikan path modul terbaca
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -24,15 +25,24 @@ logger = logging.getLogger("PA_JadwalBot")
 
 app = Flask(__name__)
 
-TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+# Konfigurasi proxy untuk PythonAnywhere free tier
+PA_PROXY = "http://proxy.server:3128"
+
+
+def get_opener():
+    """Opener dengan proxy support untuk PythonAnywhere free tier."""
+    if os.path.exists("/etc/pythonanywhere"):
+        proxy_handler = urllib.request.ProxyHandler({
+            "http": PA_PROXY,
+            "https": PA_PROXY,
+        })
+        return urllib.request.build_opener(proxy_handler)
+    return urllib.request.build_opener()
 
 
 def send_reply(chat_id, text, reply_to_message_id=None):
     """Kirim pesan balasan via HTTP POST langsung ke Telegram API."""
-    import urllib.request
-    import urllib.parse
-
-    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip() or TOKEN
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
         logger.error("TOKEN bot tidak diset!")
         return
@@ -48,14 +58,10 @@ def send_reply(chat_id, text, reply_to_message_id=None):
 
     data = urllib.parse.urlencode(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data)
-
-    # Proxy support untuk akun free PythonAnywhere jika diperlukan
-    proxy = os.environ.get("http_proxy") or os.environ.get("https_proxy")
-    if proxy:
-        req.set_proxy(proxy.replace("http://", "").replace("https://", ""), "https")
+    opener = get_opener()
 
     try:
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        with opener.open(req, timeout=15) as resp:
             pass
     except Exception as e:
         logger.error(f"Gagal mengirim balasan ke {chat_id}: {e}")
@@ -66,53 +72,62 @@ def home():
     return "Bot Jadwal Piket is Active!", 200
 
 
-@app.route(f"/webhook", methods=["POST"])
+@app.route("/webhook", methods=["POST", "GET"])
 def telegram_webhook():
-    update = request.get_json(force=True, silent=True)
-    if not update:
-        return "OK", 200
+    if request.method == "GET":
+        return "Webhook endpoint is ready!", 200
 
-    message = update.get("message") or update.get("channel_post")
-    if not message:
-        return "OK", 200
+    try:
+        update = request.get_json(force=True, silent=True)
+        if not update:
+            return "OK", 200
 
-    chat_id = message.get("chat", {}).get("id")
-    msg_id = message.get("message_id")
-    text = (message.get("text") or "").strip()
+        message = update.get("message") or update.get("channel_post")
+        if not message:
+            return "OK", 200
 
-    if not text.startswith("/"):
-        return "OK", 200
+        chat_id = message.get("chat", {}).get("id")
+        msg_id = message.get("message_id")
+        text = (message.get("text") or "").strip()
 
-    # Ambil command dasar (misal /cekpiket@MyBot -> /cekpiket)
-    cmd = text.split()[0].split("@")[0].lower()
-    args = text.split()[1:]
+        if not text.startswith("/"):
+            return "OK", 200
 
-    now = datetime.now(ZoneInfo("Asia/Jakarta"))
+        # Ambil command dasar (misal /cekpiket@MyBot -> /cekpiket)
+        cmd = text.split()[0].split("@")[0].lower()
+        args = text.split()[1:]
 
-    if cmd in ["/start", "/help"]:
-        reply = (
-            "🤖 *Bot Jadwal Piket Operasional*\n\n"
-            "Perintah yang tersedia:\n"
-            "• /cekpiket - Lihat jadwal piket L1 & L2 hari ini\n"
-            "• /allrole - Lihat jadwal piket seluruh role (L1, L2, Dev, L3)\n"
-            "• /help - Bantuan ini"
-        )
-        send_reply(chat_id, reply, msg_id)
+        # WIB = UTC + 7
+        wib = timezone(timedelta(hours=7))
+        now = datetime.now(wib)
 
-    elif cmd == "/cekpiket":
-        role = "all" if (args and args[0].lower() == "all") else "default"
-        try:
-            jadwal_text = build_message(now, role=role)
-            send_reply(chat_id, jadwal_text, msg_id)
-        except Exception as e:
-            send_reply(chat_id, f"⚠️ Gagal membaca jadwal: {e}", msg_id)
+        if cmd in ["/start", "/help"]:
+            reply = (
+                "🤖 *Bot Jadwal Piket Operasional*\n\n"
+                "Perintah yang tersedia:\n"
+                "• /cekpiket - Lihat jadwal piket L1 & L2 hari ini\n"
+                "• /allrole - Lihat jadwal piket seluruh role (L1, L2, Dev, L3)\n"
+                "• /help - Bantuan ini"
+            )
+            send_reply(chat_id, reply, msg_id)
 
-    elif cmd == "/allrole":
-        try:
-            jadwal_text = build_message(now, role="all")
-            send_reply(chat_id, jadwal_text, msg_id)
-        except Exception as e:
-            send_reply(chat_id, f"⚠️ Gagal membaca jadwal: {e}", msg_id)
+        elif cmd == "/cekpiket":
+            role = "all" if (args and args[0].lower() == "all") else "default"
+            try:
+                jadwal_text = build_message(now, role=role)
+                send_reply(chat_id, jadwal_text, msg_id)
+            except Exception as e:
+                send_reply(chat_id, f"⚠️ Gagal membaca jadwal: {e}", msg_id)
+
+        elif cmd == "/allrole":
+            try:
+                jadwal_text = build_message(now, role="all")
+                send_reply(chat_id, jadwal_text, msg_id)
+            except Exception as e:
+                send_reply(chat_id, f"⚠️ Gagal membaca jadwal: {e}", msg_id)
+
+    except Exception as e:
+        logger.error(f"Error handling webhook: {e}")
 
     return "OK", 200
 
