@@ -32,11 +32,12 @@ def send_reply(chat_id, text, reply_to_message_id=None):
     import urllib.request
     import urllib.parse
 
-    if not TOKEN:
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip() or TOKEN
+    if not token:
         logger.error("TOKEN bot tidak diset!")
         return
 
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {
         "chat_id": chat_id,
         "text": text,
@@ -47,6 +48,12 @@ def send_reply(chat_id, text, reply_to_message_id=None):
 
     data = urllib.parse.urlencode(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data)
+
+    # Proxy support untuk akun free PythonAnywhere jika diperlukan
+    proxy = os.environ.get("http_proxy") or os.environ.get("https_proxy")
+    if proxy:
+        req.set_proxy(proxy.replace("http://", "").replace("https://", ""), "https")
+
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             pass
