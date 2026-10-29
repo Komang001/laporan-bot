@@ -8,10 +8,16 @@ import json
 import logging
 import os
 import sys
+import traceback
 import urllib.request
 import urllib.parse
 from datetime import datetime, timezone, timedelta
 from flask import Flask, request
+
+# Otomatis gunakan proxy di PythonAnywhere Free Tier agar akses Google Sheet & Telegram tembus
+if os.environ.get("PYTHONANYWHERE_SITE") or os.environ.get("PYTHONANYWHERE_DOMAIN") or "pythonanywhere" in os.path.expanduser("~").lower():
+    os.environ["http_proxy"] = "http://proxy.server:3128"
+    os.environ["https_proxy"] = "http://proxy.server:3128"
 
 # Pastikan path modul terbaca
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -25,26 +31,12 @@ logger = logging.getLogger("PA_JadwalBot")
 
 app = Flask(__name__)
 
-# Konfigurasi proxy untuk PythonAnywhere free tier
-PA_PROXY = "http://proxy.server:3128"
-
-
-def get_opener():
-    """Opener dengan proxy support untuk PythonAnywhere free tier."""
-    if os.path.exists("/etc/pythonanywhere"):
-        proxy_handler = urllib.request.ProxyHandler({
-            "http": PA_PROXY,
-            "https": PA_PROXY,
-        })
-        return urllib.request.build_opener(proxy_handler)
-    return urllib.request.build_opener()
-
 
 def send_reply(chat_id, text, reply_to_message_id=None):
     """Kirim pesan balasan via HTTP POST langsung ke Telegram API."""
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
-        logger.error("TOKEN bot tidak diset!")
+        logger.error("TOKEN bot tidak diset di os.environ['TELEGRAM_BOT_TOKEN']!")
         return
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -58,13 +50,12 @@ def send_reply(chat_id, text, reply_to_message_id=None):
 
     data = urllib.parse.urlencode(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data)
-    opener = get_opener()
 
     try:
-        with opener.open(req, timeout=15) as resp:
+        with urllib.request.urlopen(req, timeout=20) as resp:
             pass
     except Exception as e:
-        logger.error(f"Gagal mengirim balasan ke {chat_id}: {e}")
+        logger.error(f"Gagal mengirim balasan ke {chat_id}: {e}\n{traceback.format_exc()}")
 
 
 @app.route("/", methods=["GET"])

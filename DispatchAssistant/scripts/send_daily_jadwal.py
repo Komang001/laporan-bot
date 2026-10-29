@@ -25,6 +25,11 @@ import urllib.parse
 import urllib.request
 from zoneinfo import ZoneInfo
 
+# Otomatis gunakan proxy di PythonAnywhere Free Tier agar akses Google Sheet & Telegram tembus
+if os.environ.get("PYTHONANYWHERE_SITE") or os.environ.get("PYTHONANYWHERE_DOMAIN") or "pythonanywhere" in os.path.expanduser("~").lower():
+    os.environ["http_proxy"] = "http://proxy.server:3128"
+    os.environ["https_proxy"] = "http://proxy.server:3128"
+
 SHEET_URL = os.environ.get(
     "JADWAL_SHEET_URL",
     "https://docs.google.com/spreadsheets/d/"
