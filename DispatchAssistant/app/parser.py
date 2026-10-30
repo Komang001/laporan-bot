@@ -14,6 +14,28 @@ REMOVE_SUFFIX = [
     "thank you",
 ]
 
+INVALID_OG_NAMES = {
+    "KOSONG",
+    "NULL",
+    "NONE",
+    "BLANK",
+    "TIDAK ADA",
+    "TIDAK",
+    "ADA",
+}
+
+
+# =====================================================
+# Workzone Request Detection
+# =====================================================
+
+def is_workzone_request(note: str) -> bool:
+    """True jika note meminta perubahan workzone (toleran typo, misal wokzone/work zone/wz)."""
+    if not note:
+        return False
+    text = re.sub(r"<[^>]+>", " ", note)
+    return bool(re.search(r"\b(?:wo?r?k[_\s-]*zone?s?|wz)\b", text, re.IGNORECASE))
+
 
 # =====================================================
 # Parse Owner Group
@@ -28,9 +50,10 @@ def parse_owner_group(note: str):
     text = re.sub(r"\s+", " ", text).strip()
 
     # Try patterns in order of priority
+    # Pola 1: loker/og/owner group/disini yang BUKAN diikuti status 'kosong/null/blank'
     patterns = [
-        r"(?:\bloker\b|\bog\b|owner\s+gr(?:o)?up)\s*[:.]?\s+(.+)",
-        r"ke\s+(.+)",
+        r"(?:\bloker\b|\bog\b|owner\s*gr(?:o)?up|\bdisini\b)\s*[:.]?\s+(?!(?:kosong|null|blank|none|tidak\s*ada)\b)(.+)",
+        r"(?:\bke\b|\bto\b)\s+(.+)",
     ]
 
     for pattern in patterns:
@@ -38,11 +61,19 @@ def parse_owner_group(note: str):
         if not match:
             continue
 
+        # Jika pola 'ke/to', pastikan bukan diarahkan dari field teknis non-OG (mis. Information District ke X)
+        if pattern.startswith(r"(?:\bke\b"):
+            preceding = text[:match.start()].strip()
+            if re.search(r"\b(?:information\s+district|status|sto|rk|datek|wo?r?k[_\s-]*zone?s?|service\s+(?:id|type|no))\s*$", preceding, re.IGNORECASE):
+                continue
+
         candidate = match.group(1).strip()
 
-        # Strip label prefixes: "Owner Group", "Owner Grup", "LOKER", "OWNER GROUP"
-        candidate = re.sub(r"(?i)\bowner\s+gr(?:o)?up\b", "", candidate)
+        # Strip label prefixes: "Owner Group", "Ownergroup", "Owner Grup", "LOKER", "OWNER GROUP", "DISINI", "OG"
+        candidate = re.sub(r"(?i)\bowner\s*gr(?:o)?up\b", "", candidate)
         candidate = re.sub(r"(?i)\bloker\b", "", candidate)
+        candidate = re.sub(r"(?i)\bog\b", "", candidate)
+        candidate = re.sub(r"(?i)\bdisini\b", "", candidate)
         candidate = re.sub(r"\s+", " ", candidate).strip()
 
         # Ambil hanya kata UPPERCASE atau Title-Case (OG kadang ditulis campur,
@@ -88,7 +119,7 @@ def parse_owner_group(note: str):
 
         result = result.rstrip(".,;:#")
 
-        if result:
+        if result and result.upper() not in INVALID_OG_NAMES:
             return result.upper()
 
     return None
@@ -105,6 +136,72 @@ def extract_inc_number(text: str):
     if match:
         return match.group(0).upper()
     return None
+
+
+# =====================================================
+# TTR Request Detection (INCIDENT)
+# =====================================================
+
+def is_ttr_request(note: str):
+    """True jika note meminta TTR (request TTR).
+
+    Contoh cocok:
+      - 'request TTR INC...', 'req TTR', 'mohon TTR', 'minta TTR'
+      - 'TTR corrective', 'ttrcorrective'
+      - 'Memunculkan_Ownergroup_Kosong TTR End to End tidak sesuai (TTR Freeze)'
+      - fallback: kata TTR standalone (filter SYGAP notes=TTR)
+    Tidak cocok:
+      - note dispatch biasa tanpa kata TTR
+      - tag 'TTR_Freeze' saja (underscore = bukan word boundary,
+        mis. '<p>TTR_Freeze #ANOMALI_RESOLVE ... Salah_Dispatch...'
+        yang harus tetap ditangani alur DISPATCH, bukan TTR).
+    """
+    if not note:
+        return False
+    text = re.sub(r"<[^>]+>", " ", note)
+    text = re.sub(r"\s+", " ", text).strip()
+    if re.search(r"(request|req|mohon|minta|tolong)\s+ttr\b", text, re.IGNORECASE):
+        return True
+    if re.search(r"\bttr\s*corrective\b", text, re.IGNORECASE):
+        return True
+    if re.search(r"\bttrcorrective\b", text, re.IGNORECASE):
+        return True
+    if re.search(r"\bttr\s+end\s+to\s+end\b", text, re.IGNORECASE):
+        return True
+    return bool(re.search(r"\bTTR\b", text, re.IGNORECASE))
+
+
+def extract_ttr_inc_number(note: str):
+    """Ambil INC target untuk /ttrcorrective dari note.
+
+    Prioritas: INC pertama di note, sama seperti dispatch.
+    Return INC uppercase atau None.
+    """
+    return extract_inc_number(note)
+
+
+# =====================================================
+# Impacted Service Request (INSERA terdampak gangguan)
+# =====================================================
+
+def is_impacted_service_request(note: str):
+    """True jika note meminta pemunculan service type karena data INSERA
+    terdampak gangguan aplikasi lain (dieksekusi via /loaddatek).
+
+    Trigger: 'tiket_impacted_service_tidak_ada' (case-insensitive,
+    pemisah boleh underscore/spasi/strip), mis.:
+      - 'tiket_impacted_service_tidak_ada INC53396753 ... mohon bantu ubah Service Type : Null menjadi INTERNET ...'
+      - 'tiket_impacted_service_tidak_ada INC53397107 mohon bantu ubah service type kosong ...'
+    """
+    if not note:
+        return False
+    text = re.sub(r"<[^>]+>", " ", note)
+    text = re.sub(r"\s+", " ", text).strip()
+    return bool(re.search(
+        r"tiket[_\s-]*impacted[_\s-]*service[_\s-]*tidak[_\s-]*ada",
+        text,
+        re.IGNORECASE,
+    ))
 
 
 # =====================================================
@@ -159,9 +256,10 @@ def extract_bulk_og_target(note: str):
 def _clean_og_target(raw: str):
     raw = raw.strip().rstrip(".,;:")
 
-    # Strip label prefixes: "Owner Group", "LOKER", "OWNER GROUP"
-    raw = re.sub(r"(?i)\bowner\s+group\b", "", raw)
+    # Strip label prefixes: "Owner Group", "Ownergroup", "LOKER", "OWNER GROUP", "OG"
+    raw = re.sub(r"(?i)\bowner\s*gr(?:o)?up\b", "", raw)
     raw = re.sub(r"(?i)\bloker\b", "", raw)
+    raw = re.sub(r"(?i)\bog\b", "", raw)
     raw = re.sub(r"\s+", " ", raw).strip()
 
     words = raw.split()
@@ -178,10 +276,19 @@ def _clean_og_target(raw: str):
             og_words.append(w)
         elif w.replace("-", "").replace("_", "").isalnum() and w == w.upper() and len(w) > 0:
             og_words.append(w)
+        elif (
+            len(w) > 1
+            and w[0].isupper()
+            and w[1:].islower()
+            and w.replace("-", "").replace("_", "").isalnum()
+        ):
+            og_words.append(w)
         else:
             break
     result = " ".join(og_words).strip()
-    return result.upper() if result else None
+    if result and result.upper() not in INVALID_OG_NAMES:
+        return result.upper()
+    return None
 
 
 def extract_bulk_inc_list(note: str):
@@ -213,18 +320,23 @@ def extract_service_id(text: str):
     clean = re.sub(r"\s+", " ", clean).strip()
 
     # Pattern 1: Explicit "Service ID" label - but validate format looks like service ID
+    # COBA SEMUA kemunculan label, ambil kandidat valid pertama.
+    # (fix: dulu berhenti di label pertama walau kandidatnya sampah,
+    #  mis. "...pelurusan service id ke Service ID : 1-L6JHRQ0_..." yang
+    #  menangkap kata "Service" lalu menyerah sebelum label yang benar.)
     pattern_explicit = r"(?i)\b(?:service\s*id|service_id|serviceid)\s*(?:menjadi|jadi|ke|adalah|:|:|=|\->|->)?\s*([A-Za-z0-9_\-\.]+)"
-    match = re.search(pattern_explicit, clean)
-    if match:
+    for match in re.finditer(pattern_explicit, clean):
         candidate = match.group(1).strip().rstrip(".,;:!")
-        if candidate and candidate.lower() not in ("menjadi", "jadi", "ke", "adalah", "null", "none", "tidak", "ada"):
-            # Validate: service ID should contain underscore and digits (format: DIGITS_DIGITS_WORD)
-            if re.search(r"\d+_\d+", candidate):
-                return candidate
+        if not candidate or candidate.lower() in ("menjadi", "jadi", "ke", "adalah", "null", "none", "tidak", "ada"):
+            continue
+        # Validate: service ID should contain underscore and digits (format: DIGITS_DIGITS_WORD)
+        if re.search(r"\d+_\d+", candidate):
+            return candidate
 
     # Pattern 2: Fallback - Service ID format is typically DIGITS_DIGITS_WORD
-    # e.g. 20780_0224233814_VOICE, 5480832_0214711635_VOICE
-    pattern_format = r"\b(\d+_\d+_[A-Za-z][A-Za-z0-9]*)\b"
+    # e.g. 20780_0224233814_VOICE, 5480832_0214711635_VOICE.
+    # Izinkan prefix segmen strip (mis. 1-L6JHRQ0_131437114624_INTERNET).
+    pattern_format = r"\b([A-Za-z0-9][A-Za-z0-9_\-\.]*\d+_\d+_[A-Za-z][A-Za-z0-9]*)\b"
     match = re.search(pattern_format, clean)
     if match:
         return match.group(1)
@@ -305,4 +417,4 @@ def extract_service_type(text: str):
             return candidate.upper()
 
     return None
-
+
