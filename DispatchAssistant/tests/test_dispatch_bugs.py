@@ -49,6 +49,10 @@ class TestDispatchBugs(unittest.TestCase):
                 "Mohon bantu OWNER GROUP KOSONG tolong bantu cek",
                 None,
             ),
+            (
+                "<p>tiket_update_scid Mohon bantuannya rekan, Nomor tiket : INC54566056 Case : Dispatch to TIF ASR NON FBB DISTRICT DENPASAR Nama Pelapor : mirza NIK Atasan : 970003 Terima kasih</p>",
+                "TIF ASR NON FBB DISTRICT DENPASAR",
+            ),
         ]
         for note, expected in samples:
             og = extract_owner_group(note)

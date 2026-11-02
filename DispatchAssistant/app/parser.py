@@ -80,13 +80,20 @@ def parse_owner_group(note: str):
         # misal "TIF Surveillance Area 1")
         words = candidate.split()
         og_words = []
+        stop_keywords = {
+            "NAMA", "PELAPOR", "NIK", "ATASAN", "REQ", "REQUEST", "MOHON",
+            "TERIMA", "KASIH", "THANKS", "TIKET", "TICKET", "CASE", "USER"
+        }
         for w in words:
             # Berhenti jika bukan UPPERCASE atau angka INC
             if w.startswith("INC") or w.startswith("Req") or w.startswith("REQ"):
                 break
-            # Bersihkan tanda baca trailing (koma, titik, pagar) sebelum cek
+            # Bersihkan tanda baca trailing (koma, titik, pagar, titik dua) sebelum cek
             w_clean = w.strip(".,;:#")
             if not w_clean:
+                break
+            # Berhenti jika menyentuh keyword metadata tiket (Nama, Pelapor, NIK, Atasan, dll)
+            if w_clean.upper() in stop_keywords:
                 break
             # Skip angka standalone di awal (bukan bagian OG)
             if w_clean.isdigit():
@@ -264,25 +271,34 @@ def _clean_og_target(raw: str):
 
     words = raw.split()
     og_words = []
+    stop_keywords = {
+        "NAMA", "PELAPOR", "NIK", "ATASAN", "REQ", "REQUEST", "MOHON",
+        "TERIMA", "KASIH", "THANKS", "TIKET", "TICKET", "CASE", "USER"
+    }
     for w in words:
         if w.startswith("INC") or w.startswith("Req") or w.startswith("REQ"):
             break
-        if w.isdigit():
+        w_clean = w.strip(".,;:#")
+        if not w_clean:
+            break
+        if w_clean.upper() in stop_keywords:
+            break
+        if w_clean.isdigit():
             if og_words:
-                og_words.append(w)
+                og_words.append(w_clean)
             else:
                 break
-        elif w.replace("-", "").replace("_", "").isalpha() and w == w.upper() and len(w) > 0:
-            og_words.append(w)
-        elif w.replace("-", "").replace("_", "").isalnum() and w == w.upper() and len(w) > 0:
-            og_words.append(w)
+        elif w_clean.replace("-", "").replace("_", "").isalpha() and w_clean == w_clean.upper() and len(w_clean) > 0:
+            og_words.append(w_clean)
+        elif w_clean.replace("-", "").replace("_", "").isalnum() and w_clean == w_clean.upper() and len(w_clean) > 0:
+            og_words.append(w_clean)
         elif (
-            len(w) > 1
-            and w[0].isupper()
-            and w[1:].islower()
-            and w.replace("-", "").replace("_", "").isalnum()
+            len(w_clean) > 1
+            and w_clean[0].isupper()
+            and w_clean[1:].islower()
+            and w_clean.replace("-", "").replace("_", "").isalnum()
         ):
-            og_words.append(w)
+            og_words.append(w_clean)
         else:
             break
     result = " ".join(og_words).strip()
