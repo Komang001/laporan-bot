@@ -86,7 +86,7 @@ AUTO_ENTER = True
 
 USER_NAME = "I Nyoman Windu"
 
-USER_ID = "55654"
+USER_ID = "92010"
 
 INSERA_GROUP_ID = "80148276"
 
@@ -258,7 +258,7 @@ TELEGRAM_SOLVER_IDS = {
     "RIZKA": "65492",
     "IHSAN": "55655",
     "DIKA": "55653",
-    "WINDU": "55654",
+    "WINDU": "92010",
     "RIZKY": "55652",
 }
 
@@ -268,9 +268,9 @@ TELEGRAM_SOLVER_IDS = {
 # - username      : username SYGAP (fallback)
 # - coordinator_id: ID koordinator (fallback lama)
 # solver_id diambil dari baris DataTable (id_coordinator) / opsi #solverSearch SYGAP:
-#   I Nyoman Windu  = 55654, Dika Prananda Putra = 55653, Rizky Senja Budiman = 55652
+#   I Nyoman Windu  = 92010 (lama: 55654), Dika Prananda Putra = 55653, Rizky Senja Budiman = 55652
 REPORT_AGENTS = [
-    {"name": "Windu", "solver_id": "55654", "username": "40010176", "coordinator_id": "55654"},
+    {"name": "Windu", "solver_id": "92010", "username": "40010176", "coordinator_id": "92010"},
     {"name": "Dika", "solver_id": "55653", "username": "", "coordinator_id": "55653"},
     {"name": "Rizky", "solver_id": "55652", "username": "", "coordinator_id": "55652"},
 ]

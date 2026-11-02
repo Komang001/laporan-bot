@@ -12,6 +12,7 @@ from app.parser import (
     extract_bulk_inc_list,
     extract_service_id,
     extract_service_type,
+    is_workzone_request,
 )
 from config.settings import USER_ID, USER_NAME, SKIP_COORDINATOR_USER_IDS
 from app.services.history_service import log_history
@@ -39,6 +40,70 @@ def _log_skip_reason(code, reason, note=""):
             w.writerow(row)
     except Exception:
         pass
+
+
+def _solver_text_in_skip_list(text):
+    """True jika teks sel solver tabel cocok daftar skip (Rizky).
+
+    Entri angka ('55652') cocok persis / sebagai token utuh (bukan substring
+    dalam angka lain). Entri nama/username cocok sebagian (case-insensitive),
+    sama seperti cek label koordinator di form tiket.
+    """
+    from config import settings as cfg
+    t = (text or "").strip()
+    if not t:
+        return False
+    skip_ids = getattr(cfg, "SKIP_COORDINATOR_USER_IDS", []) or []
+    tl = t.lower()
+    tokens = set(re.split(r"[^a-z0-9]+", tl))
+    for item in skip_ids:
+        item_s = str(item).strip()
+        if not item_s:
+            continue
+        if item_s.isdigit():
+            if item_s == tl or item_s in tokens:
+                return True
+        elif item_s.lower() in tl:
+            return True
+    return False
+
+
+def _solver_text_is_mine(text):
+    """True jika teks sel solver tabel jelas milik saya (bukan orang lain).
+
+    Return None jika teks kosong/tidak jelas (harus verifikasi via form
+    dengan is_my_ticket, jangan putuskan dari tabel saja).
+    Cocok ID angka persis sebagai token + nama sendiri sebagian
+    (case-insensitive), mis. '55654' / 'I Nyoman Windu' / 'Windu'.
+    """
+    from config import settings as cfg
+    t = (text or "").strip()
+    if not t:
+        return None
+    tl = t.lower()
+    tokens = set(re.split(r"[^a-z0-9]+", tl))
+    my_id = str(getattr(cfg, "USER_ID", "92010")).strip()
+    my_name = str(getattr(cfg, "USER_NAME", "I Nyoman Windu")).strip().lower()
+    if my_id and (my_id == tl or my_id in tokens):
+        return True
+    if "55654" in tokens or tl == "55654":  # backward compatibility user id lama
+        return True
+    if my_name and my_name in tl:
+        return True
+    # nama depan/belakang saja (mis. 'windu') juga dihitung milik saya
+    for part in my_name.split():
+        if len(part) >= 4 and part in tl:
+            return True
+    # username SYGAP saya (mis. 'CRS2019332' untuk Windu) — cocok sebagai token
+    try:
+        for ag in getattr(cfg, "REPORT_AGENTS", []) or []:
+            if str(ag.get("solver_id", "")).strip() == my_id:
+                uname = str(ag.get("username", "") or "").strip().lower()
+                if uname and (uname == tl or uname in tokens):
+                    return True
+    except Exception:
+        pass
+    return False
 
 
 # Reply note SYGAP saat BISCUIT menolak dispatch karena owner group tidak valid.
@@ -161,6 +226,10 @@ class SygapService:
 
     def navigate_to_dashboard(self):
         page = self.get_dashboard_page()
+        if page is None or not self.browser_manager.is_page_alive(page):
+            raise RuntimeError(
+                "Tab dashboard SYGAP tidak tersedia (tertutup/gagal dibuka). "
+                "Cek tab SYGAP di Chrome, login bila perlu, lalu START lagi.")
         self.browser_manager.activate_page(page)
         current = page.url.lower()
         if "/req_fulfillment" in current and "/form/" not in current:
@@ -281,11 +350,44 @@ class SygapService:
                 continue
         return "requestFulfillmentTable"
 
+    def _get_solver_col_index(self, page, table_id):
+        """Indeks kolom solver/koordinator dari thead (None jika tak ada).
+
+        Kolom grup ('Solver Group', 'Owner Group') diabaikan — yang dipakai
+        hanya kolom orang (coordinator/solver/assign to/owner/pic).
+        """
+        keywords = ("coordinator", "koordinator", "assign to", "assigned", "assignee", "solver", "owner", "pic")
+        try:
+            ths = page.locator(f"#{table_id} thead th")
+            n = ths.count()
+            for i in range(n):
+                try:
+                    t = (ths.nth(i).inner_text() or "").strip().lower()
+                except Exception:
+                    continue
+                if not t or "group" in t:
+                    continue
+                if any(k in t for k in keywords):
+                    return i
+        except Exception:
+            pass
+        return None
+
+    def _read_row_solver(self, row, solver_idx):
+        """Baca teks sel solver satu baris ('' jika tak ada)."""
+        if solver_idx is None:
+            return ""
+        try:
+            return (row.locator("td").nth(solver_idx).inner_text() or "").strip()
+        except Exception:
+            return ""
+
     def get_ticket_rows_generic(self, page):
         """Ambil rows dari table manapun (incident/request)."""
         table_id = self._get_dispatch_table_id(page)
         rows = page.locator(f"#{table_id} tbody tr")
         count = rows.count()
+        solver_idx = self._get_solver_col_index(page, table_id)
         result = []
         for i in range(count):
             row = rows.nth(i)
@@ -317,6 +419,7 @@ class SygapService:
                     "request_code": request_code,
                     "href": href,
                     "status": status,
+                    "solver": self._read_row_solver(row, solver_idx),
                 })
             except Exception:
                 continue
@@ -325,6 +428,7 @@ class SygapService:
     def get_ticket_rows(self, page):
         rows = page.locator("#requestFulfillmentTable tbody tr")
         count = rows.count()
+        solver_idx = self._get_solver_col_index(page, "requestFulfillmentTable")
         result = []
         for i in range(count):
             row = rows.nth(i)
@@ -343,24 +447,151 @@ class SygapService:
                     "request_code": request_code,
                     "href": href,
                     "status": status,
+                    "solver": self._read_row_solver(row, solver_idx),
                 })
             except Exception:
                 continue
         return result
 
-    def click_ticket(self, page, row_info, skip_close=False):
+    def click_ticket(self, page, row_info, skip_close=False, log_callback=None):
+        """Buka tiket -> tab form. Return tab form, atau None.
+
+        Percobaan 1: klik normal (pertahankan perilaku JS situs).
+        Percobaan 2 (fallback): navigasi langsung via href baris
+        (anti tab about:blank macet — tab baru lahir blank, kalau tidak
+        pernah jadi /form/ ditutup, lalu dibuka via href terkontrol).
+        Navigasi macet (khas browser/server dingin saat START) di-reload
+        1x sebelum menyerah; tab yang tetap blank selalu ditutup + return
+        None (retry loop berikut) agar bot tidak mengoperasikan halaman
+        kosong. Gagal buka beruntun (>=3x) -> fail fast 3 mnt agar 1 tiket
+        macet tidak memakan waktu 1 fase.
+        """
+        import urllib.parse as _urlparse
+        log = log_callback or (lambda msg: None)
+
+        def _note_fail():
+            self._open_fail_streak = getattr(self, "_open_fail_streak", 0) + 1
+            if self._open_fail_streak >= 3:
+                self._open_ff_until = time.time() + 60
+                log(f"    buka tiket gagal {self._open_fail_streak}x beruntun "
+                    f"-> fail fast 1 mnt")
+
+        def _note_ok():
+            self._open_fail_streak = 0
+            self._open_ff_until = 0
+
+        if getattr(self, "_open_ff_until", 0) > time.time():
+            log("    open gagal beruntun -> fail fast, retry next loop")
+            return None
         if not skip_close:
             self._close_extra_tabs(page)
-        link = row_info["link"]
-        old_count = len(page.context.pages)
-        link.click()
-        page.wait_for_timeout(3000)
-        new_count = len(page.context.pages)
-        if new_count > old_count:
-            return page.context.pages[-1]
-        for p in page.context.pages:
-            if p != page and "/form/" in p.url:
-                return p
+        link = row_info.get("link") if isinstance(row_info, dict) else None
+        href = (row_info.get("href") or "").strip() \
+            if isinstance(row_info, dict) else ""
+        if link is None:
+            log("    link baris kosong -> coba via href...")
+
+        def _valid_form_tab(p):
+            try:
+                u = (p.url or "").strip()
+            except Exception:
+                return False
+            return "/form/" in u and u.lower() != "about:blank"
+
+        def _close(p):
+            try:
+                if p is not None and not p.is_closed():
+                    p.close()
+            except Exception:
+                pass
+
+        def _wait_form_url(p, timeout=10000):
+            try:
+                p.wait_for_function(
+                    "() => location.href.indexOf('/form/') !== -1",
+                    timeout=timeout)
+            except Exception:
+                pass
+            try:
+                p.wait_for_load_state("domcontentloaded", timeout=8000)
+            except Exception:
+                pass
+            return _valid_form_tab(p)
+
+        def _wait_or_reload(p, timeout=10000):
+            if _wait_form_url(p, timeout=timeout):
+                return True
+            # Navigasi macet -> reload 1x cepat
+            log("    navigasi macet -> reload 1x...")
+            try:
+                p.reload(wait_until="domcontentloaded", timeout=12000)
+                p.wait_for_timeout(1000)
+            except Exception:
+                pass
+            return _wait_form_url(p, timeout=timeout)
+
+        # --- Percobaan 1: klik normal ---
+        if link is not None:
+            try:
+                old_count = len(page.context.pages)
+                link.click(timeout=15000)
+            except Exception as e:
+                log(f"    klik tiket gagal ({str(e)[:80]}) -> coba via href...")
+            else:
+                ticket_page = None
+                t0 = time.time()
+                while time.time() - t0 < 8:
+                    try:
+                        if len(page.context.pages) > old_count:
+                            ticket_page = page.context.pages[-1]
+                            break
+                    except Exception:
+                        pass
+                    try:
+                        page.wait_for_timeout(400)
+                    except Exception:
+                        pass
+                if ticket_page is None:
+                    try:
+                        for p in page.context.pages:
+                            if p != page and "/form/" in (p.url or ""):
+                                ticket_page = p
+                                break
+                    except Exception:
+                        ticket_page = None
+                if ticket_page is not None and _wait_or_reload(ticket_page):
+                    _note_ok()
+                    return ticket_page
+                _close(ticket_page)
+                log("    klik tidak membuka form -> coba via href...")
+
+        # --- Percobaan 2: navigasi langsung via href ---
+        if not href or href.lower().startswith(("javascript:", "about:", "#")):
+            log("    href kosong/JS -> tiket tak bisa dibuka, retry next loop")
+            _note_fail()
+            return None
+        try:
+            target = _urlparse.urljoin(page.url or "", href)
+        except Exception:
+            _note_fail()
+            return None
+        log(f"    buka via href: {target[:100]}")
+        try:
+            tab = page.context.new_page()
+        except Exception:
+            _note_fail()
+            return None
+        try:
+            tab.goto(target, wait_until="domcontentloaded", timeout=15000)
+            tab.wait_for_timeout(1000)
+        except Exception:
+            pass
+        if _wait_or_reload(tab, timeout=10000):
+            _note_ok()
+            return tab
+        _close(tab)
+        log("    href-goto tetap blank/timeout -> tutup tab & lanjut tiket berikut")
+        _note_fail()
         return None
 
     def _close_extra_tabs(self, dashboard_page, log_callback=None):
@@ -764,6 +995,55 @@ class SygapService:
             log(f"    [NEW-HANDLER] error: {e}")
             return False
 
+    def _resolve_og(self, owner_group, log):
+        """Samakan OG note dengan katalog INSERA (koreksi typo proaktif).
+
+        Return (og_dipakai, retry_candidates[(nama, skor)]). Jika katalog
+        tidak ada / tidak ada yang mirip, OG asli dipakai apa adanya.
+        """
+        from app.services.owner_group_service import resolve_owner_group
+        try:
+            resolved, info = resolve_owner_group(owner_group)
+        except Exception as e:
+            log(f"    OG catalog error ({e}) -> pakai OG asli: {owner_group}")
+            return owner_group, []
+        if info.get("corrected"):
+            log(f"    OG dikoreksi: '{owner_group}' -> '{resolved}' (skor {info['score']:.2f})")
+        return resolved or owner_group, info.get("retry") or []
+
+    def _retry_bulk_with_og_candidates(self, biscuit, bulk_responses, bad_incs, candidates, log):
+        """Retry INC gagal-invalid dengan kandidat OG berikut.
+
+        bulk_responses di-update in-place. Return nama OG kandidat yang
+        sukses untuk semua bad_incs, atau None.
+        """
+        for cand, score in candidates:
+            remaining = [
+                inc for inc in bad_incs
+                if bulk_responses.get(inc) is None or bulk_responses[inc].status != "SUCCESS"
+            ]
+            if not remaining:
+                return cand
+            log(f"    OG invalid -> retry {len(remaining)} INC dengan kandidat: {cand} (skor {score:.2f})")
+            round_ok = True
+            for inc in remaining:
+                try:
+                    biscuit.wait_for_ready()
+                except Exception:
+                    pass
+                rr = biscuit.execute(f"/dispatchticket {inc} {cand}", "INSERA")
+                log(f"    Retry {inc} -> {rr.status} - {rr.message}")
+                bulk_responses[inc] = rr
+                if rr.status == "SUCCESS":
+                    continue
+                if rr.status == "FAILED" and not is_invalid_owner_group_error(rr.message or ""):
+                    return None  # error lain -> stop total
+                round_ok = False
+                break  # kandidat ini juga invalid/timeout -> kandidat berikut
+            if round_ok:
+                return cand
+        return None
+
     def extract_parent_gamas_from_note(self, note):
         """Extract parent GAMAS INC from note.
         
@@ -778,8 +1058,9 @@ class SygapService:
         if not note:
             return None
 
-        # Pattern 1: IG keyword (short form for Induk Gamas)
-        match = re.search(r'\bIG\s*[:;]\s*(INC\d+)', note, re.IGNORECASE)
+        # Pattern 1: IG keyword (short form for Induk Gamas).
+        # Separator boleh ":" / ";" / spasi (mis. "ig INC...", "IG: INC...").
+        match = re.search(r'\bIG\s*[:;\s]\s*(INC\d+)', note, re.IGNORECASE)
         if match:
             return match.group(1).upper()
         # Pattern 2: INDUK GAMAS dengan ":"/" ;" eksplisit — prioritas utama (mis. "INDUK GAMAS : INC...")
@@ -839,8 +1120,8 @@ class SygapService:
         all_incs = re.findall(r'INC\d+', note, re.IGNORECASE)
         all_incs = [m.upper() for m in all_incs]
 
-        if parent and parent in all_incs:
-            all_incs.remove(parent)
+        if parent:
+            all_incs = [i for i in all_incs if i != parent.upper()]
 
         return all_incs
 
@@ -921,6 +1202,15 @@ class SygapService:
             ticket_page.wait_for_selector("#id_coordinator, #selectSolver, #selectIncidentOwner", timeout=8000)
             ticket_page.wait_for_selector("#btn_next_stage, #btn_submit_request, #btn_wip_note, #btn_wip_inc, #btn_update_inc, #btn_redispatch_inc", timeout=8000)
             ticket_page.wait_for_timeout(1500)
+        except Exception:
+            pass
+
+        # Guard last-moment: jangan curi TO tiket koordinator skip (Rizky).
+        # Dicek TEPAT sebelum klik agar race sekecil mungkin.
+        try:
+            if self.is_coordinator_in_skip_list(ticket_page, wait_timeout=5):
+                print("take_ownership SKIP: koordinator di daftar skip (Rizky) — batal TO")
+                return 'SKIP_COORDINATOR'
         except Exception:
             pass
 
@@ -1068,16 +1358,49 @@ class SygapService:
             getattr(cfg, "USER_ID", "55654")
         ).strip()
 
-    def is_coordinator_in_skip_list(self, ticket_page):
+    def wait_for_coordinator_value(self, ticket_page, timeout=8):
+        """Tunggu field koordinator terisi (select2 dimuat async). Return (uid, label).
+
+        Fast-path: jika elemen koordinator tidak ada di DOM, langsung
+        kembalikan ("", "") tanpa menunggu.
+        """
+        uid, label = "", ""
+        end = time.time() + max(0, timeout)
+        while True:
+            try:
+                has_el = ticket_page.evaluate(
+                    "(() => ['id_coordinator','selectSolver','selectIncidentOwner']"
+                    ".some(id => document.getElementById(id)))()"
+                )
+            except Exception:
+                return uid, label
+            if not has_el:
+                return "", ""
+            uid = self.read_coordinator_user_id(ticket_page)
+            label = self.read_coordinator_label(ticket_page)
+            if uid or label:
+                return uid, label
+            if time.time() >= end:
+                return uid, label
+            try:
+                ticket_page.wait_for_timeout(500)
+            except Exception:
+                return uid, label
+
+    def is_coordinator_in_skip_list(self, ticket_page, wait_timeout=8):
         """True jika tiket dimiliki Request Coordinator di daftar skip.
 
         Entri bisa berupa ID angka ('55652') atau nama/username ('Rizky Senja Budiman',
         'CRS2018192'). Teks dicocokkan sebagian (case-insensitive) terhadap label
         koordinator di form tiket.
+
+        Menunggu field terisi dulu (maks wait_timeout detik) agar tidak lolos
+        hanya karena select2 belum selesai loading.
         """
         from config import settings as cfg
-        uid = self.read_coordinator_user_id(ticket_page)
-        label = self.read_coordinator_label(ticket_page)
+        uid, label = self.wait_for_coordinator_value(ticket_page, timeout=wait_timeout)
+        if uid or label:
+            print(f"    [KOORD] uid='{uid}' label='{label}'")
         skip_ids = getattr(cfg, "SKIP_COORDINATOR_USER_IDS", []) or []
         for item in skip_ids:
             item_s = str(item).strip()
@@ -1098,6 +1421,14 @@ class SygapService:
         try:
             ticket_page.wait_for_load_state("domcontentloaded", timeout=15000)
             ticket_page.wait_for_timeout(2000)
+        except Exception:
+            pass
+
+        # Guard last-moment: jangan rebut tiket koordinator skip (Rizky).
+        try:
+            if self.is_coordinator_in_skip_list(ticket_page, wait_timeout=5):
+                print("change_coordinator SKIP: koordinator di daftar skip (Rizky) — batal")
+                return 'SKIP_COORDINATOR'
         except Exception:
             pass
 
@@ -1375,9 +1706,9 @@ class SygapService:
         return False
 
     def extract_wo_number(self, note):
-        match = re.search(r'WO\d+', note)
+        match = re.search(r'WO\d+', note, re.IGNORECASE)
         if match:
-            return match.group(0)
+            return match.group(0).upper()
         return None
 
     def filter_canclwork(self, page):
@@ -1385,10 +1716,21 @@ class SygapService:
             page.locator("#searchSelect").select_option(label="OPEN")
             page.wait_for_timeout(500)
 
-            adv_link = page.locator('a[href="#multiCollapseExample1"]')
-            if adv_link.count() > 0:
-                adv_link.click()
-            page.wait_for_selector("#multiCollapseExample1.show", timeout=5000)
+            collapse = page.locator("#multiCollapseExample1")
+            is_open = False
+            if collapse.count() > 0:
+                try:
+                    is_open = collapse.evaluate("el => el.classList.contains('show')")
+                except Exception:
+                    pass
+            if not is_open:
+                adv_link = page.locator('a[href="#multiCollapseExample1"]')
+                if adv_link.count() > 0:
+                    adv_link.click()
+                try:
+                    page.wait_for_selector("#multiCollapseExample1.show", timeout=5000)
+                except Exception:
+                    pass
             page.wait_for_timeout(500)
 
             notes_input = page.locator("#notes")
@@ -1426,10 +1768,21 @@ class SygapService:
             page.locator("#searchSelect").select_option(label="OPEN")
             page.wait_for_timeout(500)
 
-            adv_link = page.locator('a[href="#multiCollapseExample1"]')
-            if adv_link.count() > 0:
-                adv_link.click()
-            page.wait_for_selector("#multiCollapseExample1.show", timeout=5000)
+            collapse = page.locator("#multiCollapseExample1")
+            is_open = False
+            if collapse.count() > 0:
+                try:
+                    is_open = collapse.evaluate("el => el.classList.contains('show')")
+                except Exception:
+                    pass
+            if not is_open:
+                adv_link = page.locator('a[href="#multiCollapseExample1"]')
+                if adv_link.count() > 0:
+                    adv_link.click()
+                try:
+                    page.wait_for_selector("#multiCollapseExample1.show", timeout=5000)
+                except Exception:
+                    pass
             page.wait_for_timeout(500)
 
             notes_input = page.locator("#notes")
@@ -1462,6 +1815,58 @@ class SygapService:
         except Exception as e:
             print(f"Filter CANCELWORK error: {e}")
 
+    def filter_cancelled(self, page):
+        try:
+            page.locator("#searchSelect").select_option(label="OPEN")
+            page.wait_for_timeout(500)
+
+            collapse = page.locator("#multiCollapseExample1")
+            is_open = False
+            if collapse.count() > 0:
+                try:
+                    is_open = collapse.evaluate("el => el.classList.contains('show')")
+                except Exception:
+                    pass
+            if not is_open:
+                adv_link = page.locator('a[href="#multiCollapseExample1"]')
+                if adv_link.count() > 0:
+                    adv_link.click()
+                try:
+                    page.wait_for_selector("#multiCollapseExample1.show", timeout=5000)
+                except Exception:
+                    pass
+            page.wait_for_timeout(500)
+
+            notes_input = page.locator("#notes")
+            if notes_input.count() == 0:
+                notes_input = page.locator("input[name='notes']")
+            if notes_input.count() > 0:
+                notes_input.fill("")
+                page.wait_for_timeout(300)
+                notes_input.fill("CANCELLED")
+                page.wait_for_timeout(500)
+            else:
+                print("WARNING: Notes input field not found!")
+                return
+
+            verify_val = notes_input.input_value().strip()
+            print(f"Notes filter value: '{verify_val}'")
+            if "CANCELLED" not in verify_val:
+                print("FAILED to set Notes filter!")
+                return
+
+            page.locator("#btn_apply").click()
+            page.wait_for_timeout(4000)
+
+            notes_val_after = notes_input.input_value().strip()
+            print(f"Notes after Apply: '{notes_val_after}'")
+
+            rows = page.locator("#requestFulfillmentTable tbody tr")
+            count = rows.count()
+            print(f"Filter CANCELLED: {count} row(s) found")
+        except Exception as e:
+            print(f"Filter CANCELLED error: {e}")
+
     def process_canclwork_tickets(self, log_callback=None):
         from app.services.biscuit_service import BiscuitService
         log = log_callback or (lambda msg: None)
@@ -1470,15 +1875,17 @@ class SygapService:
         page = self.navigate_to_dashboard()
         log(f"Dashboard loaded: {page.url[:60]}")
 
-        filters = ["CANCLWORK", "CANCELWORK"]
+        filters = ["CANCLWORK", "CANCELWORK", "CANCELLED"]
         filter_idx = 0
         current_filter = filters[filter_idx]
 
         def apply_filter(filter_name):
             if filter_name == "CANCLWORK":
                 self.filter_canclwork(page)
-            else:
+            elif filter_name == "CANCELWORK":
                 self.filter_cancelwork(page)
+            elif filter_name == "CANCELLED":
+                self.filter_cancelled(page)
             try:
                 page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
                 page.wait_for_timeout(2000)
@@ -1487,18 +1894,17 @@ class SygapService:
                 log(f"No rows found for {filter_name}")
                 return False
 
-        if not apply_filter(current_filter):
+        while filter_idx < len(filters):
+            if apply_filter(current_filter):
+                log(f"Filtered: OPEN + {current_filter}")
+                break
             log(f"No tickets for {current_filter}. Switching...")
             filter_idx += 1
             if filter_idx < len(filters):
                 current_filter = filters[filter_idx]
-                if not apply_filter(current_filter):
-                    log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
-                    return results
             else:
-                log(f"No tickets found. Waiting {LOOP_INTERVAL // 60} minutes...")
+                log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
                 return results
-        log(f"Filtered: OPEN + {current_filter}")
 
         total_processed = 0
 
@@ -1512,11 +1918,21 @@ class SygapService:
             if len(rows) == 0:
                 filter_idx += 1
                 if filter_idx < len(filters):
+                    prev_filter = filters[filter_idx - 1]
                     current_filter = filters[filter_idx]
-                    log(f"No {filters[filter_idx-1][0]} tickets. Switching to {current_filter[0]} [{current_filter[1]}]...")
+                    log(f"No {prev_filter} tickets. Switching to {current_filter}...")
                     if not apply_filter(current_filter):
-                        log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
-                        return results
+                        switched = False
+                        while filter_idx + 1 < len(filters):
+                            filter_idx += 1
+                            current_filter = filters[filter_idx]
+                            log(f"Switching to {current_filter}...")
+                            if apply_filter(current_filter):
+                                switched = True
+                                break
+                        if not switched:
+                            log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                            return results
                     continue
                 else:
                     log(f"No tickets found. Waiting {LOOP_INTERVAL // 60} minutes...")
@@ -1536,8 +1952,20 @@ class SygapService:
                     log(f"  [{i+1}] {code} - SKIP (status: {status})")
                     continue
 
+                if _solver_text_in_skip_list(row_info.get("solver", "")):
+                    log(f"  [{i+1}] {code} - SKIP (solver Rizky di tabel, tidak dibuka)")
+                    continue
+
                 if code in self.processed_ids:
                     log(f"  [{i+1}] {code} - SKIP (already processed)")
+                    continue
+
+                if self._is_persistent_skipped(code):
+                    log(f"  [{i+1}] {code} - SKIP (permanen, sudah pernah di-skip — tidak dibuka lagi)")
+                    continue
+
+                if code in self.skipped_ids and (time.time() - self.skipped_ids[code]) < LOOP_INTERVAL:
+                    log(f"  [{i+1}] {code} - SKIP (recently skipped, tunggu {LOOP_INTERVAL}s)")
                     continue
 
                 total_processed += 1
@@ -1573,6 +2001,11 @@ class SygapService:
                         self.skipped_ids[code] = time.time()
                         self._save_persistent_skipped(code, "No CANCELWORK")
                         continue
+                    if current_filter == "CANCELLED" and "CANCELLED" not in note_upper:
+                        log(f"    SAFETY: No CANCELLED in note, SKIP")
+                        self.skipped_ids[code] = time.time()
+                        self._save_persistent_skipped(code, "No CANCELLED")
+                        continue
 
                     current_solver = ticket_page.locator("#id_coordinator")
                     solver_val = ""
@@ -1591,6 +2024,11 @@ class SygapService:
                         log(f"    Solver bukan saya -> TO dulu...")
                         btn_action = self.take_ownership(ticket_page)
                         log(f"    Button clicked: {btn_action}")
+                        if btn_action == 'SKIP_COORDINATOR':
+                            log(f"    SKIP: koordinator Rizky terdeteksi saat TO — jangan ambil")
+                            self.skipped_ids[code] = time.time()
+                            self._save_persistent_skipped(code, "koordinator skip 55652 (TO guard)")
+                            continue
 
                         confirmed = self.wait_for_in_progress(ticket_page)
                         if not confirmed:
@@ -1606,6 +2044,31 @@ class SygapService:
                         log(f"    SAFETY: No OSM/SOM/TOM in note")
                         log(f"    Complete ticket dengan note: {warn}")
                         self.complete_ticket(ticket_page, note=warn)
+                        results.append({
+                            "request_code": code,
+                            "wo_number": "",
+                            "note": note,
+                            "biscuit_status": "SKIPPED_NO_OSM",
+                        })
+                        self.processed_ids.add(code)
+                        self._save_persistent_skipped(code, "No OSM/SOM/TOM in note")
+                        try:
+                            log_history(
+                                feature="CANCLWORK",
+                                ticket_code=code,
+                                ticket_id="",
+                                owner_group="",
+                                note=note,
+                                reply_sygap=warn,
+                                biscuit_status="",
+                                biscuit_message="",
+                                status="SUCCESS",
+                                solver_id=USER_ID,
+                                tgl_masuk=self.read_ticket_created_date(ticket_page) if not ticket_page.is_closed() else "",
+                                tgl_selesai=self.read_ticket_selesai_date(ticket_page) if not ticket_page.is_closed() else ""
+                            )
+                        except Exception:
+                            pass
                         page.bring_to_front()
                         continue
 
@@ -1640,6 +2103,15 @@ class SygapService:
                         if attempt < max_retries:
                             log(f"    BISCUIT timeout, retrying...")
                             biscuit.wait_for_ready()
+
+                    # Jika BISCUIT timeout/503/HTML jangan balas SYGAP dengan Timeout/HTML — retry 180s
+                    if response.status in ("UNKNOWN", "FAILED") and (
+                        any(k in (response.message or "") for k in ["Timeout", "BISCUIT", "Application is not available", "503", "<html>"])
+                        or "not found" in (response.message or "").lower()
+                    ):
+                        log(f"    BISCUIT {response.status} Timeout/503 — SKIP tanpa complete, akan retry 180s")
+                        self.skipped_ids[code] = time.time()
+                        continue
 
                     if response.status == "SUCCESS":
                         complete_note = "Cek Kembali"
@@ -1697,15 +2169,26 @@ class SygapService:
 
             log(f"Page done. Re-applying filter...")
             if not apply_filter(current_filter):
-                log(f"No rows after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
-                return results
+                filter_idx += 1
+                if filter_idx < len(filters):
+                    prev_filter = filters[filter_idx - 1]
+                    current_filter = filters[filter_idx]
+                    log(f"No tickets after filter {prev_filter}. Switching to {current_filter}...")
+                    if not apply_filter(current_filter):
+                        log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                        return results
+                    continue
+                else:
+                    log(f"No rows after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                    return results
 
             info_after = page.locator("#requestFulfillmentTable_info").inner_text()
             if "0 entries" in info_after or "0 of 0" in info_after:
                 filter_idx += 1
                 if filter_idx < len(filters):
+                    prev_filter = filters[filter_idx - 1]
                     current_filter = filters[filter_idx]
-                    log(f"No {filters[filter_idx-1][0]} tickets. Switching to {current_filter[0]} [{current_filter[1]}]...")
+                    log(f"No {prev_filter} tickets. Switching to {current_filter}...")
                     if not apply_filter(current_filter):
                         log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
                         return results
@@ -1717,8 +2200,9 @@ class SygapService:
             if processed_this_round == 0:
                 filter_idx += 1
                 if filter_idx < len(filters):
+                    prev_filter = filters[filter_idx - 1]
                     current_filter = filters[filter_idx]
-                    log(f"No actionable {filters[filter_idx-1][0]} tickets. Switching to {current_filter[0]} [{current_filter[1]}]...")
+                    log(f"No actionable {prev_filter} tickets. Switching to {current_filter}...")
                     if not apply_filter(current_filter):
                         log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
                         return results
@@ -1729,9 +2213,45 @@ class SygapService:
 
         return results
 
-    def filter_dispatch(self, page):
+    def _select_status_filter(self, page, select_id, status_value):
+        """Pilih opsi status SYGAP secara toleran (underscore/spasi/case).
+
+        Return True jika opsi cocok & terpilih (terverifikasi), False jika
+        label tidak ada — pemanggil harus LEWATI fase, jangan lanjut dengan
+        filter status yang salah (bisa mengerjakan tiket di luar target fase).
+        """
         try:
-            page.locator("#searchSelect").select_option(label="OPEN")
+            loc = page.locator(select_id)
+            if loc.count() == 0:
+                print(f"WARNING: {select_id} tidak ditemukan")
+                return False
+            norm = lambda s: re.sub(r"[\s_\-]+", "", s or "").lower()
+            target = norm(status_value)
+            opts = loc.locator("option")
+            for i in range(opts.count()):
+                try:
+                    txt = (opts.nth(i).inner_text() or "").strip()
+                except Exception:
+                    continue
+                if txt and norm(txt) == target:
+                    loc.select_option(label=txt)
+                    page.wait_for_timeout(500)
+                    try:
+                        chosen = (loc.locator("option:checked").first.inner_text() or "").strip()
+                    except Exception:
+                        chosen = txt
+                    return norm(chosen) == target
+            print(f"WARNING: Status '{status_value}' tidak ada di {select_id}")
+            return False
+        except Exception as e:
+            print(f"WARNING: Gagal set status '{status_value}': {e}")
+            return False
+
+    def filter_dispatch(self, page, status_value="OPEN"):
+        """Return True jika filter berhasil diterapkan (status valid)."""
+        try:
+            if not self._select_status_filter(page, "#searchSelect", status_value):
+                return False
             page.wait_for_timeout(500)
 
             adv_link = page.locator('a[href="#multiCollapseExample1"]')
@@ -1788,9 +2308,11 @@ class SygapService:
 
             rows = page.locator("#requestFulfillmentTable tbody tr")
             count = rows.count()
-            print(f"Filter DISPATCH: {count} row(s) found")
+            print(f"Filter DISPATCH [{status_value}]: {count} row(s) found")
+            return True
         except Exception as e:
             print(f"Filter DISPATCH error: {e}")
+            return False
 
     def filter_dispatch_incident(self, page, notes_value="dispatch", status_value="OPEN"):
         """Filter untuk INCIDENT dispatch: status_value + notes=notes_value + MO-INSERA (tabel incidentTable).
@@ -1891,9 +2413,11 @@ class SygapService:
         except Exception as e:
             print(f"Filter DISPATCH INCIDENT error: {e}")
 
-    def filter_change_service_id(self, page):
+    def filter_change_service_id(self, page, status_value="OPEN"):
+        """Return True jika filter berhasil diterapkan (status valid)."""
         try:
-            page.locator("#searchSelect").select_option(label="OPEN")
+            if not self._select_status_filter(page, "#searchSelect", status_value):
+                return False
             page.wait_for_timeout(500)
 
             # Hanya klik jika belum terbuka
@@ -1962,13 +2486,21 @@ class SygapService:
 
             rows = page.locator("#requestFulfillmentTable tbody tr")
             count = rows.count()
-            print(f"Filter CHANGE SERVICE ID: {count} row(s) found")
+            print(f"Filter CHANGE SERVICE ID [{status_value}]: {count} row(s) found")
+            return True
         except Exception as e:
             print(f"Filter CHANGE SERVICE ID error: {e}")
+            return False
 
-    def filter_gamas_relations(self, page):
+    def filter_gamas_relations(self, page, status_value="OPEN"):
+        """Filter GAMAS: status_value + notes=gamas + MO-INSERA.
+
+        status_value: "IN_PROGRESS" milik sendiri dulu, lalu "OPEN" (TO baru).
+        Return True jika filter berhasil diterapkan (status valid).
+        """
         try:
-            page.locator("#searchSelect").select_option(label="OPEN")
+            if not self._select_status_filter(page, "#searchSelect", status_value):
+                return False
             page.wait_for_timeout(500)
 
             adv_link = page.locator('a[href="#multiCollapseExample1"]')
@@ -2009,9 +2541,11 @@ class SygapService:
 
             rows = page.locator("#requestFulfillmentTable tbody tr")
             count = rows.count()
-            print(f"Filter GAMAS RELATIONS: {count} row(s) found")
+            print(f"Filter GAMAS RELATIONS [{status_value}]: {count} row(s) found")
+            return True
         except Exception as e:
             print(f"Filter GAMAS RELATIONS error: {e}")
+            return False
 
     def _complete_gamas_reply(self, page, ticket_page, code, note, results, log):
         """Complete tiket GAMAS relations dengan reply note (tanpa membuat relasi)."""
@@ -2107,32 +2641,67 @@ class SygapService:
         if not logged_in:
             log("INSERA belum login setelah 120 detik. Scan tetap dimulai...")
 
-        self.filter_gamas_relations(page)
-        log("Filtered: OPEN + gamas + MO-INSERA")
+        # === Filter 2 fase: IN_PROGRESS milik sendiri dulu -> OPEN (TO baru) ===
+        # Tumpukan tiket yang sudah TO ke saya dikerjakan dulu sampai habis;
+        # kalau sudah habis, otomatis lanjut TO tiket OPEN baru. Milik orang
+        # lain TIDAK direbut.
+        filters = [("gamas", "IN_PROGRESS"), ("gamas", "OPEN")]
+        filter_idx = 0
+        current_filter = filters[filter_idx]
 
-        try:
-            page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
-        except Exception:
-            log("No tickets found after filter")
-            return results
-        page.wait_for_timeout(2000)
+        def apply_filter(filter_tuple):
+            _, status_val = filter_tuple
+            if not self.filter_gamas_relations(page, status_value=status_val):
+                log(f"Status [{status_val}] tidak tersedia di filter SYGAP — fase dilewati")
+                return False
+            try:
+                page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
+                page.wait_for_timeout(2000)
+                return True
+            except Exception:
+                log(f"No rows found for gamas [{status_val}]")
+                return False
+
+        if not apply_filter(current_filter):
+            log(f"No tickets for gamas [{current_filter[1]}]. Switching...")
+            filter_idx += 1
+            if filter_idx < len(filters):
+                current_filter = filters[filter_idx]
+                if not apply_filter(current_filter):
+                    log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                    return results
+            else:
+                log(f"No tickets found. Waiting {LOOP_INTERVAL // 60} minutes...")
+                return results
+        log(f"Filtered: {current_filter[0]} [{current_filter[1]}] + MO-INSERA")
 
         total_processed = 0
 
         while True:
             info_text = page.locator("#requestFulfillmentTable_info").inner_text()
-            log(f"--- {info_text} ---")
+            log(f"--- {info_text} [{current_filter[1]}] ---")
 
             if self._stopped():
                 log("STOP requested - aborting scan")
                 return results
 
             rows = self.get_ticket_rows(page)
-            log(f"Found {len(rows)} row(s)")
+            log(f"Found {len(rows)} row(s) [gamas {current_filter[1]}]")
 
             if len(rows) == 0:
-                log(f"No tickets found. Waiting {LOOP_INTERVAL // 60} minutes...")
-                return results
+                filter_idx += 1
+                if filter_idx < len(filters):
+                    current_filter = filters[filter_idx]
+                    log(f"No gamas tickets. Switching to [{current_filter[1]}]...")
+                    if not apply_filter(current_filter):
+                        log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                        return results
+                    continue
+                else:
+                    log(f"No tickets found. Waiting {LOOP_INTERVAL // 60} minutes...")
+                    return results
+
+            processed_this_round = 0
 
             for i, row_info in enumerate(rows):
                 code = row_info["request_code"]
@@ -2146,6 +2715,19 @@ class SygapService:
                     log(f"  [{i+1}] {code} - SKIP (status: {status})")
                     continue
 
+                if _solver_text_in_skip_list(row_info.get("solver", "")):
+                    log(f"  [{i+1}] {code} - SKIP (solver Rizky di tabel, tidak dibuka)")
+                    continue
+
+                # Fase IN_PROGRESS: hanya kerjakan milik sendiri, jangan rebut orang lain
+                if current_filter[1] == "IN_PROGRESS":
+                    _mine = _solver_text_is_mine(row_info.get("solver", ""))
+                    if _mine is False:
+                        log(f"  [{i+1}] {code} - SKIP (IN_PROGRESS milik orang lain, tidak dibuka)")
+                        if code not in self.skipped_ids:
+                            self.skipped_ids[code] = time.time()
+                        continue
+
                 if code in self.processed_ids:
                     log(f"  [{i+1}] {code} - SKIP (already processed)")
                     continue
@@ -2158,6 +2740,7 @@ class SygapService:
                     continue
 
                 total_processed += 1
+                processed_this_round += 1
                 log(f"  [{i+1}/{len(rows)}] Opening {code}...")
 
                 ticket_page = self.click_ticket(page, row_info, skip_close=True)
@@ -2180,12 +2763,23 @@ class SygapService:
                         self._save_persistent_skipped(code, "koordinator skip 55652")
                         continue
 
+                    # Fase IN_PROGRESS: verifikasi form — bukan milik saya = jangan rebut
+                    if current_filter[1] == "IN_PROGRESS" and not self.is_my_ticket(ticket_page):
+                        log(f"    SKIP: IN_PROGRESS milik orang lain (bukan saya), jangan rebut")
+                        self.skipped_ids[code] = time.time()
+                        continue
+
                     if self.is_my_ticket(ticket_page):
                         log(f"    Sudah tiket saya, lanjut tanpa TO...")
                     else:
                         log(f"    Taking ownership...")
                         btn_action = self.take_ownership(ticket_page)
                         log(f"    Button clicked: {btn_action}")
+                        if btn_action == 'SKIP_COORDINATOR':
+                            log(f"    SKIP: koordinator Rizky terdeteksi saat TO — jangan ambil")
+                            self.skipped_ids[code] = time.time()
+                            self._save_persistent_skipped(code, "koordinator skip 55652 (TO guard)")
+                            continue
 
                         confirmed = self.wait_for_in_progress(ticket_page)
                         if not confirmed:
@@ -2283,6 +2877,14 @@ class SygapService:
                         log(f"    Checking induk {parent_inc} via /cekticket...")
                         check = biscuit.check_ticket(parent_inc)
                         log(f"    Cek induk {parent_inc}: {check['detail']}")
+                        if check.get("source") == "PROACTIVE" or "PROACTIVE" in str(check.get("detail", "")).upper():
+                            log(f"    Induk {parent_inc} source PROACTIVE -> COMPLETE dengan reply penolakan.")
+                            self._complete_gamas_reply(page, ticket_page, code, "Terkait induk gamas dengan source PROACTIVE tidak bisa kami bantu relasikan ,\nsilahkan buat ticket baru dengan source GAMAS dan wajib mengisi perangkat pada kolom perangkatnya juga . terimakasih", results, log)
+                            continue
+                        if check.get("is_closed") or "CLOSED" in str(check.get("ticket_status", "")).upper():
+                            log(f"    Induk {parent_inc} status CLOSED -> COMPLETE dengan reply penolakan.")
+                            self._complete_gamas_reply(page, ticket_page, code, "status induk gamas sudah closed, mohon maaf permintaan tidak dapat kami penuhi", results, log)
+                            continue
                         if not check["found"]:
                             detail = check.get("detail", "")
                             if "not found" in detail.lower() or "error" in detail.lower():
@@ -2445,18 +3047,48 @@ class SygapService:
                         pass
                     page.wait_for_timeout(1500)
 
-            log(f"Page done. Re-applying filter...")
-            self.filter_gamas_relations(page)
-            page.wait_for_timeout(3000)
+            log(f"Page done. Re-applying filter [{current_filter[1]}]...")
+            if not apply_filter(current_filter):
+                filter_idx += 1
+                if filter_idx < len(filters):
+                    current_filter = filters[filter_idx]
+                    log(f"No tickets after filter. Switching to gamas [{current_filter[1]}]...")
+                    if not apply_filter(current_filter):
+                        log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                        return results
+                    continue
+                else:
+                    log(f"No tickets after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                    return results
+            try:
+                info_after = page.locator("#requestFulfillmentTable_info").inner_text()
+                if "0 entries" in info_after or "0 of 0" in info_after:
+                    filter_idx += 1
+                    if filter_idx < len(filters):
+                        current_filter = filters[filter_idx]
+                        log(f"No tickets after filter. Switching to gamas [{current_filter[1]}]...")
+                        if not apply_filter(current_filter):
+                            log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                            return results
+                        continue
+                    else:
+                        log(f"No tickets after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                        return results
+            except Exception:
+                pass
 
-            info_after = page.locator("#requestFulfillmentTable_info").inner_text()
-            if "0 entries" in info_after or "0 of 0" in info_after:
-                log(f"No tickets after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
-                return results
-
-            if total_processed == 0:
-                log(f"No actionable tickets. Waiting {LOOP_INTERVAL // 60} minutes...")
-                return results
+            if processed_this_round == 0:
+                filter_idx += 1
+                if filter_idx < len(filters):
+                    current_filter = filters[filter_idx]
+                    log(f"No actionable gamas [{filters[filter_idx-1][1]}] tickets. Switching to [{current_filter[1]}]...")
+                    if not apply_filter(current_filter):
+                        log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                        return results
+                    continue
+                else:
+                    log(f"No actionable tickets. Waiting {LOOP_INTERVAL // 60} minutes...")
+                    return results
 
         return results
 
@@ -2468,32 +3100,65 @@ class SygapService:
         page = self.navigate_to_dashboard()
         log(f"Dashboard loaded: {page.url[:60]}")
 
-        self.filter_dispatch(page)
-        log("Filtered: dispatch")
+        # === Filter 2 fase: IN_PROGRESS milik sendiri dulu -> OPEN (TO baru) ===
+        # Tumpukan tiket yang sudah TO ke saya dikerjakan dulu sampai habis;
+        # kalau sudah habis, otomatis lanjut TO tiket OPEN baru. Milik orang
+        # lain TIDAK direbut.
+        filters = [("dispatch", "IN_PROGRESS"), ("dispatch", "OPEN")]
+        filter_idx = 0
+        current_filter = filters[filter_idx]
 
-        try:
-            page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
-        except Exception:
-            log("No tickets found after filter")
-            return results
-        page.wait_for_timeout(2000)
+        def apply_filter(filter_tuple):
+            _, status_val = filter_tuple
+            if not self.filter_dispatch(page, status_value=status_val):
+                log(f"Status [{status_val}] tidak tersedia di filter SYGAP — fase dilewati")
+                return False
+            try:
+                page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
+                page.wait_for_timeout(2000)
+                return True
+            except Exception:
+                log(f"No rows found for dispatch [{status_val}]")
+                return False
+
+        if not apply_filter(current_filter):
+            log(f"No tickets for dispatch [{current_filter[1]}]. Switching...")
+            filter_idx += 1
+            if filter_idx < len(filters):
+                current_filter = filters[filter_idx]
+                if not apply_filter(current_filter):
+                    log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                    return results
+            else:
+                log(f"No tickets found. Waiting {LOOP_INTERVAL // 60} minutes...")
+                return results
+        log(f"Filtered: dispatch [{current_filter[1]}]")
 
         total_processed = 0
 
         while True:
             info_text = page.locator("#requestFulfillmentTable_info").inner_text()
-            log(f"--- {info_text} ---")
+            log(f"--- {info_text} [{current_filter[1]}] ---")
 
             if self._stopped():
                 log("STOP requested - aborting scan")
                 return results
 
             rows = self.get_ticket_rows(page)
-            log(f"Found {len(rows)} row(s)")
+            log(f"Found {len(rows)} row(s) [dispatch {current_filter[1]}]")
 
             if len(rows) == 0:
-                log(f"No tickets found. Waiting {LOOP_INTERVAL // 60} minutes...")
-                return results
+                filter_idx += 1
+                if filter_idx < len(filters):
+                    current_filter = filters[filter_idx]
+                    log(f"No dispatch tickets. Switching to [{current_filter[1]}]...")
+                    if not apply_filter(current_filter):
+                        log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                        return results
+                    continue
+                else:
+                    log(f"No tickets found. Waiting {LOOP_INTERVAL // 60} minutes...")
+                    return results
 
             processed_this_round = 0
 
@@ -2508,6 +3173,19 @@ class SygapService:
                 if status in ("COMPLETED", "COMPLETE"):
                     log(f"  [{i+1}] {code} - SKIP (status: {status})")
                     continue
+
+                if _solver_text_in_skip_list(row_info.get("solver", "")):
+                    log(f"  [{i+1}] {code} - SKIP (solver Rizky di tabel, tidak dibuka)")
+                    continue
+
+                # Fase IN_PROGRESS: hanya kerjakan milik sendiri, jangan rebut orang lain
+                if current_filter[1] == "IN_PROGRESS":
+                    _mine = _solver_text_is_mine(row_info.get("solver", ""))
+                    if _mine is False:
+                        log(f"  [{i+1}] {code} - SKIP (IN_PROGRESS milik orang lain, tidak dibuka)")
+                        if code not in self.skipped_ids:
+                            self.skipped_ids[code] = time.time()
+                        continue
 
                 if code in self.processed_ids:
                     log(f"  [{i+1}] {code} - SKIP (already processed)")
@@ -2544,6 +3222,12 @@ class SygapService:
                         self._save_persistent_skipped(code, "koordinator skip 55652")
                         continue
 
+                    # Fase IN_PROGRESS: verifikasi form — bukan milik saya = jangan rebut
+                    if current_filter[1] == "IN_PROGRESS" and not self.is_my_ticket(ticket_page):
+                        log(f"    SKIP: IN_PROGRESS milik orang lain (bukan saya), jangan rebut")
+                        self.skipped_ids[code] = time.time()
+                        continue
+
                     note = self.read_ticket_note(ticket_page)
                     note_short = note[:100] + "..." if len(note) > 100 else note
                     log(f"    Note: {note_short}")
@@ -2554,7 +3238,7 @@ class SygapService:
                         self._save_persistent_skipped(code, "No dispatch in note")
                         continue
 
-                    if "workzone" in note.lower() or "work zone" in note.lower():
+                    if is_workzone_request(note):
                         log(f"    SAFETY: 'workzone'/'work zone' found in note, SKIP")
                         self.skipped_ids[code] = time.time()
                         self._save_persistent_skipped(code, "workzone in note")
@@ -2577,10 +3261,17 @@ class SygapService:
                             self._save_persistent_skipped(code, "Cannot parse bulk OG")
                             continue
 
+                        bulk_og, bulk_retry_cands = self._resolve_og(bulk_og, log)
+
                         if "C4" in bulk_og.upper():
                             log(f"    BULK OG is C4 ({bulk_og}) -> TO + complete, no dispatch")
                             btn_action = self.take_ownership(ticket_page)
                             log(f"    Button clicked: {btn_action}")
+                            if btn_action == 'SKIP_COORDINATOR':
+                                log(f"    SKIP: koordinator Rizky terdeteksi saat TO — jangan ambil")
+                                self.skipped_ids[code] = time.time()
+                                self._save_persistent_skipped(code, "koordinator skip 55652 (TO guard)")
+                                continue
 
                             confirmed = self.wait_for_in_progress(ticket_page)
                             if not confirmed:
@@ -2635,7 +3326,7 @@ class SygapService:
                                 log(f"    IN_PROGRESS, not my ticket -> change coordinator")
                                 result = self.change_coordinator_to_me(ticket_page)
                                 log(f"    Change coordinator: {result}")
-                                if not result or "SAVE" not in str(result):
+                                if not result or not any(k in str(result) for k in ("SAVE", "UPDATE_INC")):
                                     log(f"    Failed change coordinator, SKIP")
                                     continue
                                 log(f"    Coordinator changed to me, saved")
@@ -2646,6 +3337,11 @@ class SygapService:
                                 log(f"    Status: {status} -> TO ke saya dulu...")
                                 btn_action = self.take_ownership(ticket_page)
                                 log(f"    Button clicked: {btn_action}")
+                                if btn_action == 'SKIP_COORDINATOR':
+                                    log(f"    SKIP: koordinator Rizky terdeteksi saat TO — jangan ambil")
+                                    self.skipped_ids[code] = time.time()
+                                    self._save_persistent_skipped(code, "koordinator skip 55652 (TO guard)")
+                                    continue
 
                                 confirmed = self.wait_for_in_progress(ticket_page)
                                 if not confirmed:
@@ -2660,6 +3356,7 @@ class SygapService:
 
                         all_success = True
                         failed_incs = []
+                        bulk_responses = {}
                         for idx, inc in enumerate(bulk_incs):
                             command = f"/dispatchticket {inc} {bulk_og}"
                             log(f"    [{idx+1}/{len(bulk_incs)}] Sending: {command}")
@@ -2686,6 +3383,7 @@ class SygapService:
                                 log(f"    Retry {retry_cmd}")
                                 response = biscuit.execute(retry_cmd, "INSERA")
                                 log(f"    Retry response: {response.status} - {response.message}")
+                            bulk_responses[inc] = response
                             if response.status == "SUCCESS":
                                 log(f"    {inc} -> OK")
                             else:
@@ -2702,6 +3400,22 @@ class SygapService:
                             log(f"    Bulk ada UNKNOWN/503 Timeout — SKIP tanpa complete, akan retry 180s")
                             self.skipped_ids[code] = time.time()
                             continue
+                        if not all_success and bulk_retry_cands:
+                            _bad0 = [inc for inc in bulk_incs
+                                     if bulk_responses.get(inc) is not None
+                                     and bulk_responses[inc].status != "SUCCESS"
+                                     and is_invalid_owner_group_error(bulk_responses[inc].message or "")]
+                            _other0 = [inc for inc in bulk_incs
+                                       if bulk_responses.get(inc) is not None
+                                       and bulk_responses[inc].status != "SUCCESS"
+                                       and not is_invalid_owner_group_error(bulk_responses[inc].message or "")]
+                            if _bad0 and not _other0:
+                                _won = self._retry_bulk_with_og_candidates(biscuit, bulk_responses, _bad0, bulk_retry_cands, log)
+                                if _won:
+                                    bulk_og = _won
+                                failed_incs = [f"{inc}: {bulk_responses[inc].message}" for inc in bulk_incs
+                                               if bulk_responses.get(inc) is None or bulk_responses[inc].status != "SUCCESS"]
+                                all_success = not failed_incs
                         if all_success:
                             log(f"    All INCs dispatched successfully")
                             complete_note = "Cek Kembali"
@@ -2752,6 +3466,11 @@ class SygapService:
                             log(f"    OG is C4 ({owner_group}) -> TO + complete, no dispatch")
                             btn_action = self.take_ownership(ticket_page)
                             log(f"    Button clicked: {btn_action}")
+                            if btn_action == 'SKIP_COORDINATOR':
+                                log(f"    SKIP: koordinator Rizky terdeteksi saat TO — jangan ambil")
+                                self.skipped_ids[code] = time.time()
+                                self._save_persistent_skipped(code, "koordinator skip 55652 (TO guard)")
+                                continue
 
                             confirmed = self.wait_for_in_progress(ticket_page)
                             if not confirmed:
@@ -2797,7 +3516,7 @@ class SygapService:
                                 log(f"    IN_PROGRESS, not my ticket -> change coordinator")
                                 result = self.change_coordinator_to_me(ticket_page)
                                 log(f"    Change coordinator: {result}")
-                                if not result or "SAVE" not in str(result):
+                                if not result or not any(k in str(result) for k in ("SAVE", "UPDATE_INC")):
                                     log(f"    Failed change coordinator, SKIP")
                                     continue
                                 log(f"    Coordinator changed to me, saved")
@@ -2807,6 +3526,11 @@ class SygapService:
                             log(f"    Taking ownership...")
                             btn_action = self.take_ownership(ticket_page)
                             log(f"    Button clicked: {btn_action}")
+                            if btn_action == 'SKIP_COORDINATOR':
+                                log(f"    SKIP: koordinator Rizky terdeteksi saat TO — jangan ambil")
+                                self.skipped_ids[code] = time.time()
+                                self._save_persistent_skipped(code, "koordinator skip 55652 (TO guard)")
+                                continue
 
                             confirmed = self.wait_for_in_progress(ticket_page)
                             if not confirmed:
@@ -2834,6 +3558,7 @@ class SygapService:
                             log(f"    BISCUIT tab not found!")
                             continue
 
+                        owner_group, og_retry_cands = self._resolve_og(owner_group, log)
                         command = f"/dispatchticket {inc_number} {owner_group}"
                         log(f"    Sending: {command}")
 
@@ -2856,6 +3581,21 @@ class SygapService:
                             log(f"    BISCUIT {response.status} Timeout/503 — SKIP tanpa complete, akan retry 180s")
                             self.skipped_ids[code] = time.time()
                             continue
+                        if response.status == "FAILED" and is_invalid_owner_group_error(response.message or "") and og_retry_cands:
+                            for _cand, _score in og_retry_cands:
+                                _rcmd = f"/dispatchticket {inc_number} {_cand}"
+                                log(f"    OG '{owner_group}' invalid -> retry kandidat: {_cand} (skor {_score:.2f})")
+                                try:
+                                    biscuit.wait_for_ready()
+                                except Exception:
+                                    pass
+                                response = biscuit.execute(_rcmd, "INSERA")
+                                log(f"    Retry response: {response.status} - {response.message}")
+                                if response.status == "SUCCESS":
+                                    owner_group = _cand
+                                    break
+                                if not (response.status == "FAILED" and is_invalid_owner_group_error(response.message or "")):
+                                    break
                         if response.status == "SUCCESS":
                             log(f"    BISCUIT SUKSES! Complete ticket...")
                             complete_note = "Cek Kembali"
@@ -2903,6 +3643,11 @@ class SygapService:
                         log(f"    No OG but C4 found -> TO dulu...")
                         btn_action = self.take_ownership(ticket_page)
                         log(f"    Button clicked: {btn_action}")
+                        if btn_action == 'SKIP_COORDINATOR':
+                            log(f"    SKIP: koordinator Rizky terdeteksi saat TO — jangan ambil")
+                            self.skipped_ids[code] = time.time()
+                            self._save_persistent_skipped(code, "koordinator skip 55652 (TO guard)")
+                            continue
 
                         confirmed = self.wait_for_in_progress(ticket_page)
                         if not confirmed:
@@ -2962,21 +3707,47 @@ class SygapService:
                     page.wait_for_timeout(1500)
 
             if processed_this_round == 0:
-                log(f"No actionable tickets (all rows skipped/already processed). Waiting {LOOP_INTERVAL // 60} minutes...")
-                return results
+                filter_idx += 1
+                if filter_idx < len(filters):
+                    current_filter = filters[filter_idx]
+                    log(f"No actionable dispatch [{filters[filter_idx-1][1]}] tickets. Switching to [{current_filter[1]}]...")
+                    if not apply_filter(current_filter):
+                        log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                        return results
+                    continue
+                else:
+                    log(f"No actionable tickets. Waiting {LOOP_INTERVAL // 60} minutes...")
+                    return results
 
-            log(f"Page done. Re-applying filter...")
-            self.filter_dispatch(page)
+            log(f"Page done. Re-applying filter [{current_filter[1]}]...")
+            if not apply_filter(current_filter):
+                filter_idx += 1
+                if filter_idx < len(filters):
+                    current_filter = filters[filter_idx]
+                    log(f"No tickets after filter. Switching to dispatch [{current_filter[1]}]...")
+                    if not apply_filter(current_filter):
+                        log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                        return results
+                    continue
+                else:
+                    log(f"No tickets after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                    return results
             try:
-                page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
-                page.wait_for_timeout(2000)
+                info_after = page.locator("#requestFulfillmentTable_info").inner_text()
+                if "0 entries" in info_after or "0 of 0" in info_after:
+                    filter_idx += 1
+                    if filter_idx < len(filters):
+                        current_filter = filters[filter_idx]
+                        log(f"No tickets after filter. Switching to dispatch [{current_filter[1]}]...")
+                        if not apply_filter(current_filter):
+                            log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                            return results
+                        continue
+                    else:
+                        log(f"No tickets after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                        return results
             except Exception:
                 pass
-
-            info_after = page.locator("#requestFulfillmentTable_info").inner_text()
-            if "0 entries" in info_after or "0 of 0" in info_after:
-                log(f"No tickets after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
-                return results
 
         return results
 
@@ -3005,9 +3776,10 @@ class SygapService:
         except Exception:
             pass
 
-        # === Filter: dispatch (OPEN) -> Owner Group (ASSIGNED) ===
+        # === Filter: dispatch (OPEN) -> Owner Group (ASSIGNED) -> TTR (OPEN) -> TTR (ASSIGNED) ===
         # Contoh INC2026090200LRWTV: Memunculkan_Ownergroup_Kosong INC52655149 ... Owner Group TIF ASR FBB DISTRICT DENPASAR, status ASSIGNED
-        filters = [("dispatch", "OPEN"), ("Owner Group", "ASSIGNED")]
+        # TTR (mis. INC20260923005ZYKR request TTR) dikerjakan belakangan dalam 1 loop DISPATCH INCIDENT yang sama (port 9228).
+        filters = [("dispatch", "OPEN"), ("Owner Group", "ASSIGNED"), ("TTR", "OPEN"), ("TTR", "ASSIGNED")]
         filter_idx = 0
         current_filter = filters[filter_idx]
 
@@ -3080,6 +3852,10 @@ class SygapService:
                     log(f"  [{i+1}] {code} - SKIP (status: {status})")
                     continue
 
+                if _solver_text_in_skip_list(row_info.get("solver", "")):
+                    log(f"  [{i+1}] {code} - SKIP (solver Rizky di tabel, tidak dibuka)")
+                    continue
+
                 if code in self.processed_ids:
                     log(f"  [{i+1}] {code} - SKIP (already processed)")
                     continue
@@ -3119,8 +3895,125 @@ class SygapService:
                     note_short = note[:100] + "..." if len(note) > 100 else note
                     log(f"    Note: {note_short}")
 
-                    # Filter-aware: dispatch vs Owner Group - jangan permanen biar Owner Group tetap ke-handle
-                    if current_filter[0].lower() == "owner group":
+                    # Filter-aware: dispatch vs Owner Group vs TTR - jangan permanen biar filter berikut tetap ke-handle
+                    if current_filter[0].lower() == "ttr":
+                        from app.parser import is_ttr_request
+                        if not is_ttr_request(note):
+                            log(f"    SAFETY: No 'TTR' request in note, SKIP (filter {current_filter[0]})")
+                            continue
+                        if is_workzone_request(note):
+                            log(f"    SAFETY: 'workzone'/'work zone' found in note, SKIP")
+                            self.skipped_ids[code] = time.time()
+                            self._save_persistent_skipped(code, "workzone in note")
+                            continue
+                        # === TTR flow (filter TTR, setelah dispatch selesai): TO + /ttrcorrective INC + resolve ===
+                        inc_number = extract_inc_number(note)
+                        print(f"    [DEBUG-TTR] INC={inc_number}")
+                        if status == "IN_PROGRESS":
+                            if self.is_my_ticket(ticket_page):
+                                log(f"    IN_PROGRESS, already my ticket -> proceed [TTR]")
+                            else:
+                                log(f"    IN_PROGRESS, not my ticket -> change coordinator [TTR]")
+                                result = self.change_coordinator_to_me(ticket_page)
+                                log(f"    Change coordinator: {result}")
+                                if not result or not any(k in str(result) for k in ("SAVE", "UPDATE_INC")):
+                                    log(f"    Failed change coordinator, SKIP [TTR]")
+                                    continue
+                                log(f"    Coordinator changed to me, saved [TTR]")
+                        else:
+                            if self.is_my_ticket(ticket_page):
+                                log(f"    Sudah tiket saya, lanjut tanpa TO... [TTR]")
+                            else:
+                                log(f"    Status: {status} -> TO ke saya dulu... [TTR]")
+                                btn_action = self.take_ownership(ticket_page)
+                                log(f"    Button clicked: {btn_action}")
+                                if btn_action == 'SKIP_COORDINATOR':
+                                    log(f"    SKIP: koordinator Rizky terdeteksi saat TO — jangan ambil")
+                                    self.skipped_ids[code] = time.time()
+                                    self._save_persistent_skipped(code, "koordinator skip 55652 (TO guard)")
+                                    continue
+                                confirmed = self.wait_for_in_progress(ticket_page)
+                                if not confirmed:
+                                    log(f"    TO FAILED: {code} [TTR]")
+                                    continue
+                                log(f"    TO CONFIRMED: {code} [TTR]")
+                        own_code = self.read_own_incident_code(ticket_page)
+                        if not inc_number or inc_number == own_code:
+                            if inc_number == own_code:
+                                log(f"    INC from note == incident_code, abaikan (bukan ticket BISCUIT) [TTR]")
+                            log(f"    INC not in note (atau == incident_code), reading from Ticket ID field... [TTR]")
+                            inc_number = self.wait_for_ticket_inc(ticket_page)
+                            if inc_number:
+                                log(f"    INC from page: {inc_number} [TTR]")
+                            else:
+                                log(f"    INC from page: NOT FOUND [TTR]")
+                        if not inc_number:
+                            log(f"    INC number not found anywhere, SKIP [TTR]")
+                            continue
+                        biscuit = BiscuitService(browser_manager=self.browser_manager)
+                        if not biscuit.open():
+                            log(f"    BISCUIT tab not found! [TTR]")
+                            continue
+                        if status == "NEW":
+                            log(f"    Status NEW terdeteksi -> handle duplicateprosess/truecorrective dulu... [TTR]")
+                            self._handle_new_incident_status(biscuit, inc_number, log)
+                        command = f"/ttrcorrective {inc_number}"
+                        log(f"    Sending: {command}")
+                        max_retries = 2
+                        response = None
+                        for attempt in range(1, max_retries + 1):
+                            log(f"    Command sent (attempt {attempt})")
+                            response = biscuit.execute(command, "INSERA")
+                            log(f"    BISCUIT response: {response.status} - {response.message}")
+                            if response.status != "UNKNOWN":
+                                break
+                            if attempt < max_retries:
+                                log(f"    BISCUIT timeout, retrying... [TTR]")
+                                biscuit.wait_for_ready()
+                        if response and response.status == "FAILED" and "NEW" in (response.message or "").upper():
+                            log(f"    FAILED karena status NEW -> handle duplicateprosess/truecorrective lalu retry... [TTR]")
+                            self._handle_new_incident_status(biscuit, inc_number, log)
+                            log(f"    Retry TTR setelah handle NEW: {command}")
+                            response = biscuit.execute(command, "INSERA")
+                            log(f"    Retry response: {response.status} - {response.message}")
+                        if response.status in ("UNKNOWN", "FAILED") and (any(k in (response.message or "") for k in ["Timeout", "BISCUIT", "Application is not available", "503", "<html>"]) or "not found" in (response.message or "").lower()):
+                            log(f"    BISCUIT {response.status} Timeout/503 — SKIP tanpa complete, akan retry 180s [TTR]")
+                            self.skipped_ids[code] = time.time()
+                            continue
+                        if response.status == "SUCCESS":
+                            log(f"    BISCUIT SUKSES! Complete ticket... [TTR]")
+                            complete_note = "Cek Kembali"
+                        else:
+                            log(f"    BISCUIT GAGAL! Complete dengan alasan error... [TTR]")
+                            complete_note = (response.message or "Gagal TTR")[:200]
+                        page.bring_to_front()
+                        page.wait_for_timeout(1000)
+                        if not ticket_page.is_closed():
+                            self.browser_manager.activate_page(ticket_page)
+                            try:
+                                ticket_page.reload(wait_until="domcontentloaded", timeout=15000)
+                            except Exception:
+                                pass
+                            ticket_page.wait_for_timeout(3000)
+                            completed = self.complete_ticket(ticket_page, note=complete_note)
+                            if completed:
+                                log(f"    Waiting COMPLETED status... [TTR]")
+                                is_completed = self.wait_for_completed(ticket_page)
+                                if is_completed:
+                                    log(f"    Ticket {code} -> COMPLETED ({response.status}) [TTR]")
+                                else:
+                                    log(f"    Ticket {code} status belum COMPLETED [TTR]")
+                            else:
+                                log(f"    Gagal complete ticket {code} [TTR]")
+                        results.append({"request_code": code, "inc_number": inc_number, "note": note, "biscuit_status": response.status, "type": "TTR"})
+                        try:
+                            _rr = response if 'response' in locals() and hasattr(response, 'status') else None
+                            log_history(feature="DISPATCH_INCIDENT", ticket_code=code, ticket_id=inc_number or "", owner_group="TTR", note=locals().get("note", ""), reply_sygap=locals().get("complete_note", "") or "Cek Kembali", biscuit_status=_rr.status if _rr else "", biscuit_message=_rr.message if _rr else "", status="SUCCESS", solver_id=USER_ID, tgl_masuk=self.read_ticket_created_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "", tgl_selesai=self.read_ticket_selesai_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "")
+                        except Exception:
+                            pass
+                        self.processed_ids.add(code)
+                        continue
+                    elif current_filter[0].lower() == "owner group":
                         note_lower = note.lower()
                         if "owner group" not in note_lower and "ownergroup" not in note_lower:
                             log(f"    SAFETY: No 'Owner Group' in note, SKIP (filter {current_filter[0]})")
@@ -3130,7 +4023,7 @@ class SygapService:
                             log(f"    SAFETY: No 'dispatch' in note, SKIP (filter {current_filter[0]})")
                             continue
 
-                    if "workzone" in note.lower() or "work zone" in note.lower():
+                    if is_workzone_request(note):
                         log(f"    SAFETY: 'workzone'/'work zone' found in note, SKIP")
                         self.skipped_ids[code] = time.time()
                         self._save_persistent_skipped(code, "workzone in note")
@@ -3151,10 +4044,17 @@ class SygapService:
                             log(f"    Cannot parse bulk OG target, SKIP")
                             continue
 
+                        bulk_og, bulk_retry_cands = self._resolve_og(bulk_og, log)
+
                         if "C4" in bulk_og.upper():
                             log(f"    BULK OG is C4 ({bulk_og}) -> TO + complete, no dispatch")
                             btn_action = self.take_ownership(ticket_page)
                             log(f"    Button clicked: {btn_action}")
+                            if btn_action == 'SKIP_COORDINATOR':
+                                log(f"    SKIP: koordinator Rizky terdeteksi saat TO — jangan ambil")
+                                self.skipped_ids[code] = time.time()
+                                self._save_persistent_skipped(code, "koordinator skip 55652 (TO guard)")
+                                continue
                             confirmed = self.wait_for_in_progress(ticket_page)
                             if not confirmed:
                                 log(f"    TO FAILED: {code}")
@@ -3203,7 +4103,7 @@ class SygapService:
                                 log(f"    IN_PROGRESS, not my ticket -> change coordinator")
                                 result = self.change_coordinator_to_me(ticket_page)
                                 log(f"    Change coordinator: {result}")
-                                if not result or "SAVE" not in str(result):
+                                if not result or not any(k in str(result) for k in ("SAVE", "UPDATE_INC")):
                                     log(f"    Failed change coordinator, SKIP")
                                     continue
                                 log(f"    Coordinator changed to me, saved")
@@ -3214,6 +4114,11 @@ class SygapService:
                                 log(f"    Status: {status} -> TO ke saya dulu...")
                                 btn_action = self.take_ownership(ticket_page)
                                 log(f"    Button clicked: {btn_action}")
+                                if btn_action == 'SKIP_COORDINATOR':
+                                    log(f"    SKIP: koordinator Rizky terdeteksi saat TO — jangan ambil")
+                                    self.skipped_ids[code] = time.time()
+                                    self._save_persistent_skipped(code, "koordinator skip 55652 (TO guard)")
+                                    continue
                                 confirmed = self.wait_for_in_progress(ticket_page)
                                 if not confirmed:
                                     log(f"    TO FAILED: {code}")
@@ -3231,6 +4136,7 @@ class SygapService:
                             self._handle_new_incident_status(biscuit, bulk_incs[0] if bulk_incs else inc_number if 'inc_number' in locals() else bulk_incs[0], log)
                         all_success = True
                         failed_incs = []
+                        bulk_responses = {}
                         for idx, inc in enumerate(bulk_incs):
                             command = f"/dispatchticket {inc} {bulk_og}"
                             log(f"    [{idx+1}/{len(bulk_incs)}] Sending: {command}")
@@ -3253,6 +4159,7 @@ class SygapService:
                                 log(f"    Retry {retry_cmd}")
                                 response = biscuit.execute(retry_cmd, "INSERA")
                                 log(f"    Retry response: {response.status} - {response.message}")
+                            bulk_responses[inc] = response
                             if response.status == "SUCCESS":
                                 log(f"    {inc} -> OK")
                             else:
@@ -3267,6 +4174,22 @@ class SygapService:
                             log(f"    Bulk ada UNKNOWN/503 Timeout — SKIP tanpa complete, akan retry 180s")
                             self.skipped_ids[code] = time.time()
                             continue
+                        if not all_success and bulk_retry_cands:
+                            _bad0 = [inc for inc in bulk_incs
+                                     if bulk_responses.get(inc) is not None
+                                     and bulk_responses[inc].status != "SUCCESS"
+                                     and is_invalid_owner_group_error(bulk_responses[inc].message or "")]
+                            _other0 = [inc for inc in bulk_incs
+                                       if bulk_responses.get(inc) is not None
+                                       and bulk_responses[inc].status != "SUCCESS"
+                                       and not is_invalid_owner_group_error(bulk_responses[inc].message or "")]
+                            if _bad0 and not _other0:
+                                _won = self._retry_bulk_with_og_candidates(biscuit, bulk_responses, _bad0, bulk_retry_cands, log)
+                                if _won:
+                                    bulk_og = _won
+                                failed_incs = [f"{inc}: {bulk_responses[inc].message}" for inc in bulk_incs
+                                               if bulk_responses.get(inc) is None or bulk_responses[inc].status != "SUCCESS"]
+                                all_success = not failed_incs
                         if all_success:
                             log(f"    All INCs dispatched successfully")
                             complete_note = "Cek Kembali"
@@ -3311,6 +4234,11 @@ class SygapService:
                             log(f"    OG is C4 ({owner_group}) -> TO + complete, no dispatch")
                             btn_action = self.take_ownership(ticket_page)
                             log(f"    Button clicked: {btn_action}")
+                            if btn_action == 'SKIP_COORDINATOR':
+                                log(f"    SKIP: koordinator Rizky terdeteksi saat TO — jangan ambil")
+                                self.skipped_ids[code] = time.time()
+                                self._save_persistent_skipped(code, "koordinator skip 55652 (TO guard)")
+                                continue
                             confirmed = self.wait_for_in_progress(ticket_page)
                             if not confirmed:
                                 log(f"    TO FAILED: {code}")
@@ -3349,7 +4277,7 @@ class SygapService:
                                 log(f"    IN_PROGRESS, not my ticket -> change coordinator")
                                 result = self.change_coordinator_to_me(ticket_page)
                                 log(f"    Change coordinator: {result}")
-                                if not result or "SAVE" not in str(result):
+                                if not result or not any(k in str(result) for k in ("SAVE", "UPDATE_INC")):
                                     log(f"    Failed change coordinator, SKIP")
                                     continue
                                 log(f"    Coordinator changed to me, saved")
@@ -3358,6 +4286,11 @@ class SygapService:
                             log(f"    Taking ownership...")
                             btn_action = self.take_ownership(ticket_page)
                             log(f"    Button clicked: {btn_action}")
+                            if btn_action == 'SKIP_COORDINATOR':
+                                log(f"    SKIP: koordinator Rizky terdeteksi saat TO — jangan ambil")
+                                self.skipped_ids[code] = time.time()
+                                self._save_persistent_skipped(code, "koordinator skip 55652 (TO guard)")
+                                continue
                             confirmed = self.wait_for_in_progress(ticket_page)
                             if not confirmed:
                                 log(f"    TO FAILED: {code}")
@@ -3384,6 +4317,7 @@ class SygapService:
                         if status == "NEW":
                             log(f"    Status NEW terdeteksi (single) -> handle duplicateprosess/truecorrective dulu...")
                             self._handle_new_incident_status(biscuit, inc_number, log)
+                        owner_group, og_retry_cands = self._resolve_og(owner_group, log)
                         command = f"/dispatchticket {inc_number} {owner_group}"
                         log(f"    Sending: {command}")
                         max_retries = 2
@@ -3409,6 +4343,21 @@ class SygapService:
                             log(f"    BISCUIT {response.status} Timeout/503 — SKIP tanpa complete, akan retry 180s")
                             self.skipped_ids[code] = time.time()
                             continue
+                        if response.status == "FAILED" and is_invalid_owner_group_error(response.message or "") and og_retry_cands:
+                            for _cand, _score in og_retry_cands:
+                                _rcmd = f"/dispatchticket {inc_number} {_cand}"
+                                log(f"    OG '{owner_group}' invalid -> retry kandidat: {_cand} (skor {_score:.2f})")
+                                try:
+                                    biscuit.wait_for_ready()
+                                except Exception:
+                                    pass
+                                response = biscuit.execute(_rcmd, "INSERA")
+                                log(f"    Retry response: {response.status} - {response.message}")
+                                if response.status == "SUCCESS":
+                                    owner_group = _cand
+                                    break
+                                if not (response.status == "FAILED" and is_invalid_owner_group_error(response.message or "")):
+                                    break
                         if response.status == "SUCCESS":
                             log(f"    BISCUIT SUKSES! Complete ticket...")
                             complete_note = "Cek Kembali"
@@ -3449,6 +4398,11 @@ class SygapService:
                         log(f"    No OG but C4 found -> TO dulu...")
                         btn_action = self.take_ownership(ticket_page)
                         log(f"    Button clicked: {btn_action}")
+                        if btn_action == 'SKIP_COORDINATOR':
+                            log(f"    SKIP: koordinator Rizky terdeteksi saat TO — jangan ambil")
+                            self.skipped_ids[code] = time.time()
+                            self._save_persistent_skipped(code, "koordinator skip 55652 (TO guard)")
+                            continue
                         confirmed = self.wait_for_in_progress(ticket_page)
                         if not confirmed:
                             log(f"    TO FAILED: {code}")
@@ -3541,15 +4495,39 @@ class SygapService:
         page = self.navigate_to_dashboard()
         log(f"Dashboard loaded: {page.url[:60]}")
 
-        self.filter_change_service_id(page)
-        log("Filtered: change service id (note 'Service')")
+        # === Filter 2 fase: IN_PROGRESS milik sendiri dulu -> OPEN (TO baru) ===
+        # Tiket impacted (/loaddatek) yang sudah TO ke saya dikerjakan dulu
+        # sampai habis; kalau sudah habis, otomatis lanjut TO tiket OPEN baru.
+        # Milik orang lain TIDAK direbut.
+        filters = [("service", "IN_PROGRESS"), ("service", "OPEN")]
+        filter_idx = 0
+        current_filter = filters[filter_idx]
 
-        try:
-            page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
-        except Exception:
-            log("No tickets found after filter")
-            return results
-        page.wait_for_timeout(2000)
+        def apply_filter(filter_tuple):
+            _, status_val = filter_tuple
+            if not self.filter_change_service_id(page, status_value=status_val):
+                log(f"Status [{status_val}] tidak tersedia di filter SYGAP — fase dilewati")
+                return False
+            try:
+                page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
+                page.wait_for_timeout(2000)
+                return True
+            except Exception:
+                log(f"No rows found for service [{status_val}]")
+                return False
+
+        if not apply_filter(current_filter):
+            log(f"No tickets for service [{current_filter[1]}]. Switching...")
+            filter_idx += 1
+            if filter_idx < len(filters):
+                current_filter = filters[filter_idx]
+                if not apply_filter(current_filter):
+                    log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                    return results
+            else:
+                log(f"No tickets found. Waiting {LOOP_INTERVAL // 60} minutes...")
+                return results
+        log(f"Filtered: change service id [{current_filter[1]}] (note 'Service')")
 
         total_processed = 0
 
@@ -3562,11 +4540,20 @@ class SygapService:
                 return results
 
             rows = self.get_ticket_rows(page)
-            log(f"Found {len(rows)} row(s)")
+            log(f"Found {len(rows)} row(s) [service {current_filter[1]}]")
 
             if len(rows) == 0:
-                log(f"No tickets found. Waiting {LOOP_INTERVAL // 60} minutes...")
-                return results
+                filter_idx += 1
+                if filter_idx < len(filters):
+                    current_filter = filters[filter_idx]
+                    log(f"No service tickets. Switching to [{current_filter[1]}]...")
+                    if not apply_filter(current_filter):
+                        log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                        return results
+                    continue
+                else:
+                    log(f"No tickets found. Waiting {LOOP_INTERVAL // 60} minutes...")
+                    return results
 
             processed_this_round = 0
 
@@ -3581,6 +4568,19 @@ class SygapService:
                 if status in ("COMPLETED", "COMPLETE"):
                     log(f"  [{i+1}] {code} - SKIP (status: {status})")
                     continue
+
+                if _solver_text_in_skip_list(row_info.get("solver", "")):
+                    log(f"  [{i+1}] {code} - SKIP (solver Rizky di tabel, tidak dibuka)")
+                    continue
+
+                # Fase IN_PROGRESS: hanya kerjakan milik sendiri, jangan rebut orang lain
+                if current_filter[1] == "IN_PROGRESS":
+                    _mine = _solver_text_is_mine(row_info.get("solver", ""))
+                    if _mine is False:
+                        log(f"  [{i+1}] {code} - SKIP (IN_PROGRESS milik orang lain, tidak dibuka)")
+                        if code not in self.skipped_ids:
+                            self.skipped_ids[code] = time.time()
+                        continue
 
                 if code in self.processed_ids:
                     log(f"  [{i+1}] {code} - SKIP (already processed)")
@@ -3609,6 +4609,12 @@ class SygapService:
                         self._save_persistent_skipped(code, "koordinator skip 55652")
                         continue
 
+                    # Fase IN_PROGRESS: verifikasi form — bukan milik saya = jangan rebut
+                    if current_filter[1] == "IN_PROGRESS" and not self.is_my_ticket(ticket_page):
+                        log(f"    SKIP: IN_PROGRESS milik orang lain (bukan saya), jangan rebut")
+                        self.skipped_ids[code] = time.time()
+                        continue
+
                     note = self.read_ticket_note(ticket_page)
                     note_short = note[:100] + "..." if len(note) > 100 else note
                     log(f"    Note: {note_short}")
@@ -3617,6 +4623,120 @@ class SygapService:
                         log(f"    SAFETY: No 'service' in note, SKIP")
                         self.skipped_ids[code] = time.time()
                         self._save_persistent_skipped(code, "No service in note")
+                        continue
+
+                    # === IMPACTED SERVICE (INSERA terdampak gangguan aplikasi lain) ===
+                    # Trigger: 'tiket_impacted_service_tidak_ada' + daftar INC.
+                    # Dieksekusi via BISCUIT /loaddatek INC1,INC2,... (SATU command
+                    # untuk semua INC, dipisah koma) lalu resolve 'Cek Kembali'.
+                    # Cabang ini SEBELUM logika service_id/type biasa karena request
+                    # service-type impacted TIDAK boleh kena penolakan "sepaket".
+                    from app.parser import is_impacted_service_request as _is_impacted_svc
+                    if _is_impacted_svc(note) and not extract_service_id(note):
+                        loaddatek_incs = extract_bulk_inc_list(note)
+                        if not loaddatek_incs:
+                            log(f"    [LOADDATEK] No INC in note, reading from ticket page...")
+                            _one_inc = self.wait_for_ticket_inc(ticket_page)
+                            if _one_inc:
+                                loaddatek_incs = [_one_inc]
+                                log(f"    [LOADDATEK] INC from page: {_one_inc}")
+                        if not loaddatek_incs:
+                            log(f"    [LOADDATEK] INC number not found anywhere, SKIP")
+                            self.skipped_ids[code] = time.time()
+                            continue
+                        log(f"    [LOADDATEK] Target {len(loaddatek_incs)} INC: {','.join(loaddatek_incs[:8])}")
+                        if status == "IN_PROGRESS":
+                            if self.is_my_ticket(ticket_page):
+                                log(f"    [LOADDATEK] IN_PROGRESS, already my ticket -> proceed")
+                            else:
+                                log(f"    [LOADDATEK] IN_PROGRESS, not my ticket -> change coordinator")
+                                result = self.change_coordinator_to_me(ticket_page)
+                                log(f"    Change coordinator: {result}")
+                                if not result or not any(k in str(result) for k in ("SAVE", "UPDATE_INC")):
+                                    log(f"    [LOADDATEK] Failed change coordinator, SKIP")
+                                    continue
+                                log(f"    [LOADDATEK] Coordinator changed to me, saved")
+                        else:
+                            if self.is_my_ticket(ticket_page):
+                                log(f"    [LOADDATEK] Sudah tiket saya, lanjut tanpa TO...")
+                            else:
+                                log(f"    [LOADDATEK] Status: {status} -> TO ke saya dulu...")
+                                btn_action = self.take_ownership(ticket_page)
+                                log(f"    Button clicked: {btn_action}")
+                                if btn_action == 'SKIP_COORDINATOR':
+                                    log(f"    SKIP: koordinator Rizky terdeteksi saat TO — jangan ambil")
+                                    self.skipped_ids[code] = time.time()
+                                    self._save_persistent_skipped(code, "koordinator skip 55652 (TO guard)")
+                                    continue
+                                confirmed = self.wait_for_in_progress(ticket_page)
+                                if not confirmed:
+                                    log(f"    [LOADDATEK] TO FAILED: {code}")
+                                    continue
+                                log(f"    [LOADDATEK] TO CONFIRMED: {code}")
+                        biscuit_ld = BiscuitService(browser_manager=self.browser_manager)
+                        if not biscuit_ld.open():
+                            log(f"    [LOADDATEK] BISCUIT tab not found! SKIP tanpa complete — akan retry")
+                            continue
+                        if not self._wait_for_biscuit_login(log, timeout=10):
+                            log(f"    [LOADDATEK] BISCUIT belum login / tidak siap, SKIP tanpa complete")
+                            continue
+                        ld_command = f"/loaddatek {','.join(loaddatek_incs)}"
+                        log(f"    [LOADDATEK] Sending: {ld_command[:150]}")
+                        ld_response = None
+                        for attempt in range(1, 3):
+                            log(f"    [LOADDATEK] Command sent (attempt {attempt})")
+                            ld_response = biscuit_ld.execute(ld_command, "INSERA")
+                            log(f"    [LOADDATEK] BISCUIT response: {ld_response.status} - {ld_response.message}")
+                            if ld_response.status != "UNKNOWN":
+                                break
+                            if attempt < 2:
+                                log(f"    [LOADDATEK] BISCUIT timeout, retrying...")
+                                biscuit_ld.wait_for_ready()
+                        if ld_response and ld_response.status in ("UNKNOWN", "FAILED") and any(k in (ld_response.message or "").lower() for k in ["biscuit", "not found", "command box", "timeout", "tidak ditemukan", "tidak muncul", "tab not found", "application is not available", "503", "<html>"]):
+                            log(f"    [LOADDATEK] BISCUIT belum siap/timeout — SKIP tanpa complete, akan retry")
+                            self.skipped_ids[code] = time.time()
+                            continue
+                        if ld_response and ld_response.status == "SUCCESS":
+                            log(f"    [LOADDATEK] SUKSES! Complete ticket...")
+                            complete_note = "Cek Kembali"
+                        else:
+                            ld_err = ld_response.message if ld_response else "Unknown error"
+                            log(f"    [LOADDATEK] GAGAL! Complete dengan alasan error...")
+                            complete_note = ld_err[:200]
+                        page.bring_to_front()
+                        page.wait_for_timeout(1000)
+                        if not ticket_page.is_closed():
+                            self.browser_manager.activate_page(ticket_page)
+                            try:
+                                ticket_page.reload(wait_until="domcontentloaded", timeout=15000)
+                            except Exception:
+                                pass
+                            ticket_page.wait_for_timeout(3000)
+                            ld_completed = self.complete_ticket(ticket_page, note=complete_note, log_callback=log)
+                            if ld_completed:
+                                log(f"    [LOADDATEK] Waiting COMPLETED status...")
+                                ld_is_completed = self.wait_for_completed(ticket_page)
+                                if ld_is_completed:
+                                    log(f"    Ticket {code} -> COMPLETED ({ld_response.status if ld_response else 'UNKNOWN'}) [LOADDATEK]")
+                                else:
+                                    log(f"    Ticket {code} status belum COMPLETED [LOADDATEK]")
+                            else:
+                                log(f"    Gagal complete ticket {code} [LOADDATEK]")
+                        processed_this_round += 1
+                        results.append({
+                            "request_code": code,
+                            "inc_number": ",".join(loaddatek_incs),
+                            "service_id": "",
+                            "service_type": "",
+                            "note": note,
+                            "status": ld_response.status if ld_response else "FAILED",
+                            "type": "LOADDATEK",
+                        })
+                        try:
+                            log_history(feature="CHANGE_SERVICE_ID", ticket_code=code, ticket_id=",".join(loaddatek_incs[:3]), owner_group="LOADDATEK", note=locals().get("note", ""), reply_sygap=locals().get("complete_note", "") or "Cek Kembali", biscuit_status=ld_response.status if ld_response else "", biscuit_message=ld_response.message if ld_response else "", status="SUCCESS", solver_id=USER_ID, tgl_masuk=self.read_ticket_created_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "", tgl_selesai=self.read_ticket_selesai_date(ticket_page) if 'ticket_page' in locals() and ticket_page and not ticket_page.is_closed() else "")
+                        except Exception:
+                            pass
+                        self.processed_ids.add(code)
                         continue
 
                     service_id = extract_service_id(note)
@@ -3656,7 +4776,7 @@ class SygapService:
                             log(f"    IN_PROGRESS, not my ticket -> change coordinator")
                             result = self.change_coordinator_to_me(ticket_page)
                             log(f"    Change coordinator: {result}")
-                            if not result or "SAVE" not in str(result):
+                            if not result or not any(k in str(result) for k in ("SAVE", "UPDATE_INC")):
                                 log(f"    Failed change coordinator, SKIP")
                                 continue
                             log(f"    Coordinator changed to me, saved")
@@ -3667,6 +4787,11 @@ class SygapService:
                             log(f"    Status: {status} -> TO ke saya dulu...")
                             btn_action = self.take_ownership(ticket_page)
                             log(f"    Button clicked: {btn_action}")
+                            if btn_action == 'SKIP_COORDINATOR':
+                                log(f"    SKIP: koordinator Rizky terdeteksi saat TO — jangan ambil")
+                                self.skipped_ids[code] = time.time()
+                                self._save_persistent_skipped(code, "koordinator skip 55652 (TO guard)")
+                                continue
 
                             confirmed = self.wait_for_in_progress(ticket_page)
                             if not confirmed:
@@ -3778,20 +4903,46 @@ class SygapService:
                     page.wait_for_timeout(1500)
 
             if processed_this_round == 0:
-                log(f"No actionable tickets (all rows skipped/already processed). Waiting {LOOP_INTERVAL // 60} minutes...")
-                return results
+                filter_idx += 1
+                if filter_idx < len(filters):
+                    current_filter = filters[filter_idx]
+                    log(f"No actionable service [{filters[filter_idx-1][1]}] tickets. Switching to [{current_filter[1]}]...")
+                    if not apply_filter(current_filter):
+                        log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                        return results
+                    continue
+                else:
+                    log(f"No actionable tickets. Waiting {LOOP_INTERVAL // 60} minutes...")
+                    return results
 
-            log(f"Page done. Re-applying filter...")
-            self.filter_change_service_id(page)
+            log(f"Page done. Re-applying filter [{current_filter[1]}]...")
+            if not apply_filter(current_filter):
+                filter_idx += 1
+                if filter_idx < len(filters):
+                    current_filter = filters[filter_idx]
+                    log(f"No tickets after filter. Switching to service [{current_filter[1]}]...")
+                    if not apply_filter(current_filter):
+                        log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                        return results
+                    continue
+                else:
+                    log(f"No tickets after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                    return results
             try:
-                page.wait_for_selector("#requestFulfillmentTable tbody tr", timeout=15000)
-                page.wait_for_timeout(2000)
+                info_after = page.locator("#requestFulfillmentTable_info").inner_text()
+                if "0 entries" in info_after or "0 of 0" in info_after:
+                    filter_idx += 1
+                    if filter_idx < len(filters):
+                        current_filter = filters[filter_idx]
+                        log(f"No tickets after filter. Switching to service [{current_filter[1]}]...")
+                        if not apply_filter(current_filter):
+                            log(f"No tickets for any filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                            return results
+                        continue
+                    else:
+                        log(f"No tickets after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
+                        return results
             except Exception:
                 pass
-
-            info_after = page.locator("#requestFulfillmentTable_info").inner_text()
-            if "0 entries" in info_after or "0 of 0" in info_after:
-                log(f"No tickets after filter. Waiting {LOOP_INTERVAL // 60} minutes...")
-                return results
 
         return results

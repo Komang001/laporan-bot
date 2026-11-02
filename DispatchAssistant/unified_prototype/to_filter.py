@@ -40,7 +40,7 @@ def _solver_is_me(solver_text, my_id="55654", my_name="I Nyoman Windu"):
         return False
     my_id_s = str(my_id).strip().lower()
     my_name_s = str(my_name).strip().lower()
-    for me in (my_id_s, my_name_s, "40010176", "crs2019332", "windu"):
+    for me in (my_id_s, my_name_s, "92010", "55654", "40010176", "crs2019332", "windu"):
         if not me:
             continue
         if me.isdigit():

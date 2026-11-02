@@ -14,7 +14,7 @@ USER_SETTINGS_PATH = os.path.join(
 DEFAULTS = {
     "loop_interval": 180,
     "skip_coordinator_user_ids": ["55652"],
-    "user_id": "55654",
+    "user_id": "92010",
     "user_name": "I Nyoman Windu",
     # UI Studio / Tampilan
     "theme": "light",                # light / dark
