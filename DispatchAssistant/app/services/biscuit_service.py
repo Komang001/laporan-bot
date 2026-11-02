@@ -147,7 +147,7 @@ class BiscuitService:
             self.response_count_before = self.get_bot_message_count()
 
             command_box = self.page.locator(
-                "input[placeholder*='Command for']"
+                self.CMD_BOX_SELECTOR
             )
 
             command_box.click()
@@ -163,9 +163,11 @@ class BiscuitService:
 
             return False
 
-    # ==================================================
-    # Send Command
-    # ==================================================
+    # Selector untuk command box BISCUIT (fallback multi-placeholder)
+    CMD_BOX_SELECTOR = (
+        "input[placeholder*='Command for'], "
+        "input[placeholder*='Enter parameters']"
+    )
 
     def send(self, command: str):
 
@@ -181,7 +183,7 @@ class BiscuitService:
         try:
 
             command_box = self.page.locator(
-                "input[placeholder*='Command for']"
+                self.CMD_BOX_SELECTOR
             )
 
             command_box.wait_for(
@@ -333,9 +335,13 @@ class BiscuitService:
 
         msg = str(data.get("message") or "")
         msg_lower = msg.lower()
-        if "gagal" in msg_lower or "failed" in msg_lower:
+        import re as _re
+        has_real_fail = bool(_re.search(r"gagal\s*:\s*[1-9]", msg_lower)) or (
+            "gagal" in msg_lower and not _re.search(r"gagal\s*:\s*0\b", msg_lower)
+        ) or "failed" in msg_lower
+        if has_real_fail:
             status = "FAILED"
-        elif "berhasil" in msg_lower or "successfully" in msg_lower:
+        elif "berhasil" in msg_lower or "successfully" in msg_lower or data.get("smartStatus") == "SUCCESS":
             status = "SUCCESS"
         else:
             status = "UNKNOWN"
@@ -391,35 +397,56 @@ class BiscuitService:
                             "found": False,
                             "detail": clean_error_message(str(item.get("message", detail)))[:200],
                             "status": "FAILED",
+                            "source": "",
+                            "ticket_status": "",
+                            "is_closed": False,
                         }
                 for item in success:
                     if str(item.get("ticketId", "")) == ticket_id:
                         d = item.get("data") or {}
-                        source = str(d.get("source_ticket") or "").upper()
+                        source = str(d.get("source_ticket") or d.get("SOURCE_TICKET") or "").upper()
+                        ticket_status = str(d.get("ticket_status") or d.get("STATUS") or "").upper()
                         is_parent = source == "GAMAS"
+                        is_closed = "CLOSED" in ticket_status
                         bits = [
                             str(item.get("message", "")),
-                            f"status={d.get('ticket_status')}",
-                            f"og={d.get('owner_group')}",
-                            f"source={d.get('source_ticket')}",
+                            f"status={ticket_status}",
+                            f"og={d.get('owner_group') or d.get('OWNER_GROUP')}",
+                            f"source={source}",
                         ]
                         return {
                             "found": is_parent,
                             "detail": " | ".join(b for b in bits if b)[:200],
                             "status": "SUCCESS" if is_parent else "UNKNOWN",
+                            "source": source,
+                            "ticket_status": ticket_status,
+                            "is_closed": is_closed,
                         }
                 if not success and not failed:
                     return {
                         "found": data.get("smartStatus") == "SUCCESS",
                         "detail": detail[:200],
                         "status": str(data.get("smartStatus", "UNKNOWN")),
+                        "source": "",
+                        "ticket_status": "",
+                        "is_closed": False,
                     }
             except Exception as e:
-                return {"found": False, "detail": f"Parse error: {e}", "status": "UNKNOWN"}
+                return {
+                    "found": False,
+                    "detail": f"Parse error: {e}",
+                    "status": "UNKNOWN",
+                    "source": "",
+                    "ticket_status": "",
+                    "is_closed": False,
+                }
             return {
                 "found": False,
                 "detail": detail[:200],
                 "status": str(data.get("smartStatus", "UNKNOWN")),
+                "source": "",
+                "ticket_status": "",
+                "is_closed": False,
             }
 
         response = self.execute(f"/cekticket {ticket_id}", "INSERA")
@@ -428,11 +455,20 @@ class BiscuitService:
                 "found": False,
                 "detail": "Gagal cek induk (BISCUIT tidak tersedia)",
                 "status": "UNKNOWN",
+                "source": "",
+                "ticket_status": "",
+                "is_closed": False,
             }
+        msg_up = (response.message or "").upper()
+        is_closed = "CLOSED" in msg_up
+        source = "PROACTIVE" if "PROACTIVE" in msg_up else ("GAMAS" if "GAMAS" in msg_up else "")
         return {
-            "found": response.status == "SUCCESS",
+            "found": response.status == "SUCCESS" and "GAMAS" in msg_up,
             "detail": response.message,
             "status": response.status,
+            "source": source,
+            "ticket_status": "CLOSED" if is_closed else "",
+            "is_closed": is_closed,
         }
 
     def check_children(self, child_incs):
