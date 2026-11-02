@@ -2116,6 +2116,9 @@ class SygapService:
                     if response.status == "SUCCESS":
                         complete_note = "Cek Kembali"
                         log(f"    BISCUIT SUKSES! Complete ticket...")
+                    elif any(k in (response.message or "").lower() for k in ["command box", "not found", "timeout", "tidak ditemukan", "tidak muncul", "tab not found"]):
+                        complete_note = "Cek Kembali"
+                        log(f"    BISCUIT error box/koneksi ({response.message[:80]}) -> gunakan default note 'Cek Kembali'")
                     else:
                         complete_note = response.message[:200]
                         log(f"    BISCUIT GAGAL! Complete dengan alasan error...")
@@ -3602,6 +3605,9 @@ class SygapService:
                         elif is_invalid_owner_group_error(response.message if response else ""):
                             log(f"    BISCUIT: owner group invalid -> balas note format OG")
                             complete_note = INVALID_OG_REPLY
+                        elif any(k in (response.message if response and response.message else "").lower() for k in ["command box", "not found", "timeout", "tidak ditemukan", "tidak muncul", "tab not found"]):
+                            log(f"    BISCUIT error box/koneksi -> fallback default 'Cek Kembali'")
+                            complete_note = "Cek Kembali"
                         else:
                             log(f"    BISCUIT GAGAL! Complete dengan alasan error...")
                             complete_note = response.message[:200]
@@ -4364,6 +4370,9 @@ class SygapService:
                         elif is_invalid_owner_group_error(response.message if response else ""):
                             log(f"    BISCUIT: owner group invalid -> balas note format OG")
                             complete_note = INVALID_OG_REPLY
+                        elif any(k in (response.message if response and response.message else "").lower() for k in ["command box", "not found", "timeout", "tidak ditemukan", "tidak muncul", "tab not found"]):
+                            log(f"    BISCUIT error box/koneksi -> fallback default 'Cek Kembali'")
+                            complete_note = "Cek Kembali"
                         else:
                             log(f"    BISCUIT GAGAL! Complete dengan alasan error...")
                             complete_note = response.message[:200]

@@ -53,6 +53,14 @@ class TestDispatchBugs(unittest.TestCase):
                 "<p>tiket_update_scid Mohon bantuannya rekan, Nomor tiket : INC54566056 Case : Dispatch to TIF ASR NON FBB DISTRICT DENPASAR Nama Pelapor : mirza NIK Atasan : 970003 Terima kasih</p>",
                 "TIF ASR NON FBB DISTRICT DENPASAR",
             ),
+            (
+                "Mohon bantu dorong ke backend INC54569134",
+                None,
+            ),
+            (
+                "Tolong dispatch ke BACKEND",
+                None,
+            ),
         ]
         for note, expected in samples:
             og = extract_owner_group(note)

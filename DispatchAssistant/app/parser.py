@@ -22,6 +22,7 @@ INVALID_OG_NAMES = {
     "TIDAK ADA",
     "TIDAK",
     "ADA",
+    "BACKEND",
 }
 
 
@@ -53,7 +54,7 @@ def parse_owner_group(note: str):
     # Pola 1: loker/og/owner group/disini yang BUKAN diikuti status 'kosong/null/blank'
     patterns = [
         r"(?:\bloker\b|\bog\b|owner\s*gr(?:o)?up|\bdisini\b)\s*[:.]?\s+(?!(?:kosong|null|blank|none|tidak\s*ada)\b)(.+)",
-        r"(?:\bke\b|\bto\b)\s+(.+)",
+        r"(?:\bke\b|\bto\b)\s+(?!(?:backend|draft|new|analysis)\b)(.+)",
     ]
 
     for pattern in patterns:
