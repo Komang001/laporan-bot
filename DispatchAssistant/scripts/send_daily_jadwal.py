@@ -55,6 +55,11 @@ SHIFTS_L2 = [
     ("Shift 2", "17:00", "24:00"),
 ]
 
+SHIFTS_L2_NOSSF = [
+    ("Shift 1", "08:00", "17:00"),
+    ("Shift 2", "16:00", "24:00"),
+]
+
 SHIFTS_DEV = [
     ("Shift 1", "08:00", "17:00"),
     ("Shift 2", "17:00", "24:00"),
@@ -66,20 +71,39 @@ SHIFTS_L3 = [
 ]
 
 NAMES_MAP = {
+    # L1 OSS
+    "ALFIRA FEBRIYANTHI": "ALFIRA",
+    "ALFIRA": "ALFIRA",
+    "ANNE SHOFIATUL MASWA": "ANNE",
+    "ANNE": "ANNE",
+    "ROFINA INA BITI": "ROFINA",
+    "ROFINA": "ROFINA",
+    "TYAS TIANTI CITRA IKHPANI": "TYAS",
+    "TYAS": "TYAS",
+    "RIZKA YULIANA": "RIZKA",
+    "RIZKA": "RIZKA",
+    "DIKA PRANANDA PUTRA": "DIKA",
+    "DIKA": "DIKA",
+    "IHSAN ABDI PUTRA": "IHSAN",
+    "IHSAN": "IHSAN",
     "I NYOMAN WINDU": "WINDU",
+    "WINDU": "WINDU",
     "RIZKY SENJA BUDIMAN": "RIZKY",
     "RIZKY SENJA": "RIZKY",
     "RIZKY": "RIZKY",
-    # L2
+    # L2 OSS
+    "ADAM ILHAM": "ADAM",
     "ADAM (L2)": "ADAM",
     "ADAM": "ADAM",
+    "RIYAN ALWANDIKA": "RIYAN",
     "RIYAN (L2)": "RIYAN",
     "RIYAN": "RIYAN",
+    "ADY DWITAMA": "ADY",
     "ADYTAMA (L2)": "ADY",
     "ADYTAMA": "ADY",
     "ADY": "ADY",
-    "FAISHAL (L2)": "FAISAL",
     "FAISHAL": "FAISAL",
+    "FAISHAL (L2)": "FAISAL",
     "FAISAL (L2)": "FAISAL",
     "FAISAL": "FAISAL",
     "ERWIN (L2)": "ERWIN",
@@ -284,8 +308,18 @@ def match_shift_slot(sheet_map, start_m):
     return starts[-1] if starts else None
 
 
+def clean_person_name(name: str) -> str:
+    """Bersihkan nama dari nomor HP atau newline, misal 'AUZAN HAKIM\n (085715583346)' -> 'AUZAN HAKIM'."""
+    if not name:
+        return ""
+    clean = re.sub(r"[\r\n]+", " ", name)
+    clean = re.sub(r"\(\s*08\d+.*?\)", "", clean)
+    clean = re.sub(r"\s+", " ", clean).strip()
+    return clean
+
+
 def parse_piket_csv(raw, day):
-    """Parse CSV sheet -> {'L1': {slot_m: [tags]}, 'L2': {...}, 'DEV': {...}, 'L3': {...}}."""
+    """Parse CSV sheet -> {'L1': {slot_m: [tags]}, 'L1_NOSSF': {...}, 'L2': {...}, 'L2_NOSSF': {...}, 'DEV': {...}, 'L3': {...}}."""
     rows = list(csv.reader(io.StringIO(raw)))
     day_col = None
     for r in rows:
@@ -299,26 +333,44 @@ def parse_piket_csv(raw, day):
     if day_col is None:
         return None
 
-    result = {"L1": {}, "L2": {}, "DEV": {}, "L3": {}}
+    result = {"L1": {}, "L1_NOSSF": {}, "L2": {}, "L2_NOSSF": {}, "DEV": {}, "L3": {}}
     cur_section = "L1"
+    is_nossf = False
     cur_name = None
 
     for r in rows:
         if not r:
             continue
         c0 = (r[0] or "").strip()
+        c1 = (r[1] or "").strip() if len(r) > 1 else ""
+
+        # Deteksi pembatas baris kosong (garis hitam separator NOSSF)
+        if not c0 and not c1 and not any(x.strip() for x in r):
+            if cur_section in ("L1", "L2") and cur_name is not None:
+                is_nossf = True
+                cur_name = None
+                continue
+
         if c0:
             c0_u = c0.upper()
-            if c0_u in ["L2", "JADWAL L2"]:
+            if "L2" in c0_u:
                 cur_section = "L2"
+                is_nossf = False
+                cur_name = None
+                continue
+            elif "L1" in c0_u:
+                cur_section = "L1"
+                is_nossf = False
                 cur_name = None
                 continue
             elif "DEV" in c0_u and "JADWAL" in c0_u:
                 cur_section = "DEV"
+                is_nossf = False
                 cur_name = None
                 continue
             elif "L3" in c0_u and "JADWAL" in c0_u:
                 cur_section = "L3"
+                is_nossf = False
                 cur_name = None
                 continue
             cur_name = c0
@@ -326,14 +378,15 @@ def parse_piket_csv(raw, day):
         if not cur_name or cur_name.upper() in SUMMARY_ROWS:
             continue
 
-        slot = (r[1] or "").strip() if len(r) > 1 else ""
+        slot = c1
         slot_m = _slot_start_min(slot) if slot else None
         if slot_m is None or len(r) <= day_col:
             continue
 
         if (r[day_col] or "").strip() == "1":
-            role = cur_section
-            c_u = cur_name.upper()
+            role = f"{cur_section}_NOSSF" if is_nossf else cur_section
+            c_clean = clean_person_name(cur_name)
+            c_u = c_clean.upper()
             if "(L2)" in c_u:
                 role = "L2"
             elif "DEV" in c_u:
@@ -342,7 +395,7 @@ def parse_piket_csv(raw, day):
                 role = "L3"
 
             key = NAMES_MAP.get(c_u, c_u)
-            tag = USERNAMES.get(key, cur_name)
+            tag = USERNAMES.get(key, c_clean)
             if tag and tag not in result[role].setdefault(slot_m, []):
                 result[role][slot_m].append(tag)
 
@@ -350,7 +403,7 @@ def parse_piket_csv(raw, day):
 
 
 def parse_pic_xlsx(raw, day):
-    """PIC per role & shift (sel hijau) -> {'L1': {slot_m: tag}, 'L2': {...}, ...}."""
+    """PIC per role & shift (sel hijau) -> {'L1': {slot_m: tag}, 'L1_NOSSF': {...}, ...}."""
     import openpyxl
 
     wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True)
@@ -367,25 +420,46 @@ def parse_pic_xlsx(raw, day):
     if day_col is None:
         return None
 
-    result = {"L1": {}, "L2": {}, "DEV": {}, "L3": {}}
+    result = {"L1": {}, "L1_NOSSF": {}, "L2": {}, "L2_NOSSF": {}, "DEV": {}, "L3": {}}
     cur_section = "L1"
+    is_nossf = False
     cur_name = None
 
     for r in range(1, ws.max_row + 1):
         c1 = ws.cell(r, 1).value
         c0 = str(c1).strip() if c1 else ""
+        c2 = ws.cell(r, 2).value
+        slot = str(c2).strip() if c2 else ""
+
+        # Deteksi pembatas baris hitam separator NOSSF (sel abu-abu gelap atau baris kosong setelah nama)
+        c1_cell = ws.cell(r, 1)
+        fill_rgb = c1_cell.fill.fgColor.rgb if (c1_cell.fill and c1_cell.fill.fgColor) else None
+        if not c0 and not slot:
+            if cur_section in ("L1", "L2") and cur_name is not None and fill_rgb in ("FF333F4F", "00000000", None):
+                is_nossf = True
+                cur_name = None
+                continue
+
         if c0:
             c0_u = c0.upper()
-            if c0_u in ["L2", "JADWAL L2"]:
+            if "L2" in c0_u:
                 cur_section = "L2"
+                is_nossf = False
+                cur_name = None
+                continue
+            elif "L1" in c0_u:
+                cur_section = "L1"
+                is_nossf = False
                 cur_name = None
                 continue
             elif "DEV" in c0_u and "JADWAL" in c0_u:
                 cur_section = "DEV"
+                is_nossf = False
                 cur_name = None
                 continue
             elif "L3" in c0_u and "JADWAL" in c0_u:
                 cur_section = "L3"
+                is_nossf = False
                 cur_name = None
                 continue
             cur_name = c0
@@ -393,8 +467,6 @@ def parse_pic_xlsx(raw, day):
         if not cur_name or cur_name.upper() in SUMMARY_ROWS:
             continue
 
-        c2 = ws.cell(r, 2).value
-        slot = str(c2).strip() if c2 else ""
         slot_m = _slot_start_min(slot) if slot else None
         if slot_m is None:
             continue
@@ -402,8 +474,9 @@ def parse_pic_xlsx(raw, day):
         f = ws.cell(r, day_col).fill
         green = bool(f and f.patternType and f.fgColor and f.fgColor.rgb == GREEN_FILL)
         if green:
-            role = cur_section
-            c_u = cur_name.upper()
+            role = f"{cur_section}_NOSSF" if is_nossf else cur_section
+            c_clean = clean_person_name(cur_name)
+            c_u = c_clean.upper()
             if "(L2)" in c_u:
                 role = "L2"
             elif "DEV" in c_u:
@@ -412,7 +485,7 @@ def parse_pic_xlsx(raw, day):
                 role = "L3"
 
             key = NAMES_MAP.get(c_u, c_u)
-            tag = USERNAMES.get(key, cur_name)
+            tag = USERNAMES.get(key, c_clean)
             if tag and slot_m not in result[role]:
                 result[role][slot_m] = tag
 
@@ -435,81 +508,59 @@ def build_message(now, role="default"):
         title,
         f"{DAY_NAMES[now.weekday()]}, {now.day} {MONTH_NAMES[now.month - 1]} {now.year}",
         "",
-        "🔹 Jadwal L1:",
     ]
-    piket_l1 = piket.get("L1", {})
-    pic_l1 = pic.get("L1", {}) if pic else {}
-    for start_m in sorted(SHIFT_START_M):
-        label, start, end = SHIFT_START_M[start_m]
-        lines.append(f"👥 {label} ({start} - {end}):")
-        key = match_shift_slot(piket_l1, start_m)
-        tags = piket_l1.get(key) if key is not None else None
-        if not tags:
-            lines.append("• (tidak ada)")
-        else:
-            for t in tags:
-                pic_mark = " — ⭐ PIC" if pic_l1 and key is not None and pic_l1.get(key) == t else ""
-                lines.append(f"• {t}{pic_mark}")
-        lines.append("")
 
-    # L2
-    piket_l2 = piket.get("L2", {})
-    pic_l2 = pic.get("L2", {}) if pic else {}
-    lines.append("🔹 Jadwal L2:")
-    for label, start, end in SHIFTS_L2:
-        lines.append(f"👥 {label} ({start} - {end}):")
-        sh, sm = (int(x) for x in start.split(":"))
-        start_m = sh * 60 + sm
-        key = match_shift_slot(piket_l2, start_m)
-        tags = piket_l2.get(key) if key is not None else None
-        if not tags:
-            lines.append("• (tidak ada)")
-        else:
-            for t in tags:
-                pic_mark = " — ⭐ PIC" if pic_l2 and key is not None and pic_l2.get(key) == t else ""
-                lines.append(f"• {t}{pic_mark}")
-        lines.append("")
+    def render_shifts(header_title, piket_dict, pic_dict, shift_tuples):
+        block = [header_title]
+        has_any = False
+        for label, start, end in shift_tuples:
+            block.append(f"👥 {label} ({start} - {end}):")
+            sh, sm = (int(x) for x in start.split(":"))
+            start_m = sh * 60 + sm
+            key = match_shift_slot(piket_dict, start_m)
+            tags = piket_dict.get(key) if key is not None else None
+            if not tags:
+                block.append("• (tidak ada)")
+            else:
+                has_any = True
+                for t in tags:
+                    pic_mark = " — ⭐ PIC" if pic_dict and key is not None and pic_dict.get(key) == t else ""
+                    block.append(f"• {t}{pic_mark}")
+            block.append("")
+        return block, has_any
+
+    # 1. L1 (OSS)
+    l1_block, _ = render_shifts("🔹 Jadwal L1 (OSS):", piket.get("L1", {}), pic.get("L1", {}) if pic else {}, SHIFTS)
+    lines.extend(l1_block)
+
+    # 2. L1 (NOSSF) jika ada orang
+    piket_l1_nossf = piket.get("L1_NOSSF", {})
+    if any(piket_l1_nossf.values()):
+        l1_nossf_block, _ = render_shifts("🔹 Jadwal L1 (NOSSF):", piket_l1_nossf, pic.get("L1_NOSSF", {}) if pic else {}, SHIFTS)
+        lines.extend(l1_nossf_block)
+
+    # 3. L2 (OSS)
+    l2_block, _ = render_shifts("🔹 Jadwal L2 (OSS):", piket.get("L2", {}), pic.get("L2", {}) if pic else {}, SHIFTS_L2)
+    lines.extend(l2_block)
+
+    # 4. L2 (NOSSF) jika ada orang
+    piket_l2_nossf = piket.get("L2_NOSSF", {})
+    if any(piket_l2_nossf.values()):
+        l2_nossf_block, _ = render_shifts("🔹 Jadwal L2 (NOSSF):", piket_l2_nossf, pic.get("L2_NOSSF", {}) if pic else {}, SHIFTS_L2_NOSSF)
+        lines.extend(l2_nossf_block)
 
     if role == "all":
-        # DEV
+        # 5. DEV
         piket_dev = piket.get("DEV", {})
-        pic_dev = pic.get("DEV", {}) if pic else {}
-        lines.append("🔹 Jadwal DEV (Insera & Bima):")
-        has_dev = False
-        for label, start, end in SHIFTS_DEV:
-            sh, sm = (int(x) for x in start.split(":"))
-            start_m = sh * 60 + sm
-            key = match_shift_slot(piket_dev, start_m)
-            tags = piket_dev.get(key) if key is not None else None
-            if tags:
-                has_dev = True
-                lines.append(f"👥 {label} ({start} - {end}):")
-                for t in tags:
-                    pic_mark = " — ⭐ PIC" if pic_dev and key is not None and pic_dev.get(key) == t else ""
-                    lines.append(f"• {t}{pic_mark}")
-        if not has_dev:
-            lines.append("• (tidak ada)")
-        lines.append("")
+        if any(piket_dev.values()):
+            dev_block, _ = render_shifts("🔹 Jadwal DEV (Insera & Bima):", piket_dev, pic.get("DEV", {}) if pic else {}, SHIFTS_DEV)
+            lines.extend(dev_block)
 
-        # L3
+        # 6. L3
         piket_l3 = piket.get("L3", {})
-        pic_l3 = pic.get("L3", {}) if pic else {}
-        lines.append("🔹 Jadwal L3:")
-        has_l3 = False
-        for label, start, end in SHIFTS_L3:
-            sh, sm = (int(x) for x in start.split(":"))
-            start_m = sh * 60 + sm
-            key = match_shift_slot(piket_l3, start_m)
-            tags = piket_l3.get(key) if key is not None else None
-            if tags:
-                has_l3 = True
-                lines.append(f"👥 {label} ({start} - {end}):")
-                for t in tags:
-                    pic_mark = " — ⭐ PIC" if pic_l3 and key is not None and pic_l3.get(key) == t else ""
-                    lines.append(f"• {t}{pic_mark}")
-        if not has_l3:
-            lines.append("• (tidak ada)")
-        lines.append("")
+        if any(piket_l3.values()):
+            l3_block, _ = render_shifts("🔹 Jadwal L3:", piket_l3, pic.get("L3", {}) if pic else {}, SHIFTS_L3)
+            lines.extend(l3_block)
 
     lines.append("Sumber: Google Sheet jadwal")
     return "\n".join(lines)

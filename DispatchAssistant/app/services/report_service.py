@@ -2043,8 +2043,12 @@ def _parse_sheet_tags_all(raw, date):
         c0 = (r[0] or "").strip()
         if c0:
             c0_u = c0.upper()
-            if c0_u in ["L2", "JADWAL L2"]:
+            if "L2" in c0_u:
                 cur_section = "L2"
+                cur_name = None
+                continue
+            elif "L1" in c0_u:
+                cur_section = "L1"
                 cur_name = None
                 continue
             elif "DEV" in c0_u and "JADWAL" in c0_u:
@@ -2238,8 +2242,12 @@ def _parse_sheet_pic_all(raw, date):
         c0 = str(c1).strip() if c1 else ""
         if c0:
             c0_u = c0.upper()
-            if c0_u in ["L2", "JADWAL L2"]:
+            if "L2" in c0_u:
                 cur_section = "L2"
+                cur_name = None
+                continue
+            elif "L1" in c0_u:
+                cur_section = "L1"
                 cur_name = None
                 continue
             elif "DEV" in c0_u and "JADWAL" in c0_u:
