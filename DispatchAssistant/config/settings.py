@@ -270,7 +270,7 @@ TELEGRAM_SOLVER_IDS = {
 # solver_id diambil dari baris DataTable (id_coordinator) / opsi #solverSearch SYGAP:
 #   I Nyoman Windu  = 55654, Dika Prananda Putra = 55653, Rizky Senja Budiman = 55652
 REPORT_AGENTS = [
-    {"name": "Windu", "solver_id": "55654", "username": "CRS2019332", "coordinator_id": "55654"},
+    {"name": "Windu", "solver_id": "55654", "username": "40010176", "coordinator_id": "55654"},
     {"name": "Dika", "solver_id": "55653", "username": "", "coordinator_id": "55653"},
     {"name": "Rizky", "solver_id": "55652", "username": "", "coordinator_id": "55652"},
 ]
