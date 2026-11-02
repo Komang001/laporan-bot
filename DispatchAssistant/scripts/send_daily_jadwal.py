@@ -71,7 +71,7 @@ SHIFTS_L3 = [
 ]
 
 NAMES_MAP = {
-    # L1 OSS
+    # L1 NOSSA
     "ALFIRA FEBRIYANTHI": "ALFIRA",
     "ALFIRA": "ALFIRA",
     "ANNE SHOFIATUL MASWA": "ANNE",
@@ -91,7 +91,7 @@ NAMES_MAP = {
     "RIZKY SENJA BUDIMAN": "RIZKY",
     "RIZKY SENJA": "RIZKY",
     "RIZKY": "RIZKY",
-    # L2 OSS
+    # L2 NOSSA
     "ADAM ILHAM": "ADAM",
     "ADAM (L2)": "ADAM",
     "ADAM": "ADAM",
@@ -110,6 +110,31 @@ NAMES_MAP = {
     "ERWIN": "ERWIN",
     "RIZKY ARDIAN (L2)": "RIZKY ARDIAN",
     "RIZKY ARDIAN": "RIZKY ARDIAN",
+    # L2 OPS (NOSSF)
+    "AUZAN HAKIM": "AUZAN",
+    "AUZAN": "AUZAN",
+    "MUHAMMAD MASWILDAN": "MASWILDAN",
+    "MASWILDAN": "MASWILDAN",
+    "ANGGIA ARISANDI": "ANGGIA",
+    "ANGGIA": "ANGGIA",
+    "LISNAWATI HAMIDAH": "LISNAWATI",
+    "LISNAWATI": "LISNAWATI",
+    "DWI TEGUH RAMADHAN SUBAGJA": "DWI TEGUH",
+    "DWI TEGUH": "DWI TEGUH",
+    "REVIAN ADIPUTRA WAHYUDI": "REVIAN",
+    "REVIAN": "REVIAN",
+    "MUHAMMAD DAFFA EKA P": "DAFFA",
+    "DAFFA": "DAFFA",
+    # L2 NOSSF
+    "IKA FITRI NURYANTI": "IKA FITRI",
+    "IKA FITRI": "IKA FITRI",
+    "MUHAMMAD ICHSAN ADLIANSYAH": "ICHSAN ADLI",
+    "ICHSAN ADLI": "ICHSAN ADLI",
+    "REYZA FAKHRI AZZADI": "REYZA",
+    "REYZA": "REYZA",
+    "LUTFI ABDILLAH INARNO": "LUTFI",
+    "LUTFI": "LUTFI",
+    "LUTHFI AGUSTIA": "LUTHFI AGUSTIA",
     # DEV
     "REZA (DEV INSERA)": "REZA",
     "REZA": "REZA",
@@ -126,7 +151,7 @@ NAMES_MAP = {
     "DANA": "DANA",
 }
 USERNAMES = {
-    # L1
+    # L1 NOSSA
     "ANNE": "@annemaswa27",
     "ALFIRA": "@hifirrr",
     "TYAS": "@ikhpani",
@@ -136,7 +161,7 @@ USERNAMES = {
     "DIKA": "@dikaprndx",
     "WINDU": "@komangwindu",
     "RIZKY": "@rizkysenjab",
-    # L2 & DEV
+    # L2 NOSSA & DEV
     "RIYAN": "@riyanalwandika",
     "ADAM": "@Adamilhamm",
     "ADY": "@ady_tama",
@@ -144,6 +169,20 @@ USERNAMES = {
     "AJI": "@aifllvyy",
     "WILDAN": "@wildanfariz",
     "REZA": "@rezzamf",
+    # L2 OPS (NOSSF)
+    "AUZAN": "@auzkim24",
+    "MASWILDAN": "@Maswildanm",
+    "ANGGIA": "@giaanggiaa",
+    "LISNAWATI": "@Lisnawh",
+    "DWI TEGUH": "@DTRSMND",
+    "REVIAN": "@revianadiputra",
+    "DAFFA": "@daffaep03",
+    # L2 NOSSF
+    "IKA FITRI": "@IkaFitrin",
+    "ICHSAN ADLI": "@ichsanadli",
+    "REYZA": "@Reyzafakh",
+    "LUTFI": "@lutfiabdinr",
+    "LUTHFI AGUSTIA": "@Haluu_Rekan_Monitor",
 }
 GREEN_FILL = "FF00FF00"
 SUMMARY_ROWS = {
@@ -308,6 +347,14 @@ def match_shift_slot(sheet_map, start_m):
     return starts[-1] if starts else None
 
 
+NOSSF_L1_NAMES = {
+    "AMAL", "AUZAN", "MASWILDAN", "ANGGIA", "LISNAWATI", "DWI TEGUH", "REVIAN", "DAFFA"
+}
+NOSSF_L2_NAMES = {
+    "IKA FITRI", "ICHSAN ADLI", "REYZA", "LUTFI", "LUTHFI AGUSTIA"
+}
+
+
 def clean_person_name(name: str) -> str:
     """Bersihkan nama dari nomor HP atau newline, misal 'AUZAN HAKIM\n (085715583346)' -> 'AUZAN HAKIM'."""
     if not name:
@@ -346,7 +393,7 @@ def parse_piket_csv(raw, day):
 
         # Deteksi pembatas baris kosong (garis hitam separator NOSSF)
         if not c0 and not c1 and not any(x.strip() for x in r):
-            if cur_section in ("L1", "L2") and cur_name is not None:
+            if cur_section in ("L1", "L2") and cur_name is not None and cur_name.upper() not in SUMMARY_ROWS:
                 is_nossf = True
                 cur_name = None
                 continue
@@ -384,17 +431,22 @@ def parse_piket_csv(raw, day):
             continue
 
         if (r[day_col] or "").strip() == "1":
-            role = f"{cur_section}_NOSSF" if is_nossf else cur_section
             c_clean = clean_person_name(cur_name)
             c_u = c_clean.upper()
-            if "(L2)" in c_u:
+            key = NAMES_MAP.get(c_u, c_u)
+            if key in NOSSF_L1_NAMES:
+                role = "L1_NOSSF"
+            elif key in NOSSF_L2_NAMES:
+                role = "L2_NOSSF"
+            elif "(L2)" in c_u:
                 role = "L2"
             elif "DEV" in c_u:
                 role = "DEV"
             elif "(L3)" in c_u:
                 role = "L3"
+            else:
+                role = f"{cur_section}_NOSSF" if is_nossf else cur_section
 
-            key = NAMES_MAP.get(c_u, c_u)
             tag = USERNAMES.get(key, c_clean)
             if tag and tag not in result[role].setdefault(slot_m, []):
                 result[role][slot_m].append(tag)
@@ -431,14 +483,13 @@ def parse_pic_xlsx(raw, day):
         c2 = ws.cell(r, 2).value
         slot = str(c2).strip() if c2 else ""
 
-        # Deteksi pembatas baris hitam separator NOSSF (sel abu-abu gelap atau baris kosong setelah nama)
+        # Deteksi pembatas baris hitam separator NOSSF (sel FF333F4F)
         c1_cell = ws.cell(r, 1)
         fill_rgb = c1_cell.fill.fgColor.rgb if (c1_cell.fill and c1_cell.fill.fgColor) else None
-        if not c0 and not slot:
-            if cur_section in ("L1", "L2") and cur_name is not None and fill_rgb in ("FF333F4F", "00000000", None):
-                is_nossf = True
-                cur_name = None
-                continue
+        if not c0 and not slot and fill_rgb == "FF333F4F":
+            is_nossf = True
+            cur_name = None
+            continue
 
         if c0:
             c0_u = c0.upper()
@@ -474,17 +525,22 @@ def parse_pic_xlsx(raw, day):
         f = ws.cell(r, day_col).fill
         green = bool(f and f.patternType and f.fgColor and f.fgColor.rgb == GREEN_FILL)
         if green:
-            role = f"{cur_section}_NOSSF" if is_nossf else cur_section
             c_clean = clean_person_name(cur_name)
             c_u = c_clean.upper()
-            if "(L2)" in c_u:
+            key = NAMES_MAP.get(c_u, c_u)
+            if key in NOSSF_L1_NAMES:
+                role = "L1_NOSSF"
+            elif key in NOSSF_L2_NAMES:
+                role = "L2_NOSSF"
+            elif "(L2)" in c_u:
                 role = "L2"
             elif "DEV" in c_u:
                 role = "DEV"
             elif "(L3)" in c_u:
                 role = "L3"
+            else:
+                role = f"{cur_section}_NOSSF" if is_nossf else cur_section
 
-            key = NAMES_MAP.get(c_u, c_u)
             tag = USERNAMES.get(key, c_clean)
             if tag and slot_m not in result[role]:
                 result[role][slot_m] = tag
@@ -510,7 +566,7 @@ def build_message(now, role="default"):
         "",
     ]
 
-    def render_shifts(header_title, piket_dict, pic_dict, shift_tuples):
+    def render_shifts(header_title, piket_dict, pic_dict, shift_tuples, pic_label="⭐ PIC"):
         block = [header_title]
         has_any = False
         for label, start, end in shift_tuples:
@@ -524,42 +580,42 @@ def build_message(now, role="default"):
             else:
                 has_any = True
                 for t in tags:
-                    pic_mark = " — ⭐ PIC" if pic_dict and key is not None and pic_dict.get(key) == t else ""
+                    pic_mark = f" — {pic_label}" if pic_dict and key is not None and pic_dict.get(key) == t else ""
                     block.append(f"• {t}{pic_mark}")
             block.append("")
         return block, has_any
 
-    # 1. L1 (OSS)
-    l1_block, _ = render_shifts("🔹 Jadwal L1 (OSS):", piket.get("L1", {}), pic.get("L1", {}) if pic else {}, SHIFTS)
+    # 1. L1 (NOSSA)
+    l1_block, _ = render_shifts("🔹 Jadwal L1 (NOSSA):", piket.get("L1", {}), pic.get("L1", {}) if pic else {}, SHIFTS, pic_label="⭐ PIC L1")
     lines.extend(l1_block)
 
-    # 2. L1 (NOSSF) jika ada orang
+    # 2. L2 OPS (NOSSF) jika ada orang
     piket_l1_nossf = piket.get("L1_NOSSF", {})
     if any(piket_l1_nossf.values()):
-        l1_nossf_block, _ = render_shifts("🔹 Jadwal L1 (NOSSF):", piket_l1_nossf, pic.get("L1_NOSSF", {}) if pic else {}, SHIFTS)
+        l1_nossf_block, _ = render_shifts("🔹 Jadwal L2 OPS (NOSSF):", piket_l1_nossf, pic.get("L1_NOSSF", {}) if pic else {}, SHIFTS, pic_label="⭐ PIC L2 OPS")
         lines.extend(l1_nossf_block)
 
-    # 3. L2 (OSS)
-    l2_block, _ = render_shifts("🔹 Jadwal L2 (OSS):", piket.get("L2", {}), pic.get("L2", {}) if pic else {}, SHIFTS_L2)
+    # 3. L2 (NOSSA)
+    l2_block, _ = render_shifts("🔹 Jadwal L2 (NOSSA):", piket.get("L2", {}), pic.get("L2", {}) if pic else {}, SHIFTS_L2, pic_label="⭐ PIC L2")
     lines.extend(l2_block)
 
     # 4. L2 (NOSSF) jika ada orang
     piket_l2_nossf = piket.get("L2_NOSSF", {})
     if any(piket_l2_nossf.values()):
-        l2_nossf_block, _ = render_shifts("🔹 Jadwal L2 (NOSSF):", piket_l2_nossf, pic.get("L2_NOSSF", {}) if pic else {}, SHIFTS_L2_NOSSF)
+        l2_nossf_block, _ = render_shifts("🔹 Jadwal L2 (NOSSF):", piket_l2_nossf, pic.get("L2_NOSSF", {}) if pic else {}, SHIFTS_L2_NOSSF, pic_label="⭐ PIC L2")
         lines.extend(l2_nossf_block)
 
     if role == "all":
         # 5. DEV
         piket_dev = piket.get("DEV", {})
         if any(piket_dev.values()):
-            dev_block, _ = render_shifts("🔹 Jadwal DEV (Insera & Bima):", piket_dev, pic.get("DEV", {}) if pic else {}, SHIFTS_DEV)
+            dev_block, _ = render_shifts("🔹 Jadwal DEV (Insera & Bima):", piket_dev, pic.get("DEV", {}) if pic else {}, SHIFTS_DEV, pic_label="⭐ PIC DEV")
             lines.extend(dev_block)
 
         # 6. L3
         piket_l3 = piket.get("L3", {})
         if any(piket_l3.values()):
-            l3_block, _ = render_shifts("🔹 Jadwal L3:", piket_l3, pic.get("L3", {}) if pic else {}, SHIFTS_L3)
+            l3_block, _ = render_shifts("🔹 Jadwal L3:", piket_l3, pic.get("L3", {}) if pic else {}, SHIFTS_L3, pic_label="⭐ PIC L3")
             lines.extend(l3_block)
 
     lines.append("Sumber: Google Sheet jadwal")

@@ -222,6 +222,31 @@ JADWAL_SHEET_NAMES = {
     "ERWIN": "ERWIN",
     "RIZKY ARDIAN (L2)": "RIZKY ARDIAN",
     "RIZKY ARDIAN": "RIZKY ARDIAN",
+    # L2 OPS (NOSSF)
+    "AUZAN HAKIM": "AUZAN",
+    "AUZAN": "AUZAN",
+    "MUHAMMAD MASWILDAN": "MASWILDAN",
+    "MASWILDAN": "MASWILDAN",
+    "ANGGIA ARISANDI": "ANGGIA",
+    "ANGGIA": "ANGGIA",
+    "LISNAWATI HAMIDAH": "LISNAWATI",
+    "LISNAWATI": "LISNAWATI",
+    "DWI TEGUH RAMADHAN SUBAGJA": "DWI TEGUH",
+    "DWI TEGUH": "DWI TEGUH",
+    "REVIAN ADIPUTRA WAHYUDI": "REVIAN",
+    "REVIAN": "REVIAN",
+    "MUHAMMAD DAFFA EKA P": "DAFFA",
+    "DAFFA": "DAFFA",
+    # L2 NOSSF
+    "IKA FITRI NURYANTI": "IKA FITRI",
+    "IKA FITRI": "IKA FITRI",
+    "MUHAMMAD ICHSAN ADLIANSYAH": "ICHSAN ADLI",
+    "ICHSAN ADLI": "ICHSAN ADLI",
+    "REYZA FAKHRI AZZADI": "REYZA",
+    "REYZA": "REYZA",
+    "LUTFI ABDILLAH INARNO": "LUTFI",
+    "LUTFI": "LUTFI",
+    "LUTHFI AGUSTIA": "LUTHFI AGUSTIA",
     # DEV
     "REZA (DEV INSERA)": "REZA",
     "REZA": "REZA",
@@ -265,6 +290,20 @@ TELEGRAM_USERNAMES = {
     "AJI": "@aifllvyy",
     "WILDAN": "@wildanfariz",
     "REZA": "@rezzamf",
+    # L2 OPS (NOSSF)
+    "AUZAN": "@auzkim24",
+    "MASWILDAN": "@Maswildanm",
+    "ANGGIA": "@giaanggiaa",
+    "LISNAWATI": "@Lisnawh",
+    "DWI TEGUH": "@DTRSMND",
+    "REVIAN": "@revianadiputra",
+    "DAFFA": "@daffaep03",
+    # L2 NOSSF
+    "IKA FITRI": "@IkaFitrin",
+    "ICHSAN ADLI": "@ichsanadli",
+    "REYZA": "@Reyzafakh",
+    "LUTFI": "@lutfiabdinr",
+    "LUTHFI AGUSTIA": "@Haluu_Rekan_Monitor",
 }
 
 # Solver ID SYGAP per nama (value opsi #solverSearch).
