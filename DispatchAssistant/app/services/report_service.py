@@ -2348,6 +2348,12 @@ def build_jadwal_piket_text(date=None, role="default"):
 
     Menampilkan override tukar shift jika ada (ditandai 🔄 Tukar).
     """
+    try:
+        from scripts.send_daily_jadwal import build_message
+        return build_message(date or datetime.now(), role=role)
+    except Exception as e:
+        logger.warning(f"Gagal panggil send_daily_jadwal.build_message: {e}")
+
     date = date or datetime.now()
     piket_map = _sheet_piket_map(date)
     pic_map = _sheet_pic_map(date)

@@ -1,9 +1,23 @@
 import asyncio
 import logging
+import os
 import re
 import threading
 import time
 from datetime import datetime, timedelta
+
+# Pastikan file log debug bot aktif agar error di thread polling tercatat
+_LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
+os.makedirs(_LOG_DIR, exist_ok=True)
+_BOT_LOG_PATH = os.path.join(_LOG_DIR, "telegram_bot.log")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[
+        logging.FileHandler(_BOT_LOG_PATH, encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
+)
 
 from telegram import Update, BotCommand
 from telegram.ext import (
@@ -594,12 +608,18 @@ class TelegramRemote:
         await update.message.reply_text(text, disable_web_page_preview=True)
 
     def _cekpiket_sync(self, role="default"):
-        from app.services.report_service import build_jadwal_piket_text
+        try:
+            from scripts.send_daily_jadwal import build_message
 
-        text = build_jadwal_piket_text(datetime.now(), role=role)
-        if text is None:
-            return "⚠️ Gagal membaca jadwal piket dari Google Sheet."
-        return text
+            return build_message(datetime.now(), role=role)
+        except Exception as e:
+            logger.warning(f"Gagal pakai send_daily_jadwal.build_message: {e}, fallback ke report_service")
+            from app.services.report_service import build_jadwal_piket_text
+
+            text = build_jadwal_piket_text(datetime.now(), role=role)
+            if text is None:
+                return "⚠️ Gagal membaca jadwal piket dari Google Sheet."
+            return text
 
     async def _cmd_tukarshift(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         """Atur override tukar shift per shift.
