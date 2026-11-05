@@ -33,7 +33,7 @@ class InseraGamasService:
 
         try:
             current = self.page.url.lower()
-            if "gamasrelations" not in current:
+            if "gamasrelations" not in current or "_action=submit" in current:
                 self.page.goto(GAMAS_RELATIONS_URL, wait_until="domcontentloaded", timeout=15000)
                 self.page.wait_for_timeout(2000)
             return True

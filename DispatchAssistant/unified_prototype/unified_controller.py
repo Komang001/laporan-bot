@@ -1397,11 +1397,11 @@ class UnifiedController:
 
         bm = self._browser
         page = None
+        from config.settings import GAMAS_RELATIONS_URL
         try:
             page = bm.get_insera_gamas_page()
             if page is None or not bm.is_page_alive(page):
                 self.log("    tab INSERA belum ada -> bukakan dulu...")
-                from config.settings import GAMAS_RELATIONS_URL
                 page = bm.open_url(GAMAS_RELATIONS_URL)
                 if page is None:
                     return None
@@ -1410,6 +1410,9 @@ class UnifiedController:
                     page.wait_for_timeout(3000)
                 except Exception:
                     pass
+            elif "_action=submit" in (page.url or "").lower() or "gamasrelations" not in (page.url or "").lower():
+                page.goto(GAMAS_RELATIONS_URL, wait_until="domcontentloaded", timeout=15000)
+                page.wait_for_timeout(3000)
         except Exception as e:
             self.log(f"    buka tab INSERA gagal: {e}")
             return None
@@ -1423,13 +1426,12 @@ class UnifiedController:
         except Exception:
             toks = {}
         csrf, nonce = (toks.get("csrf") or ""), (toks.get("nonce") or "")
-        # Token kosong kemungkinan halaman belum render sempurna -> reload
-        # 1x lalu baca ulang, sebelum menyimpulkan sesi mati.
+        # Token kosong kemungkinan halaman belum render sempurna / URL submit -> buka ulang URL relasi
         if (not csrf or not nonce) and page is not None:
             try:
-                self.log("    token tak lengkap -> reload tab 1x...")
-                page.reload(wait_until="domcontentloaded", timeout=15000)
-                page.wait_for_timeout(5000)
+                self.log("    token tak lengkap -> buka ulang URL relasi gamas...")
+                page.goto(GAMAS_RELATIONS_URL, wait_until="domcontentloaded", timeout=15000)
+                page.wait_for_timeout(4000)
                 toks = page.evaluate("""() => {
                     const g = n => { const el = document.querySelector(
                         'input[name="' + n + '"]'); return el ? (el.value || '') : ''; };
