@@ -1214,6 +1214,16 @@ class UnifiedController:
                 ok_all = False
                 msgs.append(self._join_inc_msg(
                     inc, resp.message if resp else "?"))
+        # Proteksi: Jangan pernah jadikan error teknis internal BISCUIT/bot sebagai note reply tiket!
+        # Jika ada error teknis (command box, not found, timeout, tab not found), jangan complete tiket dengan teks error tersebut.
+        has_tech_error = any(
+            any(k in m.lower() for k in ["command box", "not found", "tab not found", "timeout", "tidak ditemukan", "tidak muncul"])
+            for m in msgs
+        )
+        if not ok_all and has_tech_error:
+            self.log(f"    ⚠️ BISCUIT error teknis ({'; '.join(msgs)[:80]}) -> SKIP complete tiket, retry siklus berikutnya.")
+            return "retry:biscuit tidak siap"
+
         note_done = "Cek Kembali" if ok_all else "; ".join(msgs)[:200]
         # JARING PENGAMAN: pastikan bukan tiket Symptom/C4 yang lolos ke
         # jalur dispatch biasa. Gagal -> raise, complete batal.

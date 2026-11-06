@@ -58,8 +58,8 @@ class TestDispatchBugs(unittest.TestCase):
                 None,
             ),
             (
-                "Tolong dispatch ke BACKEND",
-                None,
+                "<p>Salah_Dispatch_Witel_ke_Witel NIK : 19830014 Nama :MARPUAH Unit : HD ASSURANCE TIKET : INC54690161 PERMINTAAN : Mohon bantuan dispatch ke loker Send to TIF ASR FBB DISTRICT BANJARMASIN NIK APPROVAL: 860011</p>",
+                "TIF ASR FBB DISTRICT BANJARMASIN",
             ),
         ]
         for note, expected in samples:

@@ -23,6 +23,7 @@ INVALID_OG_NAMES = {
     "TIDAK",
     "ADA",
     "BACKEND",
+    "SEND",
 }
 
 
@@ -53,8 +54,8 @@ def parse_owner_group(note: str):
     # Try patterns in order of priority
     # Pola 1: loker/og/owner group/disini yang BUKAN diikuti status 'kosong/null/blank'
     patterns = [
-        r"(?:\bloker\b|\bog\b|owner\s*gr(?:o)?up|\bdisini\b)\s*[:.]?\s+(?!(?:kosong|null|blank|none|tidak\s*ada)\b)(.+)",
-        r"(?:\bke\b|\bto\b)\s+(?!(?:backend|draft|new|analysis)\b)(.+)",
+        r"(?:\bloker\b|\bog\b|owner\s*gr(?:o)?up|\bdisini\b)\s*[:.]?\s+(?!(?:kosong|null|blank|none|tidak\s*ada)\b)(?:send\s+to\s+)?(.+)",
+        r"(?:\bke\b|\bto\b)\s+(?!(?:backend|draft|new|analysis)\b)(?:send\s+to\s+)?(.+)",
     ]
 
     for pattern in patterns:
@@ -70,11 +71,12 @@ def parse_owner_group(note: str):
 
         candidate = match.group(1).strip()
 
-        # Strip label prefixes: "Owner Group", "Ownergroup", "Owner Grup", "LOKER", "OWNER GROUP", "DISINI", "OG"
+        # Strip label prefixes: "Owner Group", "Ownergroup", "Owner Grup", "LOKER", "OWNER GROUP", "DISINI", "OG", "SEND TO"
         candidate = re.sub(r"(?i)\bowner\s*gr(?:o)?up\b", "", candidate)
         candidate = re.sub(r"(?i)\bloker\b", "", candidate)
         candidate = re.sub(r"(?i)\bog\b", "", candidate)
         candidate = re.sub(r"(?i)\bdisini\b", "", candidate)
+        candidate = re.sub(r"(?i)\bsend\s+to\b", "", candidate)
         candidate = re.sub(r"\s+", " ", candidate).strip()
 
         # Ambil hanya kata UPPERCASE atau Title-Case (OG kadang ditulis campur,
@@ -264,10 +266,11 @@ def extract_bulk_og_target(note: str):
 def _clean_og_target(raw: str):
     raw = raw.strip().rstrip(".,;:")
 
-    # Strip label prefixes: "Owner Group", "Ownergroup", "LOKER", "OWNER GROUP", "OG"
+    # Strip label prefixes: "Owner Group", "Ownergroup", "LOKER", "OWNER GROUP", "OG", "SEND TO"
     raw = re.sub(r"(?i)\bowner\s*gr(?:o)?up\b", "", raw)
     raw = re.sub(r"(?i)\bloker\b", "", raw)
     raw = re.sub(r"(?i)\bog\b", "", raw)
+    raw = re.sub(r"(?i)\bsend\s+to\b", "", raw)
     raw = re.sub(r"\s+", " ", raw).strip()
 
     words = raw.split()

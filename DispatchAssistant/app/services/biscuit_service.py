@@ -166,7 +166,9 @@ class BiscuitService:
     # Selector untuk command box BISCUIT (fallback multi-placeholder)
     CMD_BOX_SELECTOR = (
         "input[placeholder*='Command for'], "
-        "input[placeholder*='Enter parameters']"
+        "input[placeholder*='Enter parameters'], "
+        "input[placeholder*='Command for INSERA'], "
+        "input.w-full[type='text']"
     )
 
     def send(self, command: str):
